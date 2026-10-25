@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-10-24
+last_reviewed: 2026-10-25
 review_by: 2027-02-16
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
@@ -31708,3 +31708,88 @@ Not complete. Record after merge and implementation validation.
 ### Next phase number
 
 Phase 547. No explicit dependency.
+
+## Phase 547 - Retain promotion quality evidence in workflow summaries (#1165)
+
+### Initiative and release
+
+Promotion quality evidence durability / advisory reporting.
+
+### Objective and scope
+
+Append the promotion quality reporter's existing SHA-bound advisory evidence to the GitHub Actions
+run summary for both matching-PR and no-PR runs. Preserve the PR comment and candidate-recording
+paths, keep the suite optional and advisory, and leave promotion eligibility unchanged.
+
+### Status
+
+`in_progress` — implementation and focused validation are underway on the #1165 Worker branch.
+
+### Dependencies
+
+None. Phase 547 follows Phase 546's ledger entry; there is no explicit technical or operational
+dependency on that phase.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[Release Candidate Policy](../ops/RELEASE_CANDIDATE_POLICY.md), [Planner/Worker Handoff Compatibility](../ai/PLANNER_WORKER_HANDOFF_COMPATIBILITY.md),
+and issue [#1165](https://github.com/Sieitzz/dgfy-platform/issues/1165), especially its
+[no-PR summary gap update](https://github.com/Sieitzz/dgfy-platform/issues/1165#issuecomment-6252784606).
+Classification: `no-architecture-impact`; no ADR change is needed.
+
+### Implementation targets
+
+[`post-quality-suite-evidence.js`](../../scripts/post-quality-suite-evidence.js),
+[`post-quality-suite-evidence.test.js`](../../scripts/post-quality-suite-evidence.test.js), and this
+ledger entry. The existing `report-quality-evidence` workflow job already invokes the reporter after
+the advisory jobs; no workflow wiring change is in scope.
+
+### Acceptance and validation evidence
+
+- [x] The same rendered, SHA-bound advisory report is appended to `GITHUB_STEP_SUMMARY` for runs
+  with and without a matching open PR, after freshness resolution and before any PR comment post.
+- [x] Existing summary content is preserved; an unset summary path is a no-op; append errors are
+  diagnosed while comment and candidate recording continue; later comment failures preserve the
+  summary already written.
+- [x] Step failures, missing jobs, and skipped jobs remain visible as advisory outcomes, with no
+  change to promotion eligibility.
+- [x] `npm run test:quality-evidence`, `npm run test:pr-quality-workflow`,
+  `node scripts/check-pr-quality-workflow.js`, `npm run check:architecture`, `npm run lint:docs`,
+  and `git diff --check` pass.
+
+### Evidence
+
+`npm run test:quality-evidence` passed 9 tests, including no-PR summary output, matching-PR
+freshness parity, append-error continuation through PR/candidate recording, and summary retention
+when comment posting fails. `npm run test:pr-quality-workflow` passed 11 tests;
+`node scripts/check-pr-quality-workflow.js` passed; `npm run check:architecture` passed (63 modules,
+797 code files, and 115 controller files); `npm run lint:docs` passed (36 governed docs / 105 ADRs);
+`node --check` passed for both changed JavaScript files; `npm run check:compliance` detected no
+compliance-sensitive changes and passed API-contract checks. The app-version check passed with PR
+context (`GITHUB_BASE_REF=develop`, `GITHUB_HEAD_REF=fix/1165-quality-summary`); no app or fan-out
+package changes apply. `git diff --check` passed. The operational workflow-dispatch check remains
+outstanding for post-merge verification.
+
+### Risks and decisions
+
+The workflow summary is informational and uses the existing bounded quality-job report. Summary
+write failure is non-fatal by design, so the existing PR comment and candidate evidence paths remain
+available. Fresh `origin/develop` already contained Phase 546 for #2769, so the remaining #1165 work
+uses Phase 547 under the continuous numbering rule. No policy or product decision is unresolved.
+
+### Completion date
+
+Not complete. Record after merge and implementation validation.
+
+### Post-merge verification
+
+- [ ] operational — dispatch the promotion quality workflow on a branch with no open PR and verify
+  the run summary contains the expected SHA-bound advisory table and classifications; owner: #1165
+  operator; blocks closing #1165.
+
+### Next phase number
+
+Phase 548. No explicit dependency.
