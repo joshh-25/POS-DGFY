@@ -15,7 +15,7 @@ supersedes_in_part: docs/architecture/adr/0021-email-otp-verification-for-accoun
 ## Status
 
 Accepted (2026-08-07)
-Amended (2026-10-25): storefront order confirmation delivery; see Amendments.
+Amended (2026-10-25): storefront order confirmation delivery and presentation; see Amendments.
 
 ## Context
 
@@ -148,6 +148,19 @@ paths would have meant instrumenting both.
    the existing `STOREFRONT_PUBLIC_ORIGIN`; no additional environment setting
    is introduced. Missing origin or branding data omits the image/support link
    without blocking delivery. `[default]`
+
+### 2026-10-25 — Storefront confirmation email customer-facing refinements (#532)
+
+1. Item thumbnails use the tenant catalog's public `/uploads/storefront-catalog/`
+   assets, resolved against the same `STOREFRONT_PUBLIC_ORIGIN` as store
+   branding. Image lookup is best-effort and bounded; a missing, unsafe, or
+   unavailable image never blocks checkout or email delivery. Remote images may
+   be blocked by email clients. These URLs identify shared catalog assets and
+   contain no recipient-specific values; no tracking pixel is used. `[default]`
+2. The confirmation email presents the order PIN as its customer-facing order
+   reference. It does not print the invoice number or provider payment
+   reference; those remain available through their existing customer API
+   contract and the separate official-receipt scope. `[default]`
 
 ## Rollback Notes
 
