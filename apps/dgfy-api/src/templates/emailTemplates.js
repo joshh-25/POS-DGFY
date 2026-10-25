@@ -1035,6 +1035,169 @@ export const getResubmissionConfirmationTemplate = ({ companyName }) => {
   return emailWrap('linear-gradient(135deg, #0d9488 0%, #0891b2 100%)', 'Registration Re-submitted', body);
 };
 
+const formatOrderConfirmationMoney = (value) => {
+  const amount = Number(value);
+  return `₱${(Number.isFinite(amount) ? amount : 0).toFixed(2)}`;
+};
+
+const formatOrderConfirmationLabel = (value) => String(value || '')
+  .trim()
+  .replace(/[_-]+/g, ' ')
+  .replace(/\s+/g, ' ')
+  .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+const formatOrderConfirmationDate = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat('en-PH', {
+    timeZone: 'Asia/Manila',
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }).format(date);
+};
+
+const safeOrderConfirmationUrl = (value) => {
+  try {
+    const url = new URL(String(value || ''));
+    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : '';
+  } catch {
+    return '';
+  }
+};
+
+const renderOrderConfirmationAmountRow = (label, amount, emphasize = false) => {
+  const style = emphasize
+    ? 'padding:10px 0;border-top:2px solid #d1d5db;color:#111827;font-size:16px;font-weight:700;'
+    : 'padding:6px 0;color:#4b5563;font-size:14px;';
+  return `<tr>
+    <td style="${style}">${escapeHtml(label)}</td>
+    <td align="right" style="${style}">${escapeHtml(formatOrderConfirmationMoney(amount))}</td>
+  </tr>`;
+};
+
+/** Receipt-style confirmation for a completed storefront checkout. */
+export const getStorefrontOrderConfirmationTemplate = ({ storeName, order = {}, trackingUrl = null } = {}) => {
+  const safeStoreName = escapeHtml(storeName || 'DGFY');
+  const safeTrackingPin = escapeHtml(order.tracking_pin || '');
+  const safeInvoiceNumber = escapeHtml(order.invoice_number || '');
+  const safePaymentReference = escapeHtml(order.payment_reference || '');
+  const safeTrackUrl = escapeHtml(safeOrderConfirmationUrl(trackingUrl));
+  const items = Array.isArray(order.items) ? order.items : [];
+  const itemRows = items.map((item) => `
+    <tr>
+      <td style="padding:10px 8px;border-bottom:1px solid #e5e7eb;color:#374151;font-size:14px;">${escapeHtml(item?.item_name || 'Item')}</td>
+      <td align="right" style="padding:10px 8px;border-bottom:1px solid #e5e7eb;color:#374151;font-size:14px;">${escapeHtml(item?.quantity ?? 0)}</td>
+      <td align="right" style="padding:10px 8px;border-bottom:1px solid #e5e7eb;color:#374151;font-size:14px;">${escapeHtml(formatOrderConfirmationMoney(item?.sale_price))}</td>
+      <td align="right" style="padding:10px 8px;border-bottom:1px solid #e5e7eb;color:#374151;font-size:14px;">${escapeHtml(formatOrderConfirmationMoney(item?.line_subtotal))}</td>
+    </tr>`).join('') || `
+    <tr><td colspan="4" style="padding:10px 8px;color:#6b7280;font-size:14px;">No item details available.</td></tr>`;
+
+  const amountRows = [renderOrderConfirmationAmountRow('Subtotal', order.subtotal_amount)];
+  const discountAmount = Number(order.discount_amount || 0);
+  if (discountAmount > 0 || order.discount_label_snapshot) {
+    const label = order.discount_label_snapshot
+      ? `Discount — ${order.discount_label_snapshot}`
+      : 'Discount';
+    amountRows.push(renderOrderConfirmationAmountRow(label, discountAmount));
+  }
+  if (Number(order.service_fee_amount || 0) !== 0 || order.service_fee_label_snapshot) {
+    amountRows.push(renderOrderConfirmationAmountRow(order.service_fee_label_snapshot || 'Service fee', order.service_fee_amount));
+  }
+  if (Number(order.customer_processing_fee_amount || 0) !== 0 || order.customer_processing_fee_label_snapshot) {
+    amountRows.push(renderOrderConfirmationAmountRow(
+      order.customer_processing_fee_label_snapshot || 'Customer processing fee',
+      order.customer_processing_fee_amount
+    ));
+  }
+  const deliveryWaiverLabel = String(order.delivery_fee_waiver_label_snapshot || '').trim();
+  if (order.order_method === 'delivery' || Number(order.delivery_fee || 0) !== 0 || deliveryWaiverLabel) {
+    const deliveryLabel = deliveryWaiverLabel ? `Delivery fee — ${deliveryWaiverLabel}` : 'Delivery fee';
+    amountRows.push(renderOrderConfirmationAmountRow(deliveryLabel, order.delivery_fee));
+  }
+  amountRows.push(renderOrderConfirmationAmountRow('Total', order.total_amount, true));
+
+  const paymentType = String(order.payment_type || '').trim().toLowerCase();
+  const paymentMethod = paymentType === 'qrph'
+    ? 'QRPh'
+    : paymentType === 'cash'
+      ? ({ delivery: 'Cash on delivery', pickup: 'Cash on pickup', dine_in: 'Pay at store' }[order.order_method] || 'Cash')
+      : formatOrderConfirmationLabel(paymentType) || 'Not provided';
+  const paymentStatus = formatOrderConfirmationLabel(order.payment_status) || 'Not provided';
+  const paymentDetails = order.payment_status === 'partially_paid'
+    ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px 16px;margin:16px 0;">
+        <p style="margin:0 0 6px;color:#1e3a8a;font-size:14px;"><strong>Downpayment paid:</strong> ${escapeHtml(formatOrderConfirmationMoney(order.amount_paid))}</p>
+        <p style="margin:0;color:#1e3a8a;font-size:14px;"><strong>Balance due:</strong> ${escapeHtml(formatOrderConfirmationMoney(order.balance_due))}</p>
+      </div>`
+    : '';
+
+  const locationName = String(order.location?.name || '').trim();
+  const locationAddress = String(order.location?.address_line || '').trim();
+  let fulfillmentDetails = '';
+  if (order.order_method === 'delivery') {
+    fulfillmentDetails = `<p style="margin:0;color:#4b5563;font-size:14px;"><strong>Delivery address:</strong> ${escapeHtml(order.delivery_address || 'Not provided')}</p>`;
+  } else if (order.order_method === 'pickup') {
+    fulfillmentDetails = `<p style="margin:0;color:#4b5563;font-size:14px;"><strong>Pickup location:</strong> ${escapeHtml(locationName || 'Store location')}</p>
+      ${locationAddress ? `<p style="margin:4px 0 0;color:#4b5563;font-size:14px;">${escapeHtml(locationAddress)}</p>` : ''}`;
+  } else if (order.order_method === 'dine_in') {
+    fulfillmentDetails = `<p style="margin:0;color:#4b5563;font-size:14px;"><strong>Dine-in location:</strong> ${escapeHtml(locationName || 'Store location')}</p>`;
+  } else if (locationName) {
+    fulfillmentDetails = `<p style="margin:0;color:#4b5563;font-size:14px;"><strong>Location:</strong> ${escapeHtml(locationName)}</p>`;
+  }
+  const scheduledFor = formatOrderConfirmationDate(order.scheduled_for);
+  const scheduleLine = scheduledFor
+    ? `<p style="margin:6px 0 0;color:#4b5563;font-size:14px;"><strong>Scheduled for:</strong> ${escapeHtml(scheduledFor)} (Asia/Manila)</p>`
+    : '';
+  const referenceRows = [
+    `<p style="margin:0 0 6px;color:#374151;font-size:14px;"><strong>Order reference:</strong> ${safeTrackingPin || 'Not available'}</p>`,
+    safeInvoiceNumber
+      ? `<p style="margin:0 0 6px;color:#374151;font-size:14px;"><strong>Invoice number:</strong> ${safeInvoiceNumber}</p>`
+      : '',
+    safePaymentReference
+      ? `<p style="margin:0;color:#374151;font-size:14px;"><strong>Payment reference:</strong> ${safePaymentReference}</p>`
+      : ''
+  ].join('');
+  const trackingButton = safeTrackUrl
+    ? `<div style="text-align:center;margin:24px 0 12px;">
+        <a href="${safeTrackUrl}" style="display:inline-block;background:#0d9488;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;font-size:15px;">Track your order</a>
+      </div>`
+    : '';
+
+  const body = `
+    <h2 style="margin:0 0 12px;color:#1f2937;font-size:22px;">Order confirmation</h2>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;">Thank you for ordering from <strong>${safeStoreName}</strong>. Here is your order summary.</p>
+    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px 16px;margin-bottom:20px;">
+      ${referenceRows}
+    </div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:0 0 8px;">
+      <thead><tr>
+        <th align="left" style="padding:8px;border-bottom:2px solid #d1d5db;color:#6b7280;font-size:12px;text-transform:uppercase;">Item</th>
+        <th align="right" style="padding:8px;border-bottom:2px solid #d1d5db;color:#6b7280;font-size:12px;text-transform:uppercase;">Qty</th>
+        <th align="right" style="padding:8px;border-bottom:2px solid #d1d5db;color:#6b7280;font-size:12px;text-transform:uppercase;">Unit price</th>
+        <th align="right" style="padding:8px;border-bottom:2px solid #d1d5db;color:#6b7280;font-size:12px;text-transform:uppercase;">Amount</th>
+      </tr></thead>
+      <tbody>${itemRows}</tbody>
+    </table>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
+      <tbody>${amountRows.join('')}</tbody>
+    </table>
+    <div style="border-top:1px solid #e5e7eb;margin-top:18px;padding-top:16px;">
+      <h3 style="margin:0 0 8px;color:#1f2937;font-size:16px;">Payment</h3>
+      <p style="margin:0;color:#4b5563;font-size:14px;"><strong>Method:</strong> ${escapeHtml(paymentMethod)}</p>
+      <p style="margin:4px 0 0;color:#4b5563;font-size:14px;"><strong>Status:</strong> ${escapeHtml(paymentStatus)}</p>
+      ${paymentDetails}
+    </div>
+    <div style="border-top:1px solid #e5e7eb;margin-top:18px;padding-top:16px;">
+      <h3 style="margin:0 0 8px;color:#1f2937;font-size:16px;">Fulfillment</h3>
+      ${fulfillmentDetails}${scheduleLine}
+    </div>
+    ${trackingButton}
+    <p style="margin:12px 0 0;color:#6b7280;font-size:13px;text-align:center;">Keep your order reference ${safeTrackingPin || 'above'} for tracking.</p>
+    <p style="margin:24px 0 0;color:#9ca3af;font-size:12px;text-align:center;">This message confirms your order and is not an official receipt.</p>`;
+
+  return emailWrap('linear-gradient(135deg, #0d9488 0%, #0891b2 100%)', safeStoreName, body);
+};
+
 export default {
   getInvitationTemplate,
   getWelcomeTemplate,
@@ -1050,5 +1213,6 @@ export default {
   getPlanChangeAppliedTemplate,
   getReactivationRequestTemplate,
   getReactivationApprovedTemplate,
-  getResubmissionConfirmationTemplate
+  getResubmissionConfirmationTemplate,
+  getStorefrontOrderConfirmationTemplate
 };
