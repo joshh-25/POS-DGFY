@@ -12,8 +12,8 @@ verification_evidence: POS frontend contracts passed (132 files, 837 tests); foc
 rollback_note: Revert the assigned-branch eligibility helper and POS branch entry changes with their E2E and contract updates; no API, schema, or persisted-data rollback is needed.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-24T17:41:29Z
-preflight_request_ref: NOT-EXECUTED-2767-POS-ASSIGNED-BRANCH-ENTRY
+preflight_run_at: 2026-10-25T10:10:42.018Z
+preflight_request_ref: PREFLIGHT-40183300949-2026-10-25-POS-ASSIGNED-BRANCH-ENTRY
 ---
 
 # POS assigned branch entry and sales journey (#2767, Phase 548)
