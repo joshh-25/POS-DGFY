@@ -32211,7 +32211,11 @@ behavior changes.
 
 ### Status
 
-`in_progress` — implementation and validation are underway on the #532 follow-up Worker branch.
+`completed` — the DGFY-blue presentation and order-page parity changes merged to
+`develop` in PR [#2797](https://github.com/Sieitzz/dgfy-platform/pull/2797) on
+2026-10-25. Focused API tests, local template rendering, architecture/docs/compliance,
+syntax, and app-version checks passed. STAGING delivery verification remains in the
+post-merge checklist.
 
 ### Dependencies
 
@@ -32260,7 +32264,10 @@ expose VAT in the customer API response.
 
 ### Completion date
 
-Not complete. Record after merge and implementation validation.
+Completed 2026-10-25; PR #2797 merged as
+`21f30c9937df72164001482e66740b087d882872`. The pull request's API build and security
+checks passed; unrelated application build/lint checks were skipped by the changed-path
+workflow.
 
 ### Post-merge verification
 
@@ -32275,3 +32282,88 @@ Not complete. Record after merge and implementation validation.
 ### Next phase number
 
 Phase 553. No explicit dependency.
+
+## Phase 553 - Storefront order confirmation email customer-facing refinements (#532)
+
+### Initiative and release
+
+Storefront customer commerce / transactional messaging.
+
+### Objective and scope
+
+Show public catalog thumbnails beside order lines when available, using aligned
+monogram tiles for lines without images in mixed orders. Keep image lookup bounded
+and best-effort so checkout and email delivery do not depend on catalog media.
+Remove the visible Manila timezone suffix while retaining Manila time formatting,
+and remove invoice number and provider payment reference from the email while
+keeping the order PIN. No customer API, support-link, database schema, migration,
+frontend, or other email-template change.
+
+### Status
+
+`in_progress` — implementation is underway on a fresh develop-based Worker branch.
+
+### Dependencies
+
+Phase 552 is complete and merged in PR #2797. No remaining technical dependency.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0054](../architecture/adr/0054-outbound-email-delivery-log-and-bounce-capture.md),
+[ADR 0017](../architecture/adr/0017-customer-access-modes-and-inventory-display.md),
+[Issue #532](https://github.com/Sieitzz/dgfy-platform/issues/532). Classification:
+within-existing-boundary; the change keeps the existing post-commit email seam and reads
+tenant catalog data through the store repository.
+
+### Implementation targets
+
+[storeRepository.js](../../apps/dgfy-api/src/modules/store/repositories/storeRepository.js),
+[storeRepository.contract.js](../../apps/dgfy-api/src/modules/store/contracts/storeRepository.contract.js),
+[storeUseCases.js](../../apps/dgfy-api/src/modules/store/usecases/storeUseCases.js),
+[dgfyOrderConfirmationEmail.js](../../apps/dgfy-api/src/modules/dgfy/services/dgfyOrderConfirmationEmail.js),
+[emailTemplates.js](../../apps/dgfy-api/src/templates/emailTemplates.js),
+[emailService.js](../../apps/dgfy-api/src/services/emailService.js), and focused API tests.
+
+### Acceptance and validation evidence
+
+- [x] Item thumbnails render when present; mixed orders align with a placeholder tile;
+  no-image orders preserve the existing text-only rows.
+- [x] Manila time remains formatted correctly with no visible timezone suffix in HTML
+  or plain text.
+- [x] The order PIN remains visible; invoice number and provider payment reference are
+  absent from HTML and plain text.
+- [x] Missing, unsafe, failed, or slow catalog image lookup does not block checkout or
+  email delivery; replays still do not resend.
+- [x] Focused tests (5 suites, 75 tests), changed-file syntax, architecture/docs/compliance, app-version
+  checks, and local rendering inspection pass before PR creation.
+
+### Risks and decisions
+
+Item images are served from the existing public uploads mount. The resolver allows
+only the current storefront-branding and tenant catalog asset roots for relative
+paths; it does not broaden the shared logo validator. Missing public origin or
+unsafe paths omit the image. Some email clients block remote images or do not render
+WebP; adjacent item text and placeholders keep order details readable. The Contact
+Us PIN prefill remains separate work under #2804.
+
+### Completion date
+
+Not complete. Record after merge and implementation validation.
+
+### Post-merge verification
+
+- [ ] **deployment** — after promotion, send one delivery and one pickup order with
+  catalog images and one imageless item to a real mailbox; verify thumbnail/placeholder
+  alignment, no timezone suffix, no invoice/payment-reference lines, and the order PIN.
+  Inspect Gmail light/dark mode on a phone. Owner: #532 operator/release verifier;
+  blocks deployed acceptance.
+- [ ] **operational** — confirm a sent email has an
+  email_delivery_logs row with purpose storefront_order_confirmation and status sent.
+  Owner: #532 operator/release verifier; blocks deployed acceptance.
+
+### Next phase number
+
+Phase 554. No explicit dependency.

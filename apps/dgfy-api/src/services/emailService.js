@@ -507,16 +507,14 @@ const buildStorefrontOrderConfirmationText = ({ storeName, order = {}, trackingU
   ];
   const scheduledFor = formatOrderTime(order.scheduled_for);
   const orderTime = formatOrderTime(order.created_at);
-  if (scheduledFor) lines.push(`Scheduled for: ${scheduledFor} (Asia/Manila)`);
-  else if (orderTime) lines.push(`Order time: ${orderTime} (Asia/Manila)`);
+  if (scheduledFor) lines.push(`Scheduled for: ${scheduledFor}`);
+  else if (orderTime) lines.push(`Order time: ${orderTime}`);
   lines.push(
     'Status: Order placed',
     `Payment method: ${normalizeOrderConfirmationText(formatOrderConfirmationPaymentMethod(order))}`,
     `Payment status: ${normalizeOrderConfirmationText(String(order.payment_status || 'Not provided').replace(/[_-]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()))}`,
     `Order PIN: ${safeTrackingPin || 'Not available'}`
   );
-  if (order.invoice_number) lines.push(`Invoice number: ${normalizeOrderConfirmationText(order.invoice_number)}`);
-  if (order.payment_reference) lines.push(`Payment reference: ${normalizeOrderConfirmationText(order.payment_reference)}`);
   lines.push('', 'Your Items:');
   for (const item of Array.isArray(order.items) ? order.items : []) {
     const quantity = formatOrderQuantity(item?.quantity);
