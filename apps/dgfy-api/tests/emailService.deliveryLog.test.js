@@ -180,6 +180,8 @@ describe('emailService.sendEmail delivery logging (issue #279)', () => {
       order: {
         tracking_pin: 'SK-ABC123',
         invoice_number: 'INV-000123',
+        payment_reference: 'pay_123',
+        created_at: '2026-10-25T00:00:00.000Z',
         items: [{ item_name: 'Burger', quantity: 2, sale_price: 100, line_subtotal: 200 }],
         subtotal_amount: 200,
         vat_amount: 10.71,
@@ -206,6 +208,13 @@ describe('emailService.sendEmail delivery logging (issue #279)', () => {
     expect(mailOptions.html).toContain('src="https://shop.example.test/uploads/storefront-assets/profile.png"');
     expect(mailOptions.html).toContain('href="https://shop.example.test/contact-us"');
     expect(mailOptions.text).toContain('Burger — x 2 — ₱200.00');
+    expect(mailOptions.text).toContain('Order time: Oct 25, 2026, 08:00 AM');
+    expect(mailOptions.text).not.toContain('Asia/Manila');
+    expect(mailOptions.text).toContain('Order PIN: SK-ABC123');
+    expect(mailOptions.text).not.toContain('INV-000123');
+    expect(mailOptions.text).not.toContain('pay_123');
+    expect(mailOptions.text).not.toContain('Invoice number');
+    expect(mailOptions.text).not.toContain('Payment reference');
     expect(mailOptions.text).toContain('VAT (included in item prices): ₱10.71');
     expect(mailOptions.text).toContain('VAT shown above is already included in item prices');
     expect(mailOptions.text).not.toContain('DGFY convenience fee');
