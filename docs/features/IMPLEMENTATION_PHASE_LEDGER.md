@@ -32495,7 +32495,9 @@ retry/outbox, formal receipt, or separate bookings flow changes.
 
 ### Status
 
-`in_progress` — implementation and validation are underway on the #532 Worker branch.
+`completed` — the initial post-commit confirmation-email implementation merged to `develop` in PR
+[#2779](https://github.com/Sieitzz/dgfy-platform/pull/2779) on 2026-10-25. Implementation validation
+passed; STAGING delivery verification remains in the post-merge checklist.
 
 ### Dependencies
 
@@ -32522,19 +32524,19 @@ notifications.
 
 ### Acceptance and validation evidence
 
-- [ ] A new order dispatches after commit; replay dispatches nothing; checkout remains successful
+- [x] A new order dispatches after commit; replay dispatches nothing; checkout remains successful
   when the dispatcher fails, for COD and captured-payment checkout paths.
-- [ ] The HTML and plain-text email include itemization, totals, payment method/status, order
+- [x] The HTML and plain-text email include itemization, totals, payment method/status, order
   references, fulfillment details, and downpayment/balance for `partially_paid` orders.
-- [ ] Slug and custom-domain tracking URLs resolve correctly; an unavailable URL omits only the
+- [x] Slug and custom-domain tracking URLs resolve correctly; an unavailable URL omits only the
   CTA.
-- [ ] Blank/invalid email, unconfigured SMTP, and the kill switch skip cleanly; timeout and
+- [x] Blank/invalid email, unconfigured SMTP, and the kill switch skip cleanly; timeout and
   pre-send failures are bounded and reported without PII.
-- [ ] Delivery log purpose and tenant id are set; no email body is persisted.
-- [ ] Focused tests, syntax checks, architecture/compliance/docs checks, and app-version floor
+- [x] Delivery log purpose and tenant id are set; no email body is persisted.
+- [x] Focused tests, syntax checks, architecture/compliance/docs checks, and app-version floor
   validation pass.
-- [ ] Manual template rendering/visual inspection for delivery, pickup, and partially-paid samples
-  is recorded as completed or explicitly deferred.
+- [x] Manual template rendering/visual inspection for delivery, pickup, and partially-paid samples
+  is recorded as explicitly deferred in the PR #2779 compliance declaration.
 
 ### Risks and decisions
 
@@ -32546,7 +32548,9 @@ under #243.
 
 ### Completion date
 
-Not complete. Record after merge and implementation validation.
+Completed 2026-10-25; PR #2779 merged as `454101ae463dbf83a3b09185f9f9cdb5356965e9`. The PR's
+focused confirmation-email suites reported 82 passing tests; architecture, docs, compliance,
+app-version, and changed-file syntax checks passed.
 
 ### Post-merge verification
 
@@ -32560,7 +32564,323 @@ Not complete. Record after merge and implementation validation.
 
 Phase 552. No explicit dependency.
 
-## Phase 552 - Tenant-console integration cleanup and URL privacy (#2757, #2748, #2750)
+## Phase 552 - Storefront order confirmation email presentation parity (#532)
+
+### Initiative and release
+
+Storefront customer commerce / transactional messaging.
+
+### Objective and scope
+
+Redesign only the storefront order-confirmation HTML and plain-text presentation to use DGFY
+branding and align quantities, money formatting, and breakdown rows with the storefront order
+page. Present stored amounts without recomputation, include the persisted VAT amount on the email
+payload only, omit the legacy service-fee row, and resolve store branding/support URLs best-effort.
+No other email template, customer API response, database schema, migration, frontend, or checkout
+behavior changes.
+
+### Status
+
+`completed` — the DGFY-blue presentation and order-page parity changes merged to
+`develop` in PR [#2797](https://github.com/Sieitzz/dgfy-platform/pull/2797) on
+2026-10-25. Focused API tests, local template rendering, architecture/docs/compliance,
+syntax, and app-version checks passed. STAGING delivery verification remains in the
+post-merge checklist.
+
+### Dependencies
+
+Phase 551 (#532 initial implementation) is merged in PR #2779 and is the baseline for this
+presentation update. No remaining technical dependency.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0054](../architecture/adr/0054-outbound-email-delivery-log-and-bounce-capture.md),
+[Food and Beverage Mode](FOOD_AND_BEVERAGE_MODE.md), [Issue #532](https://github.com/Sieitzz/dgfy-platform/issues/532).
+Classification: `within-existing-boundary`; this phase keeps the existing store-to-DGFY post-commit
+email seam and changes only email presentation data and rendering.
+
+### Implementation targets
+
+[`storefrontOrderConfirmationPresentation.js`](../../apps/dgfy-api/src/templates/storefrontOrderConfirmationPresentation.js),
+[`emailTemplates.js`](../../apps/dgfy-api/src/templates/emailTemplates.js),
+[`emailService.js`](../../apps/dgfy-api/src/services/emailService.js),
+[`dgfyOrderConfirmationEmail.js`](../../apps/dgfy-api/src/modules/dgfy/services/dgfyOrderConfirmationEmail.js),
+[`dgfyAffiliateRepository.js`](../../apps/dgfy-api/src/modules/dgfy/repositories/dgfyAffiliateRepository.js),
+[`storeUseCases.js`](../../apps/dgfy-api/src/modules/store/usecases/storeUseCases.js), and focused API tests.
+
+### Acceptance and validation evidence
+
+- [x] Shared breakdown and formatter tests cover quantities, grouped money, persisted values,
+  delivery-only fees, informational VAT, and Manila time.
+- [x] Template tests cover DGFY branding, legacy-fee omission, VAT copy, discount/processing fee
+  rows, fulfillment variants, fractional quantities, unsafe branding URLs, and escaping.
+- [x] Dispatcher, checkout, and delivery-log suites pass with branding lookup failure, missing
+  tracking URL, email-only VAT parity, replay behavior, and existing delivery purpose covered.
+- [x] Tier 0 syntax, architecture, docs, compliance, and app-version checks pass before PR open.
+- [x] Delivery, pickup/discount/fractional, and partial-payment samples were rendered and visually
+  inspected locally at a 390px viewport; Gmail and dark-mode client inspection is deferred to
+  STAGING verification.
+
+### Risks and decisions
+
+The optional logo is remote and can be blocked by an email client; adjacent store-name text and
+image alt text remain available, while a monogram is rendered when the stored logo URL is absent or
+unsafe. Relative store-asset paths and the support link use the already-required
+`STOREFRONT_PUBLIC_ORIGIN`; no new deployment setting is introduced. No recipient identifier or
+tracking pixel is included in the image URL. The email displays persisted amounts and does not
+expose VAT in the customer API response.
+
+### Completion date
+
+Completed 2026-10-25; PR #2797 merged as
+`21f30c9937df72164001482e66740b087d882872`. The pull request's API build and security
+checks passed; unrelated application build/lint checks were skipped by the changed-path
+workflow.
+
+### Post-merge verification
+
+- [ ] **deployment** — after promotion, send one delivery and one pickup order to a real mailbox;
+  inspect DGFY branding, logo/monogram, quantity and VAT/totals parity, and open the tracking link
+  against the correct order. Owner: #532 operator/release verifier; blocks deployed acceptance.
+- [ ] **operational** — verify each sent message has an `email_delivery_logs` row with
+  `purpose='storefront_order_confirmation'` and `status='sent'`, and that an idempotent replay does
+  not create a second confirmation row. Owner: #532 operator/release verifier; blocks deployed
+  acceptance.
+
+### Next phase number
+
+Phase 553. No explicit dependency.
+
+## Phase 553 - Storefront order confirmation email customer-facing refinements (#532)
+
+### Initiative and release
+
+Storefront customer commerce / transactional messaging.
+
+### Objective and scope
+
+Show public catalog thumbnails beside order lines when available, using aligned
+monogram tiles for lines without images in mixed orders. Keep image lookup bounded
+and best-effort so checkout and email delivery do not depend on catalog media.
+Remove the visible Manila timezone suffix while retaining Manila time formatting,
+and remove invoice number and provider payment reference from the email while
+keeping the order PIN. No customer API, support-link, database schema, migration,
+frontend, or other email-template change.
+
+### Status
+
+`in_progress` — implementation is underway on a fresh develop-based Worker branch.
+
+### Dependencies
+
+Phase 552 is complete and merged in PR #2797. No remaining technical dependency.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0054](../architecture/adr/0054-outbound-email-delivery-log-and-bounce-capture.md),
+[ADR 0017](../architecture/adr/0017-customer-access-modes-and-inventory-display.md),
+[Issue #532](https://github.com/Sieitzz/dgfy-platform/issues/532). Classification:
+within-existing-boundary; the change keeps the existing post-commit email seam and reads
+tenant catalog data through the store repository.
+
+### Implementation targets
+
+[storeRepository.js](../../apps/dgfy-api/src/modules/store/repositories/storeRepository.js),
+[storeRepository.contract.js](../../apps/dgfy-api/src/modules/store/contracts/storeRepository.contract.js),
+[storeUseCases.js](../../apps/dgfy-api/src/modules/store/usecases/storeUseCases.js),
+[dgfyOrderConfirmationEmail.js](../../apps/dgfy-api/src/modules/dgfy/services/dgfyOrderConfirmationEmail.js),
+[emailTemplates.js](../../apps/dgfy-api/src/templates/emailTemplates.js),
+[emailService.js](../../apps/dgfy-api/src/services/emailService.js), and focused API tests.
+
+### Acceptance and validation evidence
+
+- [x] Item thumbnails render when present; mixed orders align with a placeholder tile;
+  no-image orders preserve the existing text-only rows.
+- [x] Manila time remains formatted correctly with no visible timezone suffix in HTML
+  or plain text.
+- [x] The order PIN remains visible; invoice number and provider payment reference are
+  absent from HTML and plain text.
+- [x] Missing, unsafe, failed, or slow catalog image lookup does not block checkout or
+  email delivery; replays still do not resend.
+- [x] Focused tests (5 suites, 75 tests), changed-file syntax, architecture/docs/compliance, app-version
+  checks, and local rendering inspection pass before PR creation.
+
+### Risks and decisions
+
+Item images are served from the existing public uploads mount. The resolver allows
+only the current storefront-branding and tenant catalog asset roots for relative
+paths; it does not broaden the shared logo validator. Missing public origin or
+unsafe paths omit the image. Some email clients block remote images or do not render
+WebP; adjacent item text and placeholders keep order details readable. The Contact
+Us PIN prefill remains separate work under #2804.
+
+### Completion date
+
+Not complete. Record after merge and implementation validation.
+
+### Post-merge verification
+
+- [ ] **deployment** — after promotion, send one delivery and one pickup order with
+  catalog images and one imageless item to a real mailbox; verify thumbnail/placeholder
+  alignment, no timezone suffix, no invoice/payment-reference lines, and the order PIN.
+  Inspect Gmail light/dark mode on a phone. Owner: #532 operator/release verifier;
+  blocks deployed acceptance.
+- [ ] **operational** — confirm a sent email has an
+  email_delivery_logs row with purpose storefront_order_confirmation and status sent.
+  Owner: #532 operator/release verifier; blocks deployed acceptance.
+
+### Next phase number
+
+Phase 554. No explicit dependency.
+
+## Phase 554 - Custom staff-role invitations for Warehouse and Delivery (#2812)
+
+### Initiative and release
+
+OPIS back-office team access and DGFY company membership. Feature branch: `feat/2812-custom-staff-role-invites`.
+
+### Objective and scope
+
+Allow an OPIS owner or legacy admin to invite an already registered DGFY account into an active
+tenant custom staff role. Persist the tenant role assignment and active location grants, accept the
+invitation only after revalidating the tenant user, role, membership, and locations, and immediately
+cancel pending invitations when a role is deactivated. Preserve the role name and cancellation
+reason in the landlord invitation registry for display and reconciliation. Show active custom roles
+in the shared invitation UI only through the OPIS surface, and report cancellation counts and
+registry-sync retries.
+
+Email-first account registration remains deferred to #2805. The shared modal preserves selected
+account and assigned-location choices across role changes; #2810 still owns the remaining compatible
+standard-role catalog behavior and must land before final integrated validation and merge.
+
+### Status
+
+`in_progress` — implementation and validation are underway; no commit or PR has been created.
+
+### Dependencies
+
+No dependency on Phase 553 is recorded. #2810 is required before final integrated validation/merge;
+its compatible standard-role changes remain separate. #2805's email-first flow is explicitly
+deferred and is not a dependency for existing-account invitations.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0015](../architecture/adr/0015-tenant-user-invitation-registry.md),
+[ADR 0020](../architecture/adr/0020-mode-aware-rbac-and-role-presets.md),
+[ADR 0028](../architecture/adr/0028-dgfy-account-company-switching.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[POS Manual Delivery Workflow](POS_MANUAL_DELIVERY_WORKFLOW.md),
+[Issue #2812](https://github.com/Sieitzz/dgfy-platform/issues/2812). Classification:
+within-existing-boundary; tenant roles and grants remain authoritative, landlord metadata is a
+non-authoritative lifecycle descriptor, and invitation behavior is exposed from OPIS.
+
+### Implementation targets
+
+[dgfyAuthUseCases.js](../../apps/dgfy-api/src/modules/dgfy/usecases/dgfyAuthUseCases.js),
+[dgfyAccountRepository.js](../../apps/dgfy-api/src/modules/dgfy/repositories/dgfyAccountRepository.js),
+[staffRoleUseCases.js](../../apps/dgfy-api/src/modules/staff/usecases/staffRoleUseCases.js),
+[staffRoleRepository.js](../../apps/dgfy-api/src/modules/staff/repositories/staffRoleRepository.js),
+[transaction-aware assignment helper](../../apps/dgfy-api/src/modules/staff/repositories/staffRoleRepository.js),
+[landlordService.js](../../apps/dgfy-api/src/services/landlordService.js),
+[userService.js](../../apps/dgfy-api/src/services/userService.js),
+[UserInvitation.js](../../apps/dgfy-api/src/models/Landlord/UserInvitation.js),
+[migration](../../apps/dgfy-migration-runner/migrations/20261026000001-add-custom-staff-role-invitation-metadata.cjs),
+[UserInvitationModal.jsx](../../packages/web-core/Components/users/UserInvitationModal.jsx),
+[UserManagementModal.jsx](../../packages/web-core/Components/users/UserManagementModal.jsx),
+[StaffRolesPanel.jsx](../../apps/dgfy-opis/src/features/businessAdmin/StaffRolesPanel.jsx),
+[DGFY invitation role tests](../../apps/dgfy-api/tests/dgfyInvitationCompanyRole.test.js),
+[staff-role tests](../../apps/dgfy-api/tests/staffRoleFoundation.usecase.test.js),
+[disposable database integration test](../../apps/dgfy-api/tests/staffRoleInvitationPersistence.phase554.db.integration.test.js),
+and [invitation modal tests](../../packages/web-core/Components/users/__tests__/UserInvitationModal.dgfy.test.jsx).
+
+### Acceptance and validation evidence
+
+- [ ] Owner/admin authorization, strict role ID validation, active role/location validation, and
+  conflicting preset/permission rejection pass before durable writes.
+- [ ] Custom invitations persist `role='staff'`, the selected tenant role, empty permissions,
+  inherited permission mode, inactive pending state, active location grants, and a landlord name
+  snapshot; accepted users receive only current role capabilities and invited active grants.
+- [ ] Acceptance rejects wrong account, expired/cancelled invitation, unavailable/mismatched role,
+  and inactive/missing grants; accepted replay does not reassign the user.
+- [ ] Deactivation cancels only pending invitations in the active tenant, syncs registry and invite
+  membership state, preserves accepted memberships, and retries partial landlord synchronization.
+- [ ] Reinvitation resets cancellation metadata, while role reactivation does not revive old
+  invitations. Reused tenant rows and landlord registry/membership writes are compensated on
+  creation failure.
+- [ ] The shared modal shows active custom roles to OPIS owners/admins, keeps account/location
+  choices across assigned-role switches, blocks missing locations, and retains fixed-cashier
+  behavior. Invitation lists show the role snapshot and cancellation reason.
+- [ ] Focused API and UI tests, migration idempotence/rollback evidence, architecture/schema/compliance
+  checks, affected OPIS/POS/IMS builds, and rendered OPIS desktop/mobile checks are recorded below
+  before the implementation checkpoint.
+
+### Validation evidence (2026-10-26)
+
+- Focused API Jest tests: 3 suites / 22 tests passed (`dgfyInvitationCompanyRole`,
+  `staffRoleFoundation.usecase`, `dgfyAccountRepository.invitationSchema`).
+- Disposable MySQL integration: 1 suite / 4 tests passed against a uniquely named migrated `test_*`
+  database, dropped during teardown. It verifies assignment/audit rollback and commit, pending-only
+  invitation cancellation with accepted users preserved, actual InnoDB role-row lock blocking,
+  and migration repeated-up/down behavior that leaves the pre-feature invitation columns intact
+  and removes the newly added index on rollback.
+  This does not prove cross-database landlord synchronization or full DGFY acceptance end to end.
+- OPIS invitation contract: 1 suite / 4 tests passed. Shared invitation modal: 1 suite / 9 tests
+  passed through the IMS runner. A local Playwright preview with isolated API fixtures rendered at
+  1440×900 and 390×844, submitted `staff_role_id=17` with role `staff` and location `[11]`, and
+  reported no browser console errors. Screenshots: [desktop](../../apps/dgfy-opis/.tmp/2812-opis-invitation-desktop.png),
+  [mobile](../../apps/dgfy-opis/.tmp/2812-opis-invitation-mobile.png).
+- OPIS, POS, and Skupervisor builds passed. OPIS lint passed with one existing max-lines warning in
+  `BusinessAdminPage.jsx`. `check:architecture`, `lint:docs`, `check:compliance`, `check:app-versions`,
+  `check:tenant-schema-coverage`, JavaScript syntax checks, and `git diff --check` passed. The tenant
+  schema coverage command reported that no tenant migration files changed; the landlord migration
+  was exercised by the disposable database integration test.
+- Compliance declaration is present as a draft with `NOT-EXECUTED` reference; no live compliance
+  preflight was run. #2810 remains an open prerequisite for final integrated validation/merge; #2805
+  email-first registration remains deferred. The phase remains `in_progress`, and no commit or PR
+  has been created pending human review of the migration and declaration.
+
+### Completion date
+
+Not complete. Record only after merge and implementation validation pass.
+
+### Post-merge verification
+
+- [ ] **migration** — apply the additive landlord migration on an existing tenant registry and a
+  fresh registry; verify nullable metadata and the role/status index, and confirm old invitations
+  remain readable. Owner: release operator; blocks deployed acceptance.
+- [ ] **deployment** — verify one new custom-role invitation and one immediate role-deactivation
+  cancellation in a deployed tenant; confirm registry name/reason and the pending DGFY membership
+  state. Owner: operator/release verifier; blocks deployed acceptance.
+- [ ] **end-to-end** — accept an active custom-role invitation and confirm current role capabilities
+  and location grants; confirm a cancelled/deactivated invitation cannot be accepted. Owner: verifier;
+  blocks deployed acceptance.
+
+### Next phase number
+
+Phase 555. No explicit dependency.
+
+---
+
+**Dated note, 2026-10-26 — Phase-number collision between the #2696 tenant-management epic branch and `develop`, resolved per the Phase Sequencing and Lifecycle Rules (the `develop` reservation wins; unmerged collisions move to the next free number):**
+
+The shared base ended at Phase 551. `develop` now reserves Phases 552–554 for storefront order-confirmation presentation parity (#532), its customer-facing refinements (#532), and custom staff-role invitations (#2812). The epic branch's unmerged tenant-console integration cleanup and URL-privacy entry (#2757/#2748/#2750) moves from Phase 552 to **Phase 555**; its efficient tenant directory and Billing workspace entry (#2776) moves from Phase 553 to **Phase 556**. Existing epic phases 542–544 remain unchanged. This is a documentation renumber only; implementation and PR history retain their authored numbers.
+
+| Phase | Owner | Disposition |
+|---:|---|---|
+| 552 | Storefront order-confirmation presentation parity (#532) | unchanged — reserved on `develop` |
+| 553 | Storefront order-confirmation refinements (#532) | unchanged — reserved on `develop` |
+| 554 | Custom staff-role invitations (#2812) | unchanged — reserved on `develop` |
+| 555 | Tenant-console integration cleanup and URL privacy (#2757, #2748, #2750) | **moved from 552** |
+| 556 | Efficient tenant directory and Billing workspace (#2776) | **moved from 553** |
+
+## Phase 555 - Tenant-console integration cleanup and URL privacy (#2757, #2748, #2750)
 
 ### Initiative and release
 
@@ -32706,10 +33026,10 @@ Failure origin was not baseline-compared. Full logs and `local_readiness.json` a
 
 ### Next phase number
 
-Phase 553. Phase 552 depends on integrated Phases 543 and 544; no other explicit dependency blocks
+Phase 556. Phase 555 depends on integrated Phases 543 and 544; no other explicit dependency blocks
 implementation.
 
-## Phase 553 - Efficient tenant directory and Billing workspace (#2776)
+## Phase 556 - Efficient tenant directory and Billing workspace (#2776)
 
 ### Initiative and release
 
@@ -32733,13 +33053,14 @@ remain tracked below and do not change implementation completion.
 
 ### Dependencies
 
-- Phases 543–544 and 552 / Waves 2–4 are present on the registered epic base; the route foundation,
+- Phases 543–544 and 555 / Waves 2–4 are present on the registered epic base; the route foundation,
   sections, and integration cleanup are available to this wave.
+- This entry moved from Phase 553 to Phase 556 under the dated 2026-10-26 collision note above;
+  `develop` already reserves Phases 552–554.
 - Phase 546 (#2769) is already recorded on `origin/develop`; it is unrelated and does not block this
-  issue. Phase numbering therefore advances globally to 553 after the epic's local Phase 545 claim
-  is reconciled to Phase 552 and after the current develop high-water mark of Phase 551.
-- No explicit dependency on #2769 exists. #1923 STAGING persistence/publication checks, #2633/#2639
-  deployed capability evidence, and PROD capability-read recovery remain release-verification work.
+  issue. No explicit dependency on #2769 exists. #1923 STAGING persistence/publication checks,
+  #2633/#2639 deployed capability evidence, and PROD capability-read recovery remain
+  release-verification work.
 
 ### Contract and authority
 
@@ -32863,5 +33184,5 @@ deployment, production data access, or financial mutation occurred in this Worke
 
 ### Next phase number
 
-Phase 554. Phase 553 depends on the Wave 2–4 routes integrated on the epic branch; Phase 546 on
+Phase 557. Phase 556 depends on the Wave 2–4 routes integrated on the epic branch; Phase 546 on
 `origin/develop` is unrelated and creates no additional dependency.

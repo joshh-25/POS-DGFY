@@ -12,8 +12,8 @@ verification_evidence: Admin production build; Storefront production build; arch
 rollback_note: Revert the Admin support-email controls and API client methods, API support-contact routes/use cases/repository/model, Storefront API client and Contact Us email display, migration, tests, related docs, ADR, and this declaration. The migration down removes the support-contact landlord table and its configured address; retain or restore the approved support address before rolling back if the public contact path must remain available.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-25T03:24:28Z
-preflight_request_ref: NOT-EXECUTED-2772-2026-10-25
+preflight_run_at: 2026-10-25T10:10:42.021Z
+preflight_request_ref: PREFLIGHT-40183300949-2026-10-25-STOREFRONT-SUPPORT-EMAIL-CONFIGURATION
 ---
 
 # Storefront support email configuration (#2772, Phase 550)

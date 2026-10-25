@@ -25,6 +25,18 @@ export default (sequelize) => {
       type: DataTypes.STRING(40),
       allowNull: false
     },
+    staff_role_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    },
+    staff_role_name: {
+      type: DataTypes.STRING(120),
+      allowNull: true
+    },
+    cancellation_reason: {
+      type: DataTypes.STRING(80),
+      allowNull: true
+    },
     token_hash: {
       type: DataTypes.STRING(64),
       allowNull: false,

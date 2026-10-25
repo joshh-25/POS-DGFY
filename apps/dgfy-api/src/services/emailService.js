@@ -39,6 +39,15 @@ import {
   getReactivationApprovedTemplate,
   getResubmissionConfirmationTemplate
 } from '../templates/emailTemplates.js';
+import {
+  buildOrderConfirmationBreakdownRows,
+  formatOrderConfirmationMoney,
+  formatOrderQuantity,
+  formatOrderTime,
+  resolveBalanceLabel,
+  resolveFulfillmentLabel,
+  VAT_DISCLOSURE_NOTE
+} from '../templates/storefrontOrderConfirmationPresentation.js';
 
 // Lazy initialize transporter
 let _transporter = null;
@@ -457,15 +466,10 @@ const normalizeOrderConfirmationStoreName = (value) => {
   return safe || 'DGFY';
 };
 
-const formatOrderConfirmationMoney = (value) => {
-  const amount = Number(value);
-  return `₱${(Number.isFinite(amount) ? amount : 0).toFixed(2)}`;
-};
-
 const normalizeOrderConfirmationUrl = (value) => {
   try {
     const url = new URL(String(value || ''));
-    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : null;
+    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.toString() : null;
   } catch {
     return null;
   }
@@ -480,61 +484,79 @@ const formatOrderConfirmationPaymentMethod = (order = {}) => {
   return paymentType.replace(/[_-]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) || 'Not provided';
 };
 
-const buildStorefrontOrderConfirmationText = ({ storeName, order = {}, trackingUrl = null }) => {
+const normalizeOrderConfirmationText = (value) => String(value ?? '')
+  .split('')
+  .map((character) => {
+    const codePoint = character.charCodeAt(0);
+    return codePoint < 32 || codePoint === 127 ? ' ' : character;
+  })
+  .join('')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const buildStorefrontOrderConfirmationText = ({ storeName, order = {}, trackingUrl = null, supportUrl = null }) => {
+  const safeTextStoreName = normalizeOrderConfirmationText(storeName) || 'DGFY';
+  const safeTrackingPin = normalizeOrderConfirmationText(order.tracking_pin);
   const lines = [
-    'Order confirmation',
-    `Store: ${storeName}`,
-    `Order reference: ${order.tracking_pin || 'Not available'}`
+    'DGFY Order confirmation',
+    `Store: ${safeTextStoreName}`,
+    '',
+    'Order Summary',
+    `Total: ${formatOrderConfirmationMoney(order.total_amount)}`,
+    `Fulfillment: ${resolveFulfillmentLabel(order.order_method)}`
   ];
-  if (order.invoice_number) lines.push(`Invoice number: ${order.invoice_number}`);
-  if (order.payment_reference) lines.push(`Payment reference: ${order.payment_reference}`);
-  lines.push('', 'Items:');
+  const scheduledFor = formatOrderTime(order.scheduled_for);
+  const orderTime = formatOrderTime(order.created_at);
+  if (scheduledFor) lines.push(`Scheduled for: ${scheduledFor}`);
+  else if (orderTime) lines.push(`Order time: ${orderTime}`);
+  lines.push(
+    'Status: Order placed',
+    `Payment method: ${normalizeOrderConfirmationText(formatOrderConfirmationPaymentMethod(order))}`,
+    `Payment status: ${normalizeOrderConfirmationText(String(order.payment_status || 'Not provided').replace(/[_-]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()))}`,
+    `Order PIN: ${safeTrackingPin || 'Not available'}`
+  );
+  lines.push('', 'Your Items:');
   for (const item of Array.isArray(order.items) ? order.items : []) {
-    lines.push(`${item?.quantity ?? 0} x ${item?.item_name || 'Item'} — ${formatOrderConfirmationMoney(item?.sale_price)} each — ${formatOrderConfirmationMoney(item?.line_subtotal)}`);
+    const quantity = formatOrderQuantity(item?.quantity);
+    const fractionalPrice = quantity.includes('.') ? ` · ${formatOrderConfirmationMoney(item?.sale_price)} each` : '';
+    lines.push(`${normalizeOrderConfirmationText(item?.item_name) || 'Item'} — x ${quantity}${fractionalPrice} — ${formatOrderConfirmationMoney(item?.line_subtotal)}`);
   }
-  lines.push('', `Subtotal: ${formatOrderConfirmationMoney(order.subtotal_amount)}`);
-  if (Number(order.discount_amount || 0) > 0 || order.discount_label_snapshot) {
-    lines.push(`${order.discount_label_snapshot ? `Discount — ${order.discount_label_snapshot}` : 'Discount'}: ${formatOrderConfirmationMoney(order.discount_amount)}`);
+  lines.push('', 'Order breakdown:');
+  const breakdownRows = buildOrderConfirmationBreakdownRows(order);
+  for (const row of breakdownRows) {
+    const amount = `${row.kind === 'discount' ? '- ' : ''}${formatOrderConfirmationMoney(row.amount)}`;
+    lines.push(`${normalizeOrderConfirmationText(row.label)}: ${amount}`);
   }
-  if (Number(order.service_fee_amount || 0) !== 0 || order.service_fee_label_snapshot) {
-    lines.push(`${order.service_fee_label_snapshot || 'Service fee'}: ${formatOrderConfirmationMoney(order.service_fee_amount)}`);
-  }
-  if (Number(order.customer_processing_fee_amount || 0) !== 0 || order.customer_processing_fee_label_snapshot) {
-    lines.push(`${order.customer_processing_fee_label_snapshot || 'Customer processing fee'}: ${formatOrderConfirmationMoney(order.customer_processing_fee_amount)}`);
-  }
-  const deliveryWaiverLabel = String(order.delivery_fee_waiver_label_snapshot || '').trim();
-  if (order.order_method === 'delivery' || Number(order.delivery_fee || 0) !== 0 || deliveryWaiverLabel) {
-    lines.push(`${deliveryWaiverLabel ? `Delivery fee — ${deliveryWaiverLabel}` : 'Delivery fee'}: ${formatOrderConfirmationMoney(order.delivery_fee)}`);
-  }
-  lines.push(`Total: ${formatOrderConfirmationMoney(order.total_amount)}`);
-  lines.push('', 'Payment:', `Method: ${formatOrderConfirmationPaymentMethod(order)}`, `Status: ${String(order.payment_status || 'Not provided').replace(/[_-]+/g, ' ')}`);
+  if (breakdownRows.some((row) => row.kind === 'informational')) lines.push(VAT_DISCLOSURE_NOTE);
   if (order.payment_status === 'partially_paid') {
     lines.push(`Downpayment paid: ${formatOrderConfirmationMoney(order.amount_paid)}`);
-    lines.push(`Balance due: ${formatOrderConfirmationMoney(order.balance_due)}`);
+    lines.push(`${resolveBalanceLabel(order.order_method)}: ${formatOrderConfirmationMoney(order.balance_due)}`);
   }
-  lines.push('', 'Fulfillment:');
+  lines.push('', ({
+    delivery: 'Delivery To:',
+    pickup: 'Pickup At:',
+    dine_in: 'Dine In At:'
+  }[order.order_method] || 'Store Location:'));
   const locationName = String(order.location?.name || '').trim();
   const locationAddress = String(order.location?.address_line || '').trim();
   if (order.order_method === 'delivery') {
-    lines.push(`Delivery address: ${order.delivery_address || 'Not provided'}`);
+    lines.push(normalizeOrderConfirmationText(order.delivery_address) || 'Not provided', 'Customer delivery address');
   } else if (order.order_method === 'pickup') {
-    lines.push(`Pickup location: ${locationName || 'Store location'}`);
-    if (locationAddress) lines.push(locationAddress);
+    lines.push(`Pickup location: ${normalizeOrderConfirmationText(locationName) || 'Store location'}`);
+    if (locationAddress) lines.push(normalizeOrderConfirmationText(locationAddress));
   } else if (order.order_method === 'dine_in') {
-    lines.push(`Dine-in location: ${locationName || 'Store location'}`);
+    lines.push(normalizeOrderConfirmationText(locationName) || 'Store location');
   } else if (locationName) {
-    lines.push(`Location: ${locationName}`);
-  }
-  if (order.scheduled_for) {
-    const date = new Date(order.scheduled_for);
-    const formattedDate = Number.isFinite(date.getTime())
-      ? date.toLocaleString('en-PH', { timeZone: 'Asia/Manila' })
-      : String(order.scheduled_for);
-    lines.push(`Scheduled for: ${formattedDate} (Asia/Manila)`);
+    lines.push(normalizeOrderConfirmationText(locationName));
   }
   const safeTrackingUrl = normalizeOrderConfirmationUrl(trackingUrl);
-  if (safeTrackingUrl) lines.push('', `Track your order: ${safeTrackingUrl}`);
-  lines.push('', 'This message confirms your order and is not an official receipt.');
+  if (safeTrackingPin) lines.push('', `Keep your order PIN ${safeTrackingPin} for tracking.`);
+  if (safeTrackingUrl) lines.push(`Track your order: ${safeTrackingUrl}`);
+  const safeSupportUrl = normalizeOrderConfirmationUrl(supportUrl);
+  if (safeSupportUrl) lines.push('', `Need help? Contact DGFY support: ${safeSupportUrl}`);
+  lines.push('', 'Thank you for your order!', safeTrackingUrl
+    ? "You can follow your order's progress anytime with the Track your order button."
+    : `We appreciate your order with ${safeTextStoreName}.`, '', 'Powered by DGFY', `© ${new Date().getFullYear()} DGFY. All rights reserved.`, 'This message confirms your order and is not an official receipt.');
   return lines.join('\n');
 };
 
@@ -544,6 +566,8 @@ export const sendStorefrontOrderConfirmationEmail = async ({
   storeName,
   order = {},
   trackingUrl = null,
+  logoUrl = null,
+  supportUrl = null,
   tenantId = null
 }) => {
   const safeStoreName = normalizeOrderConfirmationStoreName(storeName);
@@ -555,12 +579,15 @@ export const sendStorefrontOrderConfirmationEmail = async ({
     html = getStorefrontOrderConfirmationTemplate({
       storeName: htmlStoreName,
       order,
-      trackingUrl: normalizeOrderConfirmationUrl(trackingUrl)
+      trackingUrl: normalizeOrderConfirmationUrl(trackingUrl),
+      logoUrl: normalizeOrderConfirmationUrl(logoUrl),
+      supportUrl: normalizeOrderConfirmationUrl(supportUrl)
     });
     text = buildStorefrontOrderConfirmationText({
       storeName: htmlStoreName,
       order,
-      trackingUrl
+      trackingUrl,
+      supportUrl
     });
   } catch (cause) {
     const error = new Error('Failed to build storefront order confirmation email');

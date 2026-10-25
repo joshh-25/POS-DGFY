@@ -5,6 +5,16 @@
  * Templates use inline CSS for maximum email client compatibility.
  */
 
+import {
+  buildOrderConfirmationBreakdownRows,
+  formatOrderConfirmationMoney,
+  formatOrderQuantity,
+  formatOrderTime,
+  resolveBalanceLabel,
+  resolveFulfillmentLabel,
+  VAT_DISCLOSURE_NOTE
+} from './storefrontOrderConfirmationPresentation.js';
+
 /**
  * Generate invitation email HTML template
  * @param {Object} params - Template parameters
@@ -1035,87 +1045,86 @@ export const getResubmissionConfirmationTemplate = ({ companyName }) => {
   return emailWrap('linear-gradient(135deg, #0d9488 0%, #0891b2 100%)', 'Registration Re-submitted', body);
 };
 
-const formatOrderConfirmationMoney = (value) => {
-  const amount = Number(value);
-  return `₱${(Number.isFinite(amount) ? amount : 0).toFixed(2)}`;
-};
-
 const formatOrderConfirmationLabel = (value) => String(value || '')
   .trim()
   .replace(/[_-]+/g, ' ')
   .replace(/\s+/g, ' ')
   .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
-const formatOrderConfirmationDate = (value) => {
-  if (!value) return '';
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return String(value);
-  return new Intl.DateTimeFormat('en-PH', {
-    timeZone: 'Asia/Manila',
-    dateStyle: 'medium',
-    timeStyle: 'short'
-  }).format(date);
-};
-
 const safeOrderConfirmationUrl = (value) => {
   try {
     const url = new URL(String(value || ''));
-    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : '';
+    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.toString() : '';
   } catch {
     return '';
   }
 };
 
-const renderOrderConfirmationAmountRow = (label, amount, emphasize = false) => {
-  const style = emphasize
-    ? 'padding:10px 0;border-top:2px solid #d1d5db;color:#111827;font-size:16px;font-weight:700;'
-    : 'padding:6px 0;color:#4b5563;font-size:14px;';
+const renderOrderConfirmationMetaRow = (label, value) => `<tr>
+  <td style="padding:5px 0;color:#64748b;font-size:13px;">${escapeHtml(label)}</td>
+  <td align="right" style="padding:5px 0;color:#1e293b;font-size:13px;font-weight:600;">${escapeHtml(value)}</td>
+</tr>`;
+
+const renderOrderConfirmationBreakdownRow = (row) => {
+  const isTotal = row.kind === 'total';
+  const isDiscount = row.kind === 'discount';
+  const labelStyle = isTotal
+    ? 'padding:12px 0 0;border-top:1px solid #d9e4e8;color:#1e293b;font-size:16px;font-weight:700;'
+    : `padding:6px 0;color:${isDiscount ? '#15803d' : row.kind === 'informational' ? '#64748b' : '#334155'};font-size:${row.kind === 'informational' ? '12px' : '14px'};`;
+  const amountStyle = isTotal
+    ? 'padding:12px 0 0;border-top:1px solid #d9e4e8;color:#1e293b;font-size:18px;font-weight:700;'
+    : labelStyle;
+  const amount = `${isDiscount ? '- ' : ''}${formatOrderConfirmationMoney(row.amount)}`;
   return `<tr>
-    <td style="${style}">${escapeHtml(label)}</td>
-    <td align="right" style="${style}">${escapeHtml(formatOrderConfirmationMoney(amount))}</td>
+    <td style="${labelStyle}">${escapeHtml(row.label)}</td>
+    <td align="right" style="${amountStyle}">${escapeHtml(amount)}</td>
+  </tr>`;
+};
+
+const renderOrderConfirmationItemRow = (item = {}, includeImageColumn = false) => {
+  const safeItem = item || {};
+  const quantity = formatOrderQuantity(safeItem.quantity);
+  const fractionalPrice = quantity.includes('.')
+    ? ` · ${formatOrderConfirmationMoney(safeItem.sale_price)} each`
+    : '';
+  const itemName = String(safeItem.item_name || 'Item');
+  const imageUrl = safeOrderConfirmationUrl(safeItem.image_url);
+  const imageCell = includeImageColumn
+    ? `<td width="56" valign="middle" style="width:56px;padding:10px 12px 10px 0;border-bottom:1px solid #eef2f7;">${imageUrl
+      ? `<img src="${escapeHtml(imageUrl)}" width="56" height="56" alt="" style="display:block;width:56px;height:56px;border:1px solid #e2e8f0;border-radius:10px;object-fit:cover;">`
+      : `<span style="display:block;width:56px;height:56px;border:1px solid #e2e8f0;border-radius:10px;background-color:#eef4fb;color:#1a4e8d;font-size:22px;line-height:56px;font-weight:700;text-align:center;">${escapeHtml(Array.from(itemName.trim())[0] || 'I')}</span>`}</td>`
+    : '';
+  return `<tr>
+    ${imageCell}
+    <td style="padding:10px 0;border-bottom:1px solid #eef2f7;">
+      <div style="color:#1e293b;font-size:14px;font-weight:700;">${escapeHtml(itemName)}</div>
+      <div style="padding-top:3px;color:#64748b;font-size:12px;">x ${escapeHtml(quantity)}${escapeHtml(fractionalPrice)}</div>
+    </td>
+    <td align="right" valign="middle" style="padding:10px 0 10px 12px;border-bottom:1px solid #eef2f7;color:#1e293b;font-size:14px;font-weight:600;white-space:nowrap;">${escapeHtml(formatOrderConfirmationMoney(safeItem.line_subtotal))}</td>
   </tr>`;
 };
 
 /** Receipt-style confirmation for a completed storefront checkout. */
-export const getStorefrontOrderConfirmationTemplate = ({ storeName, order = {}, trackingUrl = null } = {}) => {
-  const safeStoreName = escapeHtml(storeName || 'DGFY');
+export const getStorefrontOrderConfirmationTemplate = ({
+  storeName,
+  order = {},
+  trackingUrl = null,
+  logoUrl = null,
+  supportUrl = null
+} = {}) => {
+  const displayStoreName = String(storeName || 'DGFY');
+  const safeStoreName = escapeHtml(displayStoreName);
   const safeTrackingPin = escapeHtml(order.tracking_pin || '');
-  const safeInvoiceNumber = escapeHtml(order.invoice_number || '');
-  const safePaymentReference = escapeHtml(order.payment_reference || '');
   const safeTrackUrl = escapeHtml(safeOrderConfirmationUrl(trackingUrl));
+  const safeLogoUrl = escapeHtml(safeOrderConfirmationUrl(logoUrl));
+  const safeSupportUrl = escapeHtml(safeOrderConfirmationUrl(supportUrl));
+  const logoInitial = escapeHtml(Array.from(displayStoreName.trim())[0] || 'D');
   const items = Array.isArray(order.items) ? order.items : [];
-  const itemRows = items.map((item) => `
-    <tr>
-      <td style="padding:10px 8px;border-bottom:1px solid #e5e7eb;color:#374151;font-size:14px;">${escapeHtml(item?.item_name || 'Item')}</td>
-      <td align="right" style="padding:10px 8px;border-bottom:1px solid #e5e7eb;color:#374151;font-size:14px;">${escapeHtml(item?.quantity ?? 0)}</td>
-      <td align="right" style="padding:10px 8px;border-bottom:1px solid #e5e7eb;color:#374151;font-size:14px;">${escapeHtml(formatOrderConfirmationMoney(item?.sale_price))}</td>
-      <td align="right" style="padding:10px 8px;border-bottom:1px solid #e5e7eb;color:#374151;font-size:14px;">${escapeHtml(formatOrderConfirmationMoney(item?.line_subtotal))}</td>
-    </tr>`).join('') || `
-    <tr><td colspan="4" style="padding:10px 8px;color:#6b7280;font-size:14px;">No item details available.</td></tr>`;
-
-  const amountRows = [renderOrderConfirmationAmountRow('Subtotal', order.subtotal_amount)];
-  const discountAmount = Number(order.discount_amount || 0);
-  if (discountAmount > 0 || order.discount_label_snapshot) {
-    const label = order.discount_label_snapshot
-      ? `Discount — ${order.discount_label_snapshot}`
-      : 'Discount';
-    amountRows.push(renderOrderConfirmationAmountRow(label, discountAmount));
-  }
-  if (Number(order.service_fee_amount || 0) !== 0 || order.service_fee_label_snapshot) {
-    amountRows.push(renderOrderConfirmationAmountRow(order.service_fee_label_snapshot || 'Service fee', order.service_fee_amount));
-  }
-  if (Number(order.customer_processing_fee_amount || 0) !== 0 || order.customer_processing_fee_label_snapshot) {
-    amountRows.push(renderOrderConfirmationAmountRow(
-      order.customer_processing_fee_label_snapshot || 'Customer processing fee',
-      order.customer_processing_fee_amount
-    ));
-  }
-  const deliveryWaiverLabel = String(order.delivery_fee_waiver_label_snapshot || '').trim();
-  if (order.order_method === 'delivery' || Number(order.delivery_fee || 0) !== 0 || deliveryWaiverLabel) {
-    const deliveryLabel = deliveryWaiverLabel ? `Delivery fee — ${deliveryWaiverLabel}` : 'Delivery fee';
-    amountRows.push(renderOrderConfirmationAmountRow(deliveryLabel, order.delivery_fee));
-  }
-  amountRows.push(renderOrderConfirmationAmountRow('Total', order.total_amount, true));
+  const hasItemImageColumn = items.some((item) => Boolean(safeOrderConfirmationUrl(item?.image_url)));
+  const itemRows = items.map((item) => renderOrderConfirmationItemRow(item, hasItemImageColumn)).join('') || `
+    <tr><td colspan="2" style="padding:12px 0;color:#64748b;font-size:13px;">No item details available.</td></tr>`;
+  const breakdownRows = buildOrderConfirmationBreakdownRows(order);
+  const hasVat = breakdownRows.some((row) => row.kind === 'informational');
 
   const paymentType = String(order.payment_type || '').trim().toLowerCase();
   const paymentMethod = paymentType === 'qrph'
@@ -1124,78 +1133,118 @@ export const getStorefrontOrderConfirmationTemplate = ({ storeName, order = {}, 
       ? ({ delivery: 'Cash on delivery', pickup: 'Cash on pickup', dine_in: 'Pay at store' }[order.order_method] || 'Cash')
       : formatOrderConfirmationLabel(paymentType) || 'Not provided';
   const paymentStatus = formatOrderConfirmationLabel(order.payment_status) || 'Not provided';
-  const paymentDetails = order.payment_status === 'partially_paid'
-    ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px 16px;margin:16px 0;">
-        <p style="margin:0 0 6px;color:#1e3a8a;font-size:14px;"><strong>Downpayment paid:</strong> ${escapeHtml(formatOrderConfirmationMoney(order.amount_paid))}</p>
-        <p style="margin:0;color:#1e3a8a;font-size:14px;"><strong>Balance due:</strong> ${escapeHtml(formatOrderConfirmationMoney(order.balance_due))}</p>
-      </div>`
+  const partialPaymentRows = order.payment_status === 'partially_paid'
+    ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#fffbeb" style="margin-top:14px;background-color:#fffbeb;border:1px solid #fcd34d;border-radius:10px;">
+          <tr><td style="padding:10px 12px;color:#92400e;font-size:13px;"><strong>Downpayment paid</strong></td><td align="right" style="padding:10px 12px;color:#92400e;font-size:13px;font-weight:700;">${escapeHtml(formatOrderConfirmationMoney(order.amount_paid))}</td></tr>
+          <tr><td style="padding:0 12px 10px;color:#92400e;font-size:13px;"><strong>${escapeHtml(resolveBalanceLabel(order.order_method))}</strong></td><td align="right" style="padding:0 12px 10px;color:#92400e;font-size:13px;font-weight:700;">${escapeHtml(formatOrderConfirmationMoney(order.balance_due))}</td></tr>
+        </table>`
     : '';
 
   const locationName = String(order.location?.name || '').trim();
   const locationAddress = String(order.location?.address_line || '').trim();
   let fulfillmentDetails = '';
   if (order.order_method === 'delivery') {
-    fulfillmentDetails = `<p style="margin:0;color:#4b5563;font-size:14px;"><strong>Delivery address:</strong> ${escapeHtml(order.delivery_address || 'Not provided')}</p>`;
+    fulfillmentDetails = `<p style="margin:0;color:#1e293b;font-size:14px;">${escapeHtml(order.delivery_address || 'Not provided')}</p>
+      <p style="margin:4px 0 0;color:#64748b;font-size:12px;">Customer delivery address</p>`;
   } else if (order.order_method === 'pickup') {
-    fulfillmentDetails = `<p style="margin:0;color:#4b5563;font-size:14px;"><strong>Pickup location:</strong> ${escapeHtml(locationName || 'Store location')}</p>
-      ${locationAddress ? `<p style="margin:4px 0 0;color:#4b5563;font-size:14px;">${escapeHtml(locationAddress)}</p>` : ''}`;
+    fulfillmentDetails = `<p style="margin:0;color:#1e293b;font-size:14px;">${escapeHtml(locationName || 'Store location')}</p>
+      ${locationAddress ? `<p style="margin:4px 0 0;color:#64748b;font-size:13px;">${escapeHtml(locationAddress)}</p>` : ''}`;
   } else if (order.order_method === 'dine_in') {
-    fulfillmentDetails = `<p style="margin:0;color:#4b5563;font-size:14px;"><strong>Dine-in location:</strong> ${escapeHtml(locationName || 'Store location')}</p>`;
+    fulfillmentDetails = `<p style="margin:0;color:#1e293b;font-size:14px;">${escapeHtml(locationName || 'Store location')}</p>`;
   } else if (locationName) {
-    fulfillmentDetails = `<p style="margin:0;color:#4b5563;font-size:14px;"><strong>Location:</strong> ${escapeHtml(locationName)}</p>`;
+    fulfillmentDetails = `<p style="margin:0;color:#1e293b;font-size:14px;">${escapeHtml(locationName)}</p>`;
   }
-  const scheduledFor = formatOrderConfirmationDate(order.scheduled_for);
-  const scheduleLine = scheduledFor
-    ? `<p style="margin:6px 0 0;color:#4b5563;font-size:14px;"><strong>Scheduled for:</strong> ${escapeHtml(scheduledFor)} (Asia/Manila)</p>`
-    : '';
-  const referenceRows = [
-    `<p style="margin:0 0 6px;color:#374151;font-size:14px;"><strong>Order reference:</strong> ${safeTrackingPin || 'Not available'}</p>`,
-    safeInvoiceNumber
-      ? `<p style="margin:0 0 6px;color:#374151;font-size:14px;"><strong>Invoice number:</strong> ${safeInvoiceNumber}</p>`
-      : '',
-    safePaymentReference
-      ? `<p style="margin:0;color:#374151;font-size:14px;"><strong>Payment reference:</strong> ${safePaymentReference}</p>`
-      : ''
-  ].join('');
+  const scheduledFor = formatOrderTime(order.scheduled_for);
+  const orderTime = formatOrderTime(order.created_at);
+  const orderTimeRow = scheduledFor
+    ? renderOrderConfirmationMetaRow('Scheduled for', scheduledFor)
+    : orderTime
+      ? renderOrderConfirmationMetaRow('Order time', orderTime)
+      : '';
+  const fulfillmentTitle = ({ delivery: 'Delivery To', pickup: 'Pickup At', dine_in: 'Dine In At' }[order.order_method] || 'Store Location');
   const trackingButton = safeTrackUrl
-    ? `<div style="text-align:center;margin:24px 0 12px;">
-        <a href="${safeTrackUrl}" style="display:inline-block;background:#0d9488;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;font-size:15px;">Track your order</a>
-      </div>`
+    ? `<table role="presentation" align="center" cellspacing="0" cellpadding="0" style="margin:24px auto 10px;"><tr><td align="center" bgcolor="#1a4e8d" style="background-color:#1a4e8d;border-radius:10px;">
+        <a href="${safeTrackUrl}" style="display:inline-block;padding:13px 28px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;">Track your order</a>
+      </td></tr></table>`
     : '';
+  const supportLink = safeSupportUrl
+    ? `<p style="margin:0 0 16px;color:#64748b;font-size:13px;text-align:center;">Need help? <a href="${safeSupportUrl}" style="color:#1a4e8d;font-weight:700;text-decoration:underline;">Contact DGFY support</a></p>`
+    : '';
+  const trackingPinHint = safeTrackingPin
+    ? `<p style="margin:4px 0 0;color:#64748b;font-size:12px;">Keep your order PIN ${safeTrackingPin} for tracking.</p>`
+    : '';
+  const thankYouCopy = safeTrackUrl
+    ? "You can follow your order's progress anytime with the Track your order button."
+    : `Thank you for ordering with ${safeStoreName}.`;
+  const storeAvatar = safeLogoUrl
+    ? `<img src="${safeLogoUrl}" width="48" height="48" alt="${safeStoreName}" style="display:block;width:48px;height:48px;border:1px solid #e2e8f0;border-radius:50%;object-fit:cover;">`
+    : `<span style="display:block;width:48px;height:48px;border-radius:50%;background-color:#eef4fb;color:#1a4e8d;font-size:20px;line-height:48px;font-weight:700;text-align:center;">${logoInitial}</span>`;
 
-  const body = `
-    <h2 style="margin:0 0 12px;color:#1f2937;font-size:22px;">Order confirmation</h2>
-    <p style="margin:0 0 20px;color:#4b5563;font-size:15px;">Thank you for ordering from <strong>${safeStoreName}</strong>. Here is your order summary.</p>
-    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px 16px;margin-bottom:20px;">
-      ${referenceRows}
-    </div>
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:0 0 8px;">
-      <thead><tr>
-        <th align="left" style="padding:8px;border-bottom:2px solid #d1d5db;color:#6b7280;font-size:12px;text-transform:uppercase;">Item</th>
-        <th align="right" style="padding:8px;border-bottom:2px solid #d1d5db;color:#6b7280;font-size:12px;text-transform:uppercase;">Qty</th>
-        <th align="right" style="padding:8px;border-bottom:2px solid #d1d5db;color:#6b7280;font-size:12px;text-transform:uppercase;">Unit price</th>
-        <th align="right" style="padding:8px;border-bottom:2px solid #d1d5db;color:#6b7280;font-size:12px;text-transform:uppercase;">Amount</th>
-      </tr></thead>
-      <tbody>${itemRows}</tbody>
-    </table>
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
-      <tbody>${amountRows.join('')}</tbody>
-    </table>
-    <div style="border-top:1px solid #e5e7eb;margin-top:18px;padding-top:16px;">
-      <h3 style="margin:0 0 8px;color:#1f2937;font-size:16px;">Payment</h3>
-      <p style="margin:0;color:#4b5563;font-size:14px;"><strong>Method:</strong> ${escapeHtml(paymentMethod)}</p>
-      <p style="margin:4px 0 0;color:#4b5563;font-size:14px;"><strong>Status:</strong> ${escapeHtml(paymentStatus)}</p>
-      ${paymentDetails}
-    </div>
-    <div style="border-top:1px solid #e5e7eb;margin-top:18px;padding-top:16px;">
-      <h3 style="margin:0 0 8px;color:#1f2937;font-size:16px;">Fulfillment</h3>
-      ${fulfillmentDetails}${scheduleLine}
-    </div>
-    ${trackingButton}
-    <p style="margin:12px 0 0;color:#6b7280;font-size:13px;text-align:center;">Keep your order reference ${safeTrackingPin || 'above'} for tracking.</p>
-    <p style="margin:24px 0 0;color:#9ca3af;font-size:12px;text-align:center;">This message confirms your order and is not an official receipt.</p>`;
-
-  return emailWrap('linear-gradient(135deg, #0d9488 0%, #0891b2 100%)', safeStoreName, body);
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Order confirmation</title></head>
+<body style="margin:0;padding:0;background-color:#f4f7fb;color:#1e293b;font-family:'Segoe UI',Arial,sans-serif;line-height:1.5;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#f4f7fb" style="width:100%;background-color:#f4f7fb;">
+    <tr><td align="center" style="padding:24px 12px;">
+      <table role="presentation" width="600" cellspacing="0" cellpadding="0" bgcolor="#ffffff" style="width:100%;max-width:600px;background-color:#ffffff;border:1px solid #e2e8f0;border-radius:18px;overflow:hidden;">
+        <tr><td bgcolor="#1a4e8d" style="padding:15px 24px;background-color:#1a4e8d;color:#ffffff;font-size:18px;font-weight:800;letter-spacing:3px;">DGFY</td></tr>
+        <tr><td bgcolor="#ffffff" style="padding:24px 24px 18px;background-color:#ffffff;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>
+            <td width="60" valign="middle" style="width:60px;padding-right:12px;">${storeAvatar}</td>
+            <td valign="middle"><div style="color:#64748b;font-size:10px;font-weight:700;letter-spacing:1.2px;">ORDER CONFIRMATION</div><div style="padding-top:2px;color:#0f172a;font-size:22px;font-weight:800;line-height:1.25;">${safeStoreName}</div></td>
+          </tr></table>
+        </td></tr>
+        <tr><td style="padding:0 24px 16px;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#fafaf9" style="background-color:#fafaf9;border:1px solid #e7e5e4;border-radius:18px;">
+            <tr><td width="60" valign="middle" align="center" style="width:60px;padding:16px 0 16px 16px;"><span style="display:block;width:40px;height:40px;border-radius:50%;background-color:#1a4e8d;color:#ffffff;font-size:22px;line-height:40px;font-weight:700;text-align:center;">&#10003;</span></td>
+              <td style="padding:15px 16px 15px 10px;"><div style="color:#1e293b;font-size:17px;font-weight:800;">Order placed</div><div style="padding-top:3px;color:#64748b;font-size:13px;">We've received your order and it's being confirmed by the store.</div></td></tr>
+          </table>
+        </td></tr>
+        <tr><td style="padding:0 24px 16px;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#ffffff" style="background-color:#ffffff;border:1px solid #d9e4e8;border-radius:18px;">
+            <tr><td style="padding:20px 18px 18px;">
+              <div style="color:#1a4e8d;font-size:12px;font-weight:700;letter-spacing:1px;">ORDER SUMMARY</div>
+              <div style="padding-top:2px;color:#1e293b;font-size:38px;font-weight:800;line-height:1.2;">${escapeHtml(formatOrderConfirmationMoney(order.total_amount))}</div>
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:10px;border-collapse:collapse;">
+                <tbody>${renderOrderConfirmationMetaRow('Fulfillment', resolveFulfillmentLabel(order.order_method))}${orderTimeRow}${renderOrderConfirmationMetaRow('Status', 'Order placed')}${renderOrderConfirmationMetaRow('Payment method', paymentMethod)}${renderOrderConfirmationMetaRow('Payment status', paymentStatus)}</tbody>
+              </table>
+              <div style="margin:14px 0;border-top:1px solid #e2e8f0;"></div>
+              <div style="color:#64748b;font-size:11px;font-weight:700;letter-spacing:0.7px;">ORDER PIN</div>
+              <div style="padding-top:2px;color:#0f172a;font-size:15px;font-weight:700;">${safeTrackingPin || 'Not available'}</div>
+              <div style="margin:14px 0;border-top:1px solid #e2e8f0;"></div>
+              <div style="padding-bottom:2px;color:#1e293b;font-size:16px;font-weight:800;">Your Items</div>
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;"><tbody>${itemRows}</tbody></table>
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:12px;border-collapse:collapse;"><tbody>${breakdownRows.map(renderOrderConfirmationBreakdownRow).join('')}</tbody></table>
+              ${hasVat ? `<p style="margin:9px 0 0;color:#94a3b8;font-size:11px;">${escapeHtml(VAT_DISCLOSURE_NOTE)}</p>` : ''}
+              ${partialPaymentRows}
+            </td></tr>
+          </table>
+        </td></tr>
+        <tr><td style="padding:0 24px 18px;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#ffffff" style="background-color:#ffffff;border:1px solid #e2e8f0;border-radius:20px;">
+            <tr><td style="padding:16px 18px;"><div style="color:#1e293b;font-size:16px;font-weight:800;">${escapeHtml(fulfillmentTitle)}</div><div style="padding-top:6px;">${fulfillmentDetails || '<p style="margin:0;color:#64748b;font-size:13px;">Details are not available.</p>'}</div></td></tr>
+          </table>
+        </td></tr>
+        <tr><td style="padding:0 24px 18px;text-align:center;">
+          ${trackingButton}
+          ${trackingPinHint}
+        </td></tr>
+        <tr><td style="padding:0 24px 18px;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#eef4fb" style="background-color:#eef4fb;border:1px solid #b9cfe8;border-radius:20px;">
+            <tr><td style="padding:16px 18px;"><div style="color:#1e293b;font-size:16px;font-weight:800;">Thank you for your order!</div><p style="margin:5px 0 0;color:#475569;font-size:13px;">${thankYouCopy}</p></td></tr>
+          </table>
+        </td></tr>
+        <tr><td style="padding:0 24px 8px;">${supportLink}</td></tr>
+        <tr><td bgcolor="#f8fafc" style="padding:15px 24px 18px;background-color:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;">
+          <div style="color:#334155;font-size:12px;font-weight:700;">Powered by DGFY</div>
+          <div style="padding-top:3px;color:#94a3b8;font-size:11px;">&copy; ${new Date().getFullYear()} DGFY. All rights reserved.</div>
+          <div style="padding-top:6px;color:#94a3b8;font-size:11px;">This message confirms your order and is not an official receipt.</div>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
 };
 
 export default {

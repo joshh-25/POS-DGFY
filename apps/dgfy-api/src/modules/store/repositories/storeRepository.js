@@ -648,6 +648,37 @@ const attachSecondaryCategories = async (catalogRows, options = {}) => {
 };
 
 export const storeRepository = {
+    async listStorefrontItemImages(itemIds = []) {
+        const ids = [...new Set((Array.isArray(itemIds) ? itemIds : [])
+            .map((itemId) => Number(itemId))
+            .filter((itemId) => Number.isSafeInteger(itemId) && itemId > 0))];
+        if (ids.length === 0) return {};
+
+        const StorefrontCatalogOverride = safeGetOptionalModel('StorefrontCatalogOverride');
+        if (!StorefrontCatalogOverride?.findAll) return {};
+
+        try {
+            const rows = await StorefrontCatalogOverride.findAll({
+                where: { item_id: ids },
+                attributes: ['item_id', 'storefront_image_path', 'storefront_image_url']
+            });
+            const images = {};
+            for (const rawRow of rows || []) {
+                const row = toPlain(rawRow) || {};
+                if (row.item_id === null || row.item_id === undefined) continue;
+                const thumbnailUrl = deriveImageAssetVariantUrls({
+                    storedPath: row.storefront_image_path,
+                    storedUrl: row.storefront_image_url
+                }).thumbnail_url || row.storefront_image_url || null;
+                if (thumbnailUrl) images[row.item_id] = thumbnailUrl;
+            }
+            return images;
+        } catch (error) {
+            if (isMissingStorefrontCatalogOverrideTableError(error)) return {};
+            throw error;
+        }
+    },
+
     async cancelDeliveryJobForOrder(orderId, options = {}) {
         const DeliveryJob = dbStore.get('DeliveryJob');
         if (!DeliveryJob) throw new Error('DeliveryJob model is unavailable');

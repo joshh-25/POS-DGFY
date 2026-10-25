@@ -3,7 +3,7 @@ status: draft_pr
 owner: DGFY Platform
 last_reviewed: 2026-10-25
 related_adr: docs/architecture/adr/0047-platform-admin-identity-and-page-rbac.md
-declaration_id: 2026-10-25-admin-tenant-directory-billing-phase-553
+declaration_id: 2026-10-25-admin-tenant-directory-billing-phase-556
 classification: regulatory
 surfaces: settings,compliance
 reason_codes_impacted: NONE
@@ -16,7 +16,7 @@ preflight_run_at: 2026-10-25T08:26:04.800Z
 preflight_request_ref: PREFLIGHT-LOCAL-1792916646344-2026-10-25-ADMIN-TENANT-DIRECTORY-BILLING-PHASE-547
 ---
 
-# Tenant directory and Billing workspace (#2776, Phase 553)
+# Tenant directory and Billing workspace (#2776, Phase 556)
 
 ## Compliance Impact Classification
 
@@ -49,7 +49,7 @@ boundary. It does not change compliance policy, financial policy, or a reason-co
 
 Focused Admin and API tests, the Admin production build, API syntax checks, architecture and docs
 checks, the local desktop/mobile synthetic journey, and the local request-time preflight result are
-recorded in Phase 553 and the implementation PR. Browser API responses used synthetic fixtures;
+recorded in Phase 556 and the implementation PR. Browser API responses used synthetic fixtures;
 they do not represent deployed tenant or finance data, server latency, or a PROD p95 measurement.
 
 The request-time compliance preflight passed locally against the repository's disposable

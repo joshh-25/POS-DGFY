@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals
 const isEmailConfigured = jest.fn();
 const sendStorefrontOrderConfirmationEmail = jest.fn();
 const findTenantById = jest.fn();
+const getStorefrontProfileImageUrl = jest.fn();
 const buildStorefrontTrackingUrl = jest.fn();
 const raiseOperationalAlert = jest.fn().mockResolvedValue(undefined);
 const logger = { debug: jest.fn(), info: jest.fn(), warn: jest.fn() };
@@ -15,6 +16,9 @@ jest.unstable_mockModule('../src/services/emailService.js', () => ({
 jest.unstable_mockModule('../src/services/operationalAlertService.js', () => ({ raiseOperationalAlert }));
 jest.unstable_mockModule('../src/modules/dgfy/repositories/dgfyCustomerRepository.js', () => ({
     dgfyCustomerRepository: { findTenantById }
+}));
+jest.unstable_mockModule('../src/modules/dgfy/repositories/dgfyAffiliateRepository.js', () => ({
+    dgfyAffiliateRepository: { getStorefrontProfileImageUrl }
 }));
 jest.unstable_mockModule('../src/modules/dgfy/services/storefrontOrderTrackingUrl.js', () => ({
     buildStorefrontTrackingUrl
@@ -36,9 +40,11 @@ describe('dispatchDgfyOrderConfirmationEmail', () => {
         jest.useRealTimers();
         process.env = { ...originalEnv };
         delete process.env.STOREFRONT_ORDER_CONFIRMATION_EMAIL_ENABLED;
+        process.env.STOREFRONT_PUBLIC_ORIGIN = 'https://shop.example.test';
         isEmailConfigured.mockReturnValue(true);
         sendStorefrontOrderConfirmationEmail.mockResolvedValue({ deliveryId: 'delivery-1' });
         findTenantById.mockResolvedValue({ name: 'Main Street Cafe' });
+        getStorefrontProfileImageUrl.mockResolvedValue('/uploads/storefront-assets/main.png');
         buildStorefrontTrackingUrl.mockResolvedValue('https://shop.example.test/track?pin=SK-ABC123');
     });
 
@@ -52,14 +58,123 @@ describe('dispatchDgfyOrderConfirmationEmail', () => {
             .resolves.toEqual({ sent: true, deliveryId: 'delivery-1' });
 
         expect(findTenantById).toHaveBeenCalledWith('tenant-1');
+        expect(getStorefrontProfileImageUrl).toHaveBeenCalledWith('tenant-1');
         expect(buildStorefrontTrackingUrl).toHaveBeenCalledWith({ tenantId: 'tenant-1', trackingPin: 'SK-ABC123' });
         expect(sendStorefrontOrderConfirmationEmail).toHaveBeenCalledWith(expect.objectContaining({
             email: 'buyer@example.test',
             storeName: 'Main Street Cafe',
             order,
             trackingUrl: 'https://shop.example.test/track?pin=SK-ABC123',
+            logoUrl: 'https://shop.example.test/uploads/storefront-assets/main.png',
+            supportUrl: 'https://shop.example.test/contact-us',
             tenantId: 'tenant-1'
         }));
+    });
+
+    it('sends when the optional logo lookup fails', async () => {
+        getStorefrontProfileImageUrl.mockRejectedValueOnce(new Error('landlord unavailable'));
+
+        await expect(dispatchDgfyOrderConfirmationEmail({ tenantId: 'tenant-1', order }))
+            .resolves.toMatchObject({ sent: true });
+
+        expect(sendStorefrontOrderConfirmationEmail).toHaveBeenCalledWith(expect.objectContaining({
+            logoUrl: null,
+            supportUrl: 'https://shop.example.test/contact-us'
+        }));
+    });
+
+    it('uses safe absolute logos and falls back for unsafe or relative URLs without a public origin', async () => {
+        getStorefrontProfileImageUrl.mockResolvedValueOnce('https://cdn.example.test/store.png');
+        await dispatchDgfyOrderConfirmationEmail({ tenantId: 'tenant-1', order });
+        expect(sendStorefrontOrderConfirmationEmail).toHaveBeenLastCalledWith(expect.objectContaining({
+            logoUrl: 'https://cdn.example.test/store.png'
+        }));
+
+        sendStorefrontOrderConfirmationEmail.mockClear();
+        delete process.env.STOREFRONT_PUBLIC_ORIGIN;
+        getStorefrontProfileImageUrl.mockResolvedValueOnce('/uploads/storefront-assets/main.png');
+        await dispatchDgfyOrderConfirmationEmail({ tenantId: 'tenant-1', order });
+        expect(sendStorefrontOrderConfirmationEmail).toHaveBeenCalledWith(expect.objectContaining({
+            logoUrl: null,
+            supportUrl: null
+        }));
+
+        sendStorefrontOrderConfirmationEmail.mockClear();
+        process.env.STOREFRONT_PUBLIC_ORIGIN = 'https://shop.example.test';
+        getStorefrontProfileImageUrl.mockResolvedValueOnce('javascript:alert(1)');
+        await dispatchDgfyOrderConfirmationEmail({ tenantId: 'tenant-1', order });
+        expect(sendStorefrontOrderConfirmationEmail).toHaveBeenCalledWith(expect.objectContaining({ logoUrl: null }));
+    });
+
+    it('absolute-izes a public catalog thumbnail on the shared storefront asset origin', async () => {
+        await dispatchDgfyOrderConfirmationEmail({
+            tenantId: 'tenant-1',
+            order: {
+                ...order,
+                items: [{
+                    item_id: 10,
+                    item_name: 'Burger',
+                    image_url: '/uploads/storefront-catalog/tenant-1/item-10/thumb.webp'
+                }]
+            }
+        });
+
+        expect(sendStorefrontOrderConfirmationEmail).toHaveBeenCalledWith(expect.objectContaining({
+            order: expect.objectContaining({
+                items: [expect.objectContaining({
+                    item_id: 10,
+                    image_url: 'https://shop.example.test/uploads/storefront-catalog/tenant-1/item-10/thumb.webp'
+                })]
+            })
+        }));
+    });
+
+    it('sends without item images when the public origin is unavailable', async () => {
+        delete process.env.STOREFRONT_PUBLIC_ORIGIN;
+
+        await expect(dispatchDgfyOrderConfirmationEmail({
+            tenantId: 'tenant-1',
+            order: {
+                ...order,
+                items: [{ item_id: 10, image_url: '/uploads/storefront-catalog/tenant-1/item-10/thumb.webp' }]
+            }
+        })).resolves.toMatchObject({ sent: true });
+
+        expect(sendStorefrontOrderConfirmationEmail).toHaveBeenCalledWith(expect.objectContaining({
+            order: expect.objectContaining({
+                items: [expect.objectContaining({ image_url: null })]
+            }),
+            logoUrl: null,
+            supportUrl: null
+        }));
+    });
+
+    it.each([
+        'javascript:alert(1)',
+        'data:image/png;base64,abc',
+        'https://user:secret@cdn.example.test/item.png',
+        '/uploads/private/item.png',
+        '/uploads/storefront-catalog/../private/item.png'
+    ])('sends with a null image URL for unsafe or out-of-scope item image %s', async (imageUrl) => {
+        await expect(dispatchDgfyOrderConfirmationEmail({
+            tenantId: 'tenant-1',
+            order: { ...order, items: [{ item_id: 10, image_url: imageUrl }] }
+        })).resolves.toMatchObject({ sent: true });
+
+        expect(sendStorefrontOrderConfirmationEmail).toHaveBeenCalledWith(expect.objectContaining({
+            order: expect.objectContaining({
+                items: [expect.objectContaining({ image_url: null })]
+            })
+        }));
+    });
+
+    it('sends without a tracking URL when tracking resolution fails', async () => {
+        buildStorefrontTrackingUrl.mockRejectedValueOnce(new Error('tracking URL unavailable'));
+
+        await expect(dispatchDgfyOrderConfirmationEmail({ tenantId: 'tenant-1', order }))
+            .resolves.toMatchObject({ sent: true });
+
+        expect(sendStorefrontOrderConfirmationEmail).toHaveBeenCalledWith(expect.objectContaining({ trackingUrl: null }));
     });
 
     it('falls back to the linked customer email and the DGFY store-name fallback', async () => {
