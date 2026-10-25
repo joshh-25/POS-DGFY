@@ -52,8 +52,11 @@ describe('storefront order confirmation email template', () => {
     expect(html).toContain('Cash on delivery');
     expect(html).toContain('Payment status');
     expect(html).toContain('ORDER PIN');
-    expect(html).toContain('INV-000123');
-    expect(html).toContain('pay_123');
+    expect(html).toContain('SK-ABC123');
+    expect(html).not.toContain('INV-000123');
+    expect(html).not.toContain('pay_123');
+    expect(html).not.toContain('Invoice number');
+    expect(html).not.toContain('Payment reference');
     expect(html).toContain('Customer delivery address');
     expect(html).toContain('href="https://shop.example.test/track?pin=SK-ABC123"');
     expect(html).toContain('href="https://shop.example.test/contact-us"');
@@ -156,7 +159,8 @@ describe('storefront order confirmation email template', () => {
     });
 
     expect(html).toContain('Scheduled for');
-    expect(html).toContain('Oct 25, 2026, 08:00 AM (Asia/Manila)');
+    expect(html).toContain('Oct 25, 2026, 08:00 AM');
+    expect(html).not.toContain('Asia/Manila');
     expect(html).not.toContain('Order time</td>');
     expect(html).toContain('Dine In At');
     expect(html).toContain('Main branch');
@@ -201,6 +205,74 @@ describe('storefront order confirmation email template', () => {
       expect(html).not.toContain('href="javascript:');
       expect(html).not.toContain('Track your order</a>');
     }
+  });
+
+  it('keeps item rows text-only when no item has an image', () => {
+    const html = getStorefrontOrderConfirmationTemplate({
+      storeName: 'Cafe',
+      order: stagingOrder,
+      logoUrl: 'https://shop.example.test/uploads/storefront-assets/logo.png'
+    });
+
+    expect(html.match(/<img\b/g)).toHaveLength(1);
+    expect(html).not.toContain('width="56"');
+    expect(html).toContain('Choco Mint');
+  });
+
+  it('shows aligned thumbnails and a monogram tile for mixed image availability', () => {
+    const html = getStorefrontOrderConfirmationTemplate({
+      storeName: 'Cafe',
+      order: {
+        ...stagingOrder,
+        items: [
+          { item_name: 'Choco Mint', quantity: 1, sale_price: 100, line_subtotal: 100, image_url: 'https://shop.example.test/uploads/storefront-catalog/tenant-a/choco/thumb.webp' },
+          { item_name: 'Strawberry Shake', quantity: '1.55', sale_price: 25, line_subtotal: 38.75, image_url: null }
+        ]
+      },
+      logoUrl: null
+    });
+
+    expect(html).toContain('<img src="https://shop.example.test/uploads/storefront-catalog/tenant-a/choco/thumb.webp" width="56" height="56" alt=""');
+    expect(html).toContain('background-color:#eef4fb;color:#1a4e8d;font-size:22px;line-height:56px');
+    expect(html).toContain('>S</span>');
+    expect(html).toContain('x 1.55 · ₱25.00 each');
+    expect(html.match(/width="56" height="56"/g)).toHaveLength(1);
+  });
+
+  it('uses a 56 by 56 thumbnail for each imaged item and escapes image URLs', () => {
+    const html = getStorefrontOrderConfirmationTemplate({
+      storeName: 'Cafe',
+      order: {
+        ...stagingOrder,
+        items: [
+          { item_name: 'One', quantity: 1, sale_price: 10, line_subtotal: 10, image_url: 'https://cdn.example.test/one.png?size=56&label=%3Citem%3E' },
+          { item_name: 'Two', quantity: 2, sale_price: 5, line_subtotal: 10, image_url: 'https://cdn.example.test/two.png' }
+        ]
+      }
+    });
+
+    expect(html).toContain('src="https://cdn.example.test/one.png?size=56&amp;label=%3Citem%3E"');
+    expect(html.match(/width="56" height="56" alt=""/g)).toHaveLength(2);
+    expect(html).not.toContain('<item>');
+  });
+
+  it.each([
+    'javascript:alert(1)',
+    'data:image/png;base64,abc',
+    'https://user:secret@cdn.example.test/image.png'
+  ])('does not render unsafe item image URL %s', (imageUrl) => {
+    const html = getStorefrontOrderConfirmationTemplate({
+      storeName: 'Cafe',
+      order: {
+        ...stagingOrder,
+        items: [{ item_name: 'Item', quantity: 1, sale_price: 10, line_subtotal: 10, image_url: imageUrl }]
+      }
+    });
+
+    expect(html).not.toContain('<img src="javascript:');
+    expect(html).not.toContain('<img src="data:');
+    expect(html).not.toContain('user:secret@');
+    expect(html).not.toContain('width="56"');
   });
 
   it('escapes store, item, and address values', () => {

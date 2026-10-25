@@ -26,20 +26,38 @@ const resolveStorefrontPublicOrigin = () => {
     }
 };
 
-const resolveStorefrontLogoUrl = (value, publicOrigin) => {
-    const relativePath = normalizeStorefrontAssetUrl(value);
-    if (relativePath) {
-        if (!publicOrigin) return null;
+const isSafeStorefrontAssetPath = (value, root) => {
+    const normalized = String(value || '');
+    if (!normalized.startsWith(root)) return false;
+    const segments = normalized.slice(root.length).split('/');
+    return segments.length > 0 && segments.every((segment) => (
+        segment
+        && segment !== '.'
+        && segment !== '..'
+        && /^[A-Za-z0-9_.-]+$/.test(segment)
+    ));
+};
+
+const isAllowedRelativeStorefrontAssetPath = (value) => (
+    (normalizeStorefrontAssetUrl(value) && isSafeStorefrontAssetPath(value, '/uploads/storefront-assets/'))
+    || isSafeStorefrontAssetPath(value, '/uploads/storefront-catalog/')
+);
+
+const resolveStorefrontAssetUrl = (value, publicOrigin) => {
+    const normalizedValue = String(value || '').trim();
+    if (normalizedValue.startsWith('/')) {
+        if (!publicOrigin || !isAllowedRelativeStorefrontAssetPath(normalizedValue)) return null;
         try {
-            const url = new URL(relativePath, publicOrigin);
-            return url.pathname.startsWith('/uploads/storefront-assets/') ? url.toString() : null;
+            const url = new URL(normalizedValue, publicOrigin);
+            if (url.origin !== publicOrigin || !isAllowedRelativeStorefrontAssetPath(url.pathname)) return null;
+            return url.toString();
         } catch {
             return null;
         }
     }
 
     try {
-        const url = new URL(String(value || ''));
+        const url = new URL(normalizedValue);
         if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password) return null;
         return url.toString();
     } catch {
@@ -117,13 +135,18 @@ export const dispatchDgfyOrderConfirmationEmail = async ({
                     }))
                     .catch(() => null);
                 const publicOrigin = resolveStorefrontPublicOrigin();
-                const logoUrl = resolveStorefrontLogoUrl(storedLogoUrl, publicOrigin);
+                const logoUrl = resolveStorefrontAssetUrl(storedLogoUrl, publicOrigin);
+                const items = Array.isArray(order.items) ? order.items.map((item) => ({
+                    ...item,
+                    image_url: resolveStorefrontAssetUrl(item?.image_url, publicOrigin)
+                })) : order.items;
+                const resolvedOrder = { ...order, items };
                 const supportUrl = publicOrigin ? `${publicOrigin}/contact-us` : null;
                 sendStarted = true;
                 const result = await sendStorefrontOrderConfirmationEmail({
                     email,
                     storeName,
-                    order,
+                    order: resolvedOrder,
                     trackingUrl,
                     logoUrl,
                     supportUrl,

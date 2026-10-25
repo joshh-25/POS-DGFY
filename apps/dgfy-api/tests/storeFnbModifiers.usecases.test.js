@@ -46,6 +46,7 @@ const buildRepository = (items, overrides = {}) => ({
   isTrackingPinTaken: jest.fn().mockResolvedValue(false),
   nextInvoiceNumber: jest.fn().mockResolvedValue('INV-000001'),
   createOnlineTransactionWithLines: jest.fn().mockResolvedValue(501),
+  listStorefrontItemImages: jest.fn().mockResolvedValue({}),
   getOrderById: jest.fn().mockResolvedValue({
     pos_transaction_id: 501,
     tracking_pin: 'SK-ABC123',
@@ -676,7 +677,17 @@ describe('storefront F&B modifier checkout contract', () => {
         store_customer_id: null,
         total_amount: 100,
         vat_amount: 10.71,
-        lines: []
+        lines: [{
+          line_id: 1,
+          item_id: 20,
+          item: { name: 'Burger', sku_code: 'BG-20', category: 'finished_good', unit_of_measure: 'each' },
+          quantity: 1,
+          sale_price: 100,
+          line_subtotal: 100
+        }]
+      }),
+      listStorefrontItemImages: jest.fn().mockResolvedValue({
+        20: '/uploads/storefront-catalog/tenant-x/item-20/thumb.webp'
       })
     });
     const recordOrderActivity = jest.fn(async () => { sequence.push('activity'); });
@@ -700,7 +711,11 @@ describe('storefront F&B modifier checkout contract', () => {
           tracking_pin: 'SK-ABC123',
           customer_email: 'guest@example.test',
           vat_amount: 10.71,
-          items: []
+          items: [expect.objectContaining({
+            item_id: 20,
+            item_name: 'Burger',
+            image_url: '/uploads/storefront-catalog/tenant-x/item-20/thumb.webp'
+          })]
         }
       });
       throw new Error('email sender unavailable');
@@ -744,6 +759,111 @@ describe('storefront F&B modifier checkout contract', () => {
     expect(sequence).toEqual(['commit', 'activity', 'sms', 'email', 'commit', 'activity', 'sms']);
     expect(dispatchOrderSmsAlert).toHaveBeenCalledTimes(2);
     expect(dispatchOrderConfirmationEmail).toHaveBeenCalledTimes(1);
+    expect(repository.listStorefrontItemImages).toHaveBeenCalledTimes(1);
+    expect(repository.listStorefrontItemImages).toHaveBeenCalledWith([20]);
+  });
+
+  it('still sends the confirmation without images when the post-commit image lookup rejects', async () => {
+    const repository = buildRepository([burgerItem], {
+      findCustomerByEmail: jest.fn().mockResolvedValue(null),
+      getOrderById: jest.fn().mockResolvedValue({
+        pos_transaction_id: 501,
+        tracking_pin: 'SK-ABC123',
+        order_source: 'online_store',
+        order_method: 'pickup',
+        fulfillment_status: 'placed',
+        status: 'completed',
+        customer_name: 'Guest',
+        customer_phone: '09170000000',
+        customer_email: 'guest@example.test',
+        total_amount: 100,
+        lines: [{
+          line_id: 1,
+          item_id: 20,
+          item: { name: 'Burger' },
+          quantity: 1,
+          sale_price: 100,
+          line_subtotal: 100
+        }]
+      }),
+      listStorefrontItemImages: jest.fn().mockRejectedValue(new Error('catalog unavailable'))
+    });
+    const dispatchOrderConfirmationEmail = jest.fn().mockResolvedValue(null);
+    const result = await buildCheckoutUseCase(repository, { dispatchOrderConfirmationEmail })({
+      tenantId,
+      payload: {
+        idempotency_key: 'checkout-image-lookup-rejects',
+        location_id: 4,
+        order_method: 'pickup',
+        payment_type: 'cash',
+        customer_name: 'Guest',
+        customer_phone: '09170000000',
+        customer_email: 'guest@example.test',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(result.success).toBe(true);
+    expect(dispatchOrderConfirmationEmail).toHaveBeenCalledWith(expect.objectContaining({
+      order: expect.objectContaining({
+        items: [expect.objectContaining({ item_id: 20, image_url: null })]
+      })
+    }));
+  });
+
+  it('bounds a hanging post-commit image lookup and still dispatches the email', async () => {
+    jest.useFakeTimers();
+    const repository = buildRepository([burgerItem], {
+      findCustomerByEmail: jest.fn().mockResolvedValue(null),
+      getOrderById: jest.fn().mockResolvedValue({
+        pos_transaction_id: 501,
+        tracking_pin: 'SK-ABC123',
+        order_source: 'online_store',
+        order_method: 'pickup',
+        fulfillment_status: 'placed',
+        status: 'completed',
+        customer_name: 'Guest',
+        customer_phone: '09170000000',
+        customer_email: 'guest@example.test',
+        total_amount: 100,
+        lines: [{
+          line_id: 1,
+          item_id: 20,
+          item: { name: 'Burger' },
+          quantity: 1,
+          sale_price: 100,
+          line_subtotal: 100
+        }]
+      }),
+      listStorefrontItemImages: jest.fn(() => new Promise(() => {}))
+    });
+    const dispatchOrderConfirmationEmail = jest.fn().mockResolvedValue(null);
+    const checkout = buildCheckoutUseCase(repository, { dispatchOrderConfirmationEmail });
+    const result = await checkout({
+      tenantId,
+      payload: {
+        idempotency_key: 'checkout-image-lookup-hangs',
+        location_id: 4,
+        order_method: 'pickup',
+        payment_type: 'cash',
+        customer_name: 'Guest',
+        customer_phone: '09170000000',
+        customer_email: 'guest@example.test',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+
+    expect(result.success).toBe(true);
+    await Promise.resolve();
+    await jest.advanceTimersByTimeAsync(3_000);
+    await Promise.resolve();
+
+    expect(dispatchOrderConfirmationEmail).toHaveBeenCalledWith(expect.objectContaining({
+      order: expect.objectContaining({
+        items: [expect.objectContaining({ item_id: 20, image_url: null })]
+      })
+    }));
   });
 
   it('allows checkout with a price-only modifier when strict inventory reservation is enabled', async () => {

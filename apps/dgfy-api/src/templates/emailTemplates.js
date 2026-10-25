@@ -1081,15 +1081,23 @@ const renderOrderConfirmationBreakdownRow = (row) => {
   </tr>`;
 };
 
-const renderOrderConfirmationItemRow = (item = {}) => {
+const renderOrderConfirmationItemRow = (item = {}, includeImageColumn = false) => {
   const safeItem = item || {};
   const quantity = formatOrderQuantity(safeItem.quantity);
   const fractionalPrice = quantity.includes('.')
     ? ` · ${formatOrderConfirmationMoney(safeItem.sale_price)} each`
     : '';
+  const itemName = String(safeItem.item_name || 'Item');
+  const imageUrl = safeOrderConfirmationUrl(safeItem.image_url);
+  const imageCell = includeImageColumn
+    ? `<td width="56" valign="middle" style="width:56px;padding:10px 12px 10px 0;border-bottom:1px solid #eef2f7;">${imageUrl
+      ? `<img src="${escapeHtml(imageUrl)}" width="56" height="56" alt="" style="display:block;width:56px;height:56px;border:1px solid #e2e8f0;border-radius:10px;object-fit:cover;">`
+      : `<span style="display:block;width:56px;height:56px;border:1px solid #e2e8f0;border-radius:10px;background-color:#eef4fb;color:#1a4e8d;font-size:22px;line-height:56px;font-weight:700;text-align:center;">${escapeHtml(Array.from(itemName.trim())[0] || 'I')}</span>`}</td>`
+    : '';
   return `<tr>
+    ${imageCell}
     <td style="padding:10px 0;border-bottom:1px solid #eef2f7;">
-      <div style="color:#1e293b;font-size:14px;font-weight:700;">${escapeHtml(safeItem.item_name || 'Item')}</div>
+      <div style="color:#1e293b;font-size:14px;font-weight:700;">${escapeHtml(itemName)}</div>
       <div style="padding-top:3px;color:#64748b;font-size:12px;">x ${escapeHtml(quantity)}${escapeHtml(fractionalPrice)}</div>
     </td>
     <td align="right" valign="middle" style="padding:10px 0 10px 12px;border-bottom:1px solid #eef2f7;color:#1e293b;font-size:14px;font-weight:600;white-space:nowrap;">${escapeHtml(formatOrderConfirmationMoney(safeItem.line_subtotal))}</td>
@@ -1107,14 +1115,13 @@ export const getStorefrontOrderConfirmationTemplate = ({
   const displayStoreName = String(storeName || 'DGFY');
   const safeStoreName = escapeHtml(displayStoreName);
   const safeTrackingPin = escapeHtml(order.tracking_pin || '');
-  const safeInvoiceNumber = escapeHtml(order.invoice_number || '');
-  const safePaymentReference = escapeHtml(order.payment_reference || '');
   const safeTrackUrl = escapeHtml(safeOrderConfirmationUrl(trackingUrl));
   const safeLogoUrl = escapeHtml(safeOrderConfirmationUrl(logoUrl));
   const safeSupportUrl = escapeHtml(safeOrderConfirmationUrl(supportUrl));
   const logoInitial = escapeHtml(Array.from(displayStoreName.trim())[0] || 'D');
   const items = Array.isArray(order.items) ? order.items : [];
-  const itemRows = items.map(renderOrderConfirmationItemRow).join('') || `
+  const hasItemImageColumn = items.some((item) => Boolean(safeOrderConfirmationUrl(item?.image_url)));
+  const itemRows = items.map((item) => renderOrderConfirmationItemRow(item, hasItemImageColumn)).join('') || `
     <tr><td colspan="2" style="padding:12px 0;color:#64748b;font-size:13px;">No item details available.</td></tr>`;
   const breakdownRows = buildOrderConfirmationBreakdownRows(order);
   const hasVat = breakdownRows.some((row) => row.kind === 'informational');
@@ -1150,9 +1157,9 @@ export const getStorefrontOrderConfirmationTemplate = ({
   const scheduledFor = formatOrderTime(order.scheduled_for);
   const orderTime = formatOrderTime(order.created_at);
   const orderTimeRow = scheduledFor
-    ? renderOrderConfirmationMetaRow('Scheduled for', `${scheduledFor} (Asia/Manila)`)
+    ? renderOrderConfirmationMetaRow('Scheduled for', scheduledFor)
     : orderTime
-      ? renderOrderConfirmationMetaRow('Order time', `${orderTime} (Asia/Manila)`)
+      ? renderOrderConfirmationMetaRow('Order time', orderTime)
       : '';
   const fulfillmentTitle = ({ delivery: 'Delivery To', pickup: 'Pickup At', dine_in: 'Dine In At' }[order.order_method] || 'Store Location');
   const trackingButton = safeTrackUrl
@@ -1204,8 +1211,6 @@ export const getStorefrontOrderConfirmationTemplate = ({
               <div style="margin:14px 0;border-top:1px solid #e2e8f0;"></div>
               <div style="color:#64748b;font-size:11px;font-weight:700;letter-spacing:0.7px;">ORDER PIN</div>
               <div style="padding-top:2px;color:#0f172a;font-size:15px;font-weight:700;">${safeTrackingPin || 'Not available'}</div>
-              ${safeInvoiceNumber ? `<div style="padding-top:7px;color:#334155;font-size:12px;"><strong>Invoice number:</strong> ${safeInvoiceNumber}</div>` : ''}
-              ${safePaymentReference ? `<div style="padding-top:3px;color:#334155;font-size:12px;"><strong>Payment reference:</strong> ${safePaymentReference}</div>` : ''}
               <div style="margin:14px 0;border-top:1px solid #e2e8f0;"></div>
               <div style="padding-bottom:2px;color:#1e293b;font-size:16px;font-weight:800;">Your Items</div>
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;"><tbody>${itemRows}</tbody></table>
