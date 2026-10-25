@@ -399,7 +399,7 @@ describe('regular POS Setup cashier management contract', () => {
     expect(workspaceSource).toContain('min-[1024px]:min-w-0 min-[1024px]:w-full min-[1024px]:gap-0');
     expect(workspaceSource).toContain('min-[1024px]:flex-1 min-[1024px]:justify-center');
     expect(workspaceSource).toContain('items-end gap-3 px-1');
-    expect(workspaceSource).toContain("mobileGridClass ? 'w-full min-w-0 justify-center whitespace-normal px-2 text-center' : 'shrink-0 px-2 whitespace-nowrap'");
+    expect(workspaceSource).toContain("mobileGridClass ? 'w-full min-w-0 justify-center whitespace-normal px-2 text-center' : 'min-w-max flex-1 justify-center px-2 whitespace-nowrap'");
     expect(workspaceSource).toContain("'py-3 text-[14px] font-bold text-[#0F172A] transition-colors'");
     expect(workspaceSource).toContain('min-w-max flex-1 justify-center px-2 whitespace-nowrap');
     expect(workspaceSource).toContain('py-3 text-[14px] font-bold text-[#0F172A] transition-colors');

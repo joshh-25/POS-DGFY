@@ -359,11 +359,16 @@ export function StoresMap({
         allowProvisionedPlaceholder: focusSelectedKey
       });
       Promise.all(next.requiredImages.map(({ id, svg }) => ensureMapImage(map, id, svg)))
-        .then(() => {
-          if (!cancelled && popupGenerationRef.current === generation && layerReady) {
-            setGeoJsonSourceData(map, DISCOVERY_PIN_SOURCE_ID, next.sourceData);
+        .then(
+          () => {
+            if (!cancelled && popupGenerationRef.current === generation && layerReady) {
+              setGeoJsonSourceData(map, DISCOVERY_PIN_SOURCE_ID, next.sourceData);
+            }
+          },
+          () => {
+            // Best-effort image work can reject during teardown; keep the current source.
           }
-        });
+        );
     };
 
     const popupEntries = new globalThis.Map();
@@ -652,12 +657,17 @@ export function StoresMap({
     }
 
     Promise.all(layerModel.requiredImages.map(({ id, svg }) => ensureMapImage(map, id, svg)))
-      .then(() => {
-        if (cancelled || popupGenerationRef.current !== generation) return;
-        if (layerReady) {
-          setGeoJsonSourceData(map, DISCOVERY_PIN_SOURCE_ID, layerModel.sourceData);
+      .then(
+        () => {
+          if (cancelled || popupGenerationRef.current !== generation) return;
+          if (layerReady) {
+            setGeoJsonSourceData(map, DISCOVERY_PIN_SOURCE_ID, layerModel.sourceData);
+          }
+        },
+        () => {
+          // Best-effort image work can reject during teardown; keep the current source.
         }
-      });
+      );
 
     const shouldFocusSelected = Boolean(
       focusSelectedKey

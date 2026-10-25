@@ -63,7 +63,7 @@ export const signInPosVoidActor = async (page, credentials) => {
     }, { terminalId: POS_VOID_TERMINAL_ID, storageKey: TERMINAL_STORAGE_KEY });
 
     const authHeaders = capturePosAuthHeaders(page);
-    await signIn(page, credentials);
+    await signIn(page, credentials, { expectedPostcondition: 'pos-catalog' });
     await expect.poll(
         () => Boolean(authHeaders.authorization && authHeaders['x-company-token']),
         { timeout: 15_000, message: 'POS API authentication headers were not observed.' }

@@ -1,4 +1,4 @@
-import { jest } from '@jest/globals';
+import { afterAll, beforeAll, describe, expect, jest, test } from '@jest/globals';
 import request from 'supertest';
 
 // Define the mock factory
@@ -26,6 +26,15 @@ jest.unstable_mockModule('../src/services/cacheService.js', () => ({
 // We use dynamic imports because we need the mock to apply first
 const { default: app } = await import('../src/server.js');
 const { default: sequelize } = await import('../src/config/database.js');
+const { isTokenBlacklisted } = await import('../src/services/authService.js');
+
+const restoreEnv = (name, value) => {
+    if (value === undefined) {
+        delete process.env[name];
+    } else {
+        process.env[name] = value;
+    }
+};
 
 describe('Auth Redis Failure Policy', () => {
     beforeAll(async () => {
@@ -64,9 +73,9 @@ describe('Auth Redis Failure Policy', () => {
             expect(response.body.success).toBe(false);
         } finally {
             // Restore env vars
-            process.env.REDIS_URL = originalRedisUrl;
-            process.env.NODE_ENV = originalNodeEnv;
-            process.env.AUTH_BLACKLIST_FAILURE_MODE = originalFailureMode;
+            restoreEnv('REDIS_URL', originalRedisUrl);
+            restoreEnv('NODE_ENV', originalNodeEnv);
+            restoreEnv('AUTH_BLACKLIST_FAILURE_MODE', originalFailureMode);
         }
     });
 
@@ -82,6 +91,11 @@ describe('Auth Redis Failure Policy', () => {
         const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.signature';
 
         try {
+            await expect(isTokenBlacklisted(token)).rejects.toMatchObject({
+                message: 'Service unavailable: Validation check failed',
+                statusCode: 503
+            });
+
             const response = await request(app)
                 .get('/api/v1/users/me')
                 .set('Authorization', `Bearer ${token}`);
@@ -90,8 +104,8 @@ describe('Auth Redis Failure Policy', () => {
             expect(response.body.success).toBe(false);
             expect(response.body.message).toContain('Service unavailable');
         } finally {
-            process.env.REDIS_URL = originalRedisUrl;
-            process.env.AUTH_BLACKLIST_FAILURE_MODE = originalFailureMode;
+            restoreEnv('REDIS_URL', originalRedisUrl);
+            restoreEnv('AUTH_BLACKLIST_FAILURE_MODE', originalFailureMode);
         }
     });
 
@@ -114,16 +128,8 @@ describe('Auth Redis Failure Policy', () => {
             expect(response.body.success).toBe(false);
             expect(response.body.message).toContain('Service unavailable');
         } finally {
-            if (originalRedisUrl === undefined) {
-                delete process.env.REDIS_URL;
-            } else {
-                process.env.REDIS_URL = originalRedisUrl;
-            }
-            if (originalFailureMode === undefined) {
-                delete process.env.AUTH_BLACKLIST_FAILURE_MODE;
-            } else {
-                process.env.AUTH_BLACKLIST_FAILURE_MODE = originalFailureMode;
-            }
+            restoreEnv('REDIS_URL', originalRedisUrl);
+            restoreEnv('AUTH_BLACKLIST_FAILURE_MODE', originalFailureMode);
         }
     });
 });

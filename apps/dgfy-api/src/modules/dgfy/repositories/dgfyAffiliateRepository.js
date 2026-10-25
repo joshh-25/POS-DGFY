@@ -272,6 +272,11 @@ export const dgfyAffiliateRepository = {
         return row?.slug || null;
     },
 
+    async getStorefrontProfileImageUrl(tenantId) {
+        const row = await StorefrontDiscoveryIndex.findOne({ where: { tenant_id: tenantId } });
+        return row?.storefront_profile_image_url || null;
+    },
+
     // Compact, consistently-sized slug used for affiliate share links/QR codes.
     // Falls back to the canonical slug if the affiliate slug hasn't been synced yet.
     async getStorefrontAffiliateSlug(tenantId) {

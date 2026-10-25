@@ -120,7 +120,7 @@ the db manifest does, for delete/consolidate entries once the cut is actually ap
 
 ### Summary
 
-Total active test files: **900** | db-manifest members: **33** | findings: **3**
+Total active test files: **904** | db-manifest members: **34** | findings: **3**
 
 ### By classification
 
@@ -129,15 +129,15 @@ Total active test files: **900** | db-manifest members: **33** | findings: **3**
 | consolidate | 40 |
 | delete | 22 |
 | demote | 5 |
-| keep | 830 |
+| keep | 834 |
 | trim | 3 |
 
 ### By suffix
 
 | Suffix | Count |
 | --- | --- |
-| (none) | 307 |
-| unit | 97 |
+| (none) | 308 |
+| unit | 98 |
 | usecase | 76 |
 | migration | 57 |
 | contract | 51 |
@@ -175,6 +175,7 @@ Total active test files: **900** | db-manifest members: **33** | findings: **3**
 | audit | 1 |
 | routeContracts | 1 |
 | api | 1 |
+| applicationIdNullable.db.integration | 1 |
 | e2e.transport | 1 |
 | documentaryReadiness | 1 |
 | profileMerge | 1 |
@@ -196,6 +197,7 @@ Total active test files: **900** | db-manifest members: **33** | findings: **3**
 | invitation | 1 |
 | loggingPolicy | 1 |
 | helper | 1 |
+| visibility | 1 |
 | qa | 1 |
 | complianceActivationReadiness.e2e | 1 |
 | sessionIsolation.e2e | 1 |
@@ -371,7 +373,7 @@ Total active test files: **900** | db-manifest members: **33** | findings: **3**
 | tests/auth.test.js | 439 | 12 | keep | R1-pin | hardcoded reference: scripts/backend-db-dependent-tests.js |
 | tests/authCheckPermission.unit.test.js | 79 | 5 | keep | R5-default | default keep (suffix: unit) |
 | tests/authEmailOtpTenantScope.test.js | 25 | 2 | keep | R5-default | default keep (suffix: (none)) |
-| tests/authFailClosed.test.js | 130 | 3 | keep | R1-pin | hardcoded reference: scripts/backend-db-dependent-tests.js |
+| tests/authFailClosed.test.js | 136 | 3 | keep | R1-pin | hardcoded reference: scripts/backend-db-dependent-tests.js |
 | tests/authModuleExports.contract.test.js | 22 | 1 | keep | R5-default | default keep (suffix: contract) |
 | tests/authTenantIsolation.hardening.test.js | 243 | 8 | keep | R1-pin | hardcoded reference: scripts/backend-db-dependent-tests.js |
 | tests/authUsecases.applicationResult.test.js | 102 | 6 | keep | R5-default | default keep (suffix: applicationResult) |
@@ -450,9 +452,10 @@ Total active test files: **900** | db-manifest members: **33** | findings: **3**
 | tests/companyRegistrationStorage.test.js | 41 | 2 | keep | R5-default | default keep (suffix: (none)) |
 | tests/companyRegistrationStorageProvisioning.test.js | 33 | 2 | delete | R3-source-text-only | source-text-only (text_ratio=1) |
 | tests/companyRegistrationUploadDownloadUseCase.test.js | 81 | 3 | keep | R5-default | default keep (suffix: (none)) |
-| tests/companyRegistrationUploadMigration.test.js | 173 | 4 | keep | R5-default | default keep (suffix: (none)) |
+| tests/companyRegistrationUploadMigration.test.js | 241 | 10 | keep | R5-default | default keep (suffix: (none)) |
 | tests/companyRegistrationUploadReview.test.js | 177 | 3 | keep | R5-default | default keep (suffix: (none)) |
 | tests/companyRegistrationUploadValidation.test.js | 68 | 4 | keep | R5-default | default keep (suffix: (none)) |
+| tests/companyRegistrationUploads.applicationIdNullable.db.integration.test.js | 272 | 6 | keep | R1-pin | hardcoded reference: scripts/backend-db-dependent-tests.js |
 | tests/complianceActivation.transport.test.js | 137 | 4 | keep | R1-pin | compliance evidence citation: docs/compliance/evidence/open-controls-matrix.md, docs/compliance/evidence/rbac-sensitive-action-matrix.md |
 | tests/complianceActivation.usecase.test.js | 65 | 2 | keep | R5-default | default keep (suffix: usecase) |
 | tests/complianceActivationReadiness.e2e.transport.test.js | 442 | 2 | keep | R1-pin | compliance evidence citation: docs/compliance/control-matrix.md, docs/compliance/evidence/open-controls-matrix.md, docs/compliance/evidence/residual-risk-closure-matrix.md |
@@ -605,9 +608,11 @@ Total active test files: **900** | db-manifest members: **33** | findings: **3**
 | tests/esmBarrelMock.helper.test.js | 153 | 12 | keep | R5-default | default keep (suffix: helper) |
 | tests/executeConfirmedActionUseCase.test.js | 135 | 3 | keep | R5-default | default keep (suffix: (none)) |
 | tests/extendTenantAdminAuditActionsApplyTemplate.migration.test.js | 81 | 3 | keep | R5-default | default keep (suffix: migration) |
+| tests/externalEventSeedMapping.test.js | 223 | 10 | keep | R5-default | default keep (suffix: (none)) |
 | tests/externalProductImageImport.test.js | 107 | 4 | keep | R5-default | default keep (suffix: (none)) |
 | tests/externalProductLookup.test.js | 183 | 6 | keep | R5-default | default keep (suffix: (none)) |
-| tests/externalRedirectFoundation.test.js | 109 | 8 | keep | R5-default | default keep (suffix: (none)) |
+| tests/externalRedirectFoundation.test.js | 244 | 14 | keep | R5-default | default keep (suffix: (none)) |
+| tests/externalRedirectRepository.visibility.test.js | 132 | 4 | keep | R5-default | default keep (suffix: visibility) |
 | tests/feedbackHandlers.transport.test.js | 138 | 3 | consolidate | R4-transport-responder-only | transport-responder-only (>=90% call/res assertions, <=6 cases) |
 | tests/feedbackIdentity.test.js | 77 | 4 | keep | R5-default | default keep (suffix: (none)) |
 | tests/feedbackRepository.unit.test.js | 34 | 2 | keep | R5-default | default keep (suffix: unit) |
@@ -653,6 +658,7 @@ Total active test files: **900** | db-manifest members: **33** | findings: **3**
 | tests/geoSearchRepository.tenantCompanyToken.test.js | 99 | 1 | keep | R5-default | default keep (suffix: tenantCompanyToken) |
 | tests/geoSearchReverseGeocode.usecase.test.js | 112 | 6 | keep | R5-default | default keep (suffix: usecase) |
 | tests/geoStoreItems.nullLocation.db.integration.test.js | 216 | 3 | keep | R1-pin | hardcoded reference: scripts/backend-db-dependent-tests.js |
+| tests/gracefulShutdown.unit.test.js | 220 | 8 | keep | R5-default | default keep (suffix: unit) |
 | tests/grandMatadorCatalogAudit.test.js | 36 | 2 | keep | R5-default | default keep (suffix: (none)) |
 | tests/grandMatadorCatalogImport.test.js | 101 | 3 | keep | R5-default | default keep (suffix: (none)) |
 | tests/guestCheckoutDisabledEnforcement.usecase.test.js | 510 | 8 | keep | R5-default | default keep (suffix: usecase) |
@@ -1101,10 +1107,10 @@ Total active test files: **900** | db-manifest members: **33** | findings: **3**
 | tests/storefrontCatalogGenerateImageUseCases.test.js | 106 | 8 | keep | R5-default | default keep (suffix: (none)) |
 | tests/storefrontCatalogImagePersistence.integration.test.js | 145 | 1 | keep | R5-default | default keep (suffix: integration) |
 | tests/storefrontCatalogUseCases.test.js | 1904 | 42 | keep | R5-default | default keep (suffix: (none)) |
-| tests/storefrontDiscoveryFreshnessService.test.js | 57 | 1 | keep | R5-default | default keep (suffix: (none)) |
+| tests/storefrontDiscoveryFreshnessService.test.js | 85 | 2 | keep | R5-default | default keep (suffix: (none)) |
 | tests/storefrontDiscoveryIndexService.catalogVisibility.test.js | 700 | 9 | keep | R5-default | default keep (suffix: catalogVisibility) |
 | tests/storefrontDiscoveryMapPins.usecase.test.js | 207 | 4 | keep | R5-default | default keep (suffix: usecase) |
-| tests/storefrontDiscoveryRepository.test.js | 1056 | 31 | keep | R5-default | default keep (suffix: (none)) |
+| tests/storefrontDiscoveryRepository.test.js | 1165 | 37 | keep | R5-default | default keep (suffix: (none)) |
 | tests/storefrontDiscoverySyncReliabilityService.test.js | 107 | 3 | keep | R5-default | default keep (suffix: (none)) |
 | tests/storefrontDiscoveryValidator.test.js | 125 | 6 | keep | R5-default | default keep (suffix: (none)) |
 | tests/storefrontDomain.controllerAuth.test.js | 96 | 3 | keep | R5-default | default keep (suffix: controllerAuth) |

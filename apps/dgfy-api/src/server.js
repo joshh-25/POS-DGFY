@@ -41,6 +41,7 @@ import sequelize from './config/database.js';
 import './models/index.js'; // Initialize model associations
 import { tenantHandler } from './middleware/tenantHandler.js';
 import tenantConnector from './utils/TenantConnector.js';
+import { shutdownHttpServer } from './utils/gracefulShutdown.js';
 import { auditRequiredIndexes } from './services/schemaIndexAuditService.js';
 import { auditBillingFunnelIntegrity } from './services/engagementIntegrityAuditService.js';
 import { buildHealthResponse } from './services/healthService.js';
@@ -788,6 +789,7 @@ import geoSearchRoutes from './routes/geoSearch.js';
 import routeCalculatorRoutes from './routes/routeCalculator.js';
 import internalStorefrontDomainOperationRoutes from './routes/internalStorefrontDomainOperations.js';
 import registrationRoutes from './routes/registration.js';
+import publicSupportContactRoutes from './routes/publicSupportContact.js';
 import dgfyLaundryRoutes from './routes/dgfyLaundry.js';
 import oidcRoutes from './routes/oidc.js';
 import dgfyLaundryOrderRoutes from './routes/dgfyLaundryOrders.js';
@@ -802,6 +804,7 @@ app.use('/api/v1/geo', routeCalculatorRoutes);
 // Public - no tenant context needed, called before any tenant exists (all
 // three signup surfaces' Industry pickers).
 app.use('/api/v1/registration', registrationRoutes);
+app.use('/api/v1/public/support-contact', publicSupportContactRoutes);
 
 app.use(tenantHandler);
 
@@ -1162,27 +1165,13 @@ const startServer = async () => {
       await stopDglaundryOutboxWorker();
       aiController.stopAiCleanupScheduler?.();
 
-      // Close Redis connection
-      await closeRedis();
-
-      // Close all tenant DB connections
-      try {
-        await tenantConnector.closeAll();
-        logger.info('All tenant database connections closed.');
-      } catch (err) {
-        logger.error('Error closing tenant connections during shutdown:', err);
-      }
-
-      server.close(() => {
-        logger.info('HTTP server closed.');
-        process.exit(0);
+      await shutdownHttpServer({
+        server,
+        closeRedis,
+        tenantConnector,
+        logger,
+        exit: (code) => process.exit(code)
       });
-
-      // Force close after 10 seconds
-      setTimeout(() => {
-        logger.error('Forced shutdown after timeout');
-        process.exit(1);
-      }, 10000);
     };
 
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));

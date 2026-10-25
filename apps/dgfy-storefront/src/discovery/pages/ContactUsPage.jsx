@@ -6,6 +6,7 @@ import { useStorefrontStore } from '../../store/useStorefrontStore.js';
 import { useDiscoveryHeaderAccount } from '../hooks/useDiscoveryHeaderAccount.js';
 import { useDiscoveryNavActions } from '../hooks/useDiscoveryNavActions.js';
 import { DiscoveryFooter } from '../components/DiscoveryFooter.jsx';
+import { getPublicStorefrontSupportContact } from '../../services/supportContactService.js';
 import './ContactUsPage.css';
 
 const DISCOVERY_LOGO_SRC = '/dgfy-logo.png';
@@ -18,6 +19,7 @@ export default function ContactUsPage() {
   const setActiveDiscoveryNavItem = useStorefrontStore((state) => state.discoverySetActiveNavItem);
   const [viewportMode, setViewportMode] = useState(() => getDiscoveryViewportState(window.innerWidth).viewportMode);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [supportEmail, setSupportEmail] = useState(null);
   const isMobileViewport = viewportMode === 'mobile';
   const {
     accountIdentityContact,
@@ -36,6 +38,21 @@ export default function ContactUsPage() {
 
     window.addEventListener('resize', updateViewportMode);
     return () => window.removeEventListener('resize', updateViewportMode);
+  }, []);
+
+  useEffect(() => {
+    let isCurrent = true;
+    getPublicStorefrontSupportContact()
+      .then(({ email }) => {
+        if (isCurrent) setSupportEmail(email);
+      })
+      .catch(() => {
+        if (isCurrent) setSupportEmail(null);
+      });
+
+    return () => {
+      isCurrent = false;
+    };
   }, []);
 
   const handleLogoClick = useCallback(() => {
@@ -83,8 +100,23 @@ export default function ContactUsPage() {
           <div className="contact-us-page__eyebrow">DGFY · CONTACT</div>
           <h1 className="contact-us-page__title">Contact Us</h1>
           <p className="contact-us-page__intro">
-            Have a question, idea, or business inquiry? Let’s start a conversation.
+            For general questions or business inquiries, use the form below.
           </p>
+
+          <section className="contact-us-page__support-section" aria-labelledby="contact-us-support-title">
+            <div className="contact-us-page__support-copy">
+              <h2 id="contact-us-support-title">Need help with the DGFY Storefront app?</h2>
+              <p>
+                Report an app problem, share feedback, or request a feature.
+                {supportEmail ? ' You can email our support team directly at ' : ' A support email is not yet available. Use the inquiry form below to reach us.'}
+                {supportEmail && (
+                  <a className="contact-us-page__support-link" href={`mailto:${supportEmail}`}>
+                    {supportEmail}
+                  </a>
+                )}
+              </p>
+            </div>
+          </section>
 
           <section className="contact-us-page__form-section" aria-label="Contact inquiry form">
             <div className="contact-us-page__embed-frame-wrap">
