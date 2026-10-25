@@ -8,6 +8,6 @@ test('authenticate reusable E2E session', async ({ page }) => {
     test.skip(true, 'E2E_TEST_USER_EMAIL and E2E_TEST_USER_PASSWORD are required.');
   }
 
-  await signIn(page, testCredentials);
+  await signIn(page, testCredentials, { expectedPostcondition: 'pos-catalog' });
   await page.context().storageState({ path: 'playwright/.auth/user.json' });
 });

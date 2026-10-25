@@ -53,7 +53,7 @@ async function openSettings(page) {
   const settingsButton = page.getByRole('button', { name: /^Settings\b/i });
   await settingsButton.waitFor({ state: 'visible' });
   if (!(await settingsButton.isEnabled())) {
-    await signIn(page, testCredentials);
+    await signIn(page, testCredentials, { expectedPostcondition: 'pos-catalog' });
     await expect(settingsButton).toBeEnabled({ timeout: 20_000 });
   }
   await expect(page.locator('#root')).not.toBeEmpty();

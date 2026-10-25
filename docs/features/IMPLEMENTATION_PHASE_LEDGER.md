@@ -31797,7 +31797,112 @@ Not complete. Record after the documentation PR is merged and implementation val
 
 Phase 548. No explicit dependency.
 
-## Phase 548 - Retain promotion quality evidence in workflow summaries (#1165)
+## Phase 548 - Staging quality triage: POS branch entry and shared contracts (#2767)
+
+### Initiative and release
+
+Staging run 40086857329 quality repair / ordinary `develop` branch.
+
+### Objective and scope
+
+Repair the eight shared POS frontend contract failures and the POS sales journey's fixture,
+authenticated branch-entry flow, and assigned-location authorization. Preserve checkout, stock,
+receipt history, export, shift ownership and server authority. Record a disposition for every raw
+failed run step; API matrix and dependency findings stay with their existing owners. No API or
+schema behavior, dependency, workflow policy, merge, deployment, or production verification is in
+scope. Classification: `within-existing-boundary`.
+
+### Status
+
+`in_progress` — scoped implementation, local validation, and the approved compliance declaration
+are complete on the #2767 Worker branch; PR review and merge remain outstanding.
+
+### Dependencies
+
+None. Phase 548 follows the current ledger high-water mark, Phase 547. The in-progress Phase
+547 entry for #2619 is not an explicit technical dependency. The separate API and dependency repair issues are not
+prerequisites for this frontend repair.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0020](../architecture/adr/0020-mode-aware-rbac-and-role-presets.md),
+[ADR 0031](../architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md),
+[POS Cashier Location Access Phase 354](POS_CASHIER_LOCATION_ACCESS_PHASE_354.md),
+[POS Cashier Location Access Phase 355](POS_CASHIER_LOCATION_ACCESS_PHASE_355.md),
+[Release Candidate Policy](../ops/RELEASE_CANDIDATE_POLICY.md), and issue
+[#2767](https://github.com/Sieitzz/dgfy-platform/issues/2767). Classification:
+`within-existing-boundary`; no ADR change is needed.
+
+### Implementation targets
+
+`packages/web-core/src/features/pos/pages/TerminalPage.jsx`, its assigned-branch access helper and
+tests, the five affected shared contract suites and nearby rendered tests; the POS E2E login helper,
+sales journey and sign-in callers; `apps/dgfy-api/tests/fixtures/prepare-pos-sales-e2e-user.mjs`;
+the Phase 354 behavior amendment; and this ledger entry.
+
+### Acceptance and validation evidence
+
+- [x] All eight original contract failures pass with equivalent rendered or structural behavior
+  coverage; read-only branch review and manual-lock resume behavior remain covered.
+- [x] A restricted non-master admin with effective action permissions and a matching location grant
+  can enter the assigned branch. Missing permissions/grants, read-only branch viewing, inactive or
+  mismatched terminals, occupancy by another operator, and another user's shift remain denied.
+- [x] The POS sales journey reaches authenticated branch selection, opens a real shift through the
+  UI, completes checkout, verifies stock decrement, receipt detail, CSV content, and shift cleanup.
+- [x] POS and IMS builds, scoped frontend suites/E2E, architecture, docs, version, syntax, marker,
+  and whitespace checks pass; raw failures and their existing owners are recorded.
+- [ ] The full `npm run test:frontend` aggregate completes. The IMS workspace run was interrupted
+  after five minutes in one continuously CPU-bound Vitest worker. It reported multiple unrelated
+  suite failures and one category-placement behavior failure; that changed suite passed in
+  isolation immediately afterward (21/21 tests), and the focused POS/shared set passed (255/255).
+- [x] `npm run check:compliance` passes after Pat approved and recorded the major POS/terminal
+  declaration in `docs/compliance/impact-declarations/2026-10-25-pos-assigned-branch-entry.md`.
+- [x] No merge, deployment, or deployed-environment claim is made. Ordinary develop app version
+  floors remain unchanged.
+
+### Evidence
+
+`npm run test:frontend:contracts` passed (132 files, 837 tests); the focused POS/shared set passed
+(15 files, 255 tests). `npm run test:pos-sales-e2e` passed against local MySQL/Redis with one
+Playwright worker, including branch-entry and Shift desktop/mobile screenshots, shift opening,
+checkout, stock decrement, receipt detail, CSV filename/content, and shift cleanup. Its
+non-secret response disposition attachment classifies pre-auth bootstrap 401s, the restricted
+admin's master-admin-only onboarding 403, and the optional disabled cashier-attendance endpoint.
+`npm run test:frontend:storefront` passed (252 files, 1,418 tests). `npm run build:pos` and
+`npm run build:skupervisor` passed. `npm run check:architecture`, `npm run lint:docs`,
+`npm run check:app-versions`, `node --check` for the fixture, and `git diff --check` passed.
+`npm run test:frontend` did not complete: its IMS run reported multiple unrelated-suite failures
+and remained in one CPU-bound worker for five minutes before interruption. The aggregate also
+reported one failure in the changed category-placement behavior suite, but that suite passed in
+isolation immediately afterward (21/21 tests); the focused 15-file POS/shared set also passed
+(255/255). `npm run check:compliance` passed after Pat approved the major POS/terminal declaration
+in the implementation session; its `NOT-EXECUTED-*` reference records that no live request-time
+preflight ran and remains subject to the normal reconciliation sweep. The issue's existing run
+inventory and trace comments are SHA-bound; API matrix findings remain routed to #2577, dependency
+audit findings remain with #2199/#2170 and #1786/#2211 as applicable, and S3 fallback evidence is
+recorded without any presigned URL.
+
+### Risks and decisions
+
+Role-independent branch entry must continue to require effective action permissions and location
+grants at both directory generation and action time. The selected tenant user used during DGFY
+login must be the same identity used for those checks. The frontend remains advisory; API
+revalidation and existing terminal, occupancy, ownership, audit and financial invariants remain
+authoritative. No unresolved product or architecture decision remains.
+
+### Post-merge verification
+
+- [ ] operational — after relevant fixes land, dispatch the existing quality workflow only when
+  appropriate, inspect raw outcomes, and link remaining failures to their existing owner issues;
+  owner: Pat/operator; blocks closing #2767. No baseline-only run is dispatched by the Worker.
+
+### Next phase number
+
+Phase 549. No explicit dependency.
+
+## Phase 549 - Retain promotion quality evidence in workflow summaries (#1165)
 
 ### Initiative and release
 
@@ -31867,8 +31972,9 @@ outstanding for post-merge verification after Phase 547's runner validation.
 
 The workflow summary is informational and uses the existing bounded quality-job report. Summary
 write failure is non-fatal by design, so the existing PR comment and candidate evidence paths remain
-available. Phase 547 for #2619 is retained as the preceding ledger entry; this #1165 scope is Phase
-548, with its operational dispatch sequenced after Phase 547's runner validation.
+available. Phase 547 for #2619 and Phase 548 for #2767 are retained as preceding ledger entries;
+this #1165 scope is Phase 549, with its operational dispatch sequenced after Phase 547's runner
+validation.
 
 ### Completion date
 
@@ -31882,4 +31988,4 @@ Not complete. Record after merge and implementation validation.
 
 ### Next phase number
 
-Phase 549. No explicit dependency.
+Phase 550. No explicit dependency.

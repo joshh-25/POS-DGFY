@@ -322,6 +322,7 @@ describe('Items category placement', () => {
       isOnline: false
     })} />);
 
+    expect(screen.getByRole('region', { name: 'Categories' })).toBeTruthy();
     expect(screen.getByText('Category management is available online only.')).toBeTruthy();
     expect(screen.queryByPlaceholderText('Search item by Name, SKU, or Barcode')).toBeNull();
   });

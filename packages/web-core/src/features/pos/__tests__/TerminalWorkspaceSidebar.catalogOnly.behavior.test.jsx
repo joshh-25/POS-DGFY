@@ -26,6 +26,8 @@ describe('POS catalog-only access', () => {
 
     expect(screen.getByTestId('pos-catalog-only-banner').textContent).toMatch(/add items and categories/i);
     expect(screen.getByTestId('pos-nav-items').disabled).toBe(false);
+    expect(screen.getByTestId('pos-nav-onboarding').dataset.posNavId).toBe('onboarding');
+    expect(screen.getByTestId('pos-nav-onboarding').textContent).toContain('Onboarding');
     expect(screen.getByTestId('pos-nav-onboarding').disabled).toBe(true);
     expect(screen.getByTestId('pos-nav-sell').disabled).toBe(true);
     expect(screen.getByTestId('pos-nav-history').disabled).toBe(true);
