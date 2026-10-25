@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-10-25
+last_reviewed: 2026-10-24
 review_by: 2027-02-16
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
@@ -31709,7 +31709,95 @@ Not complete. Record after merge and implementation validation.
 
 Phase 547. No explicit dependency.
 
-## Phase 547 - Retain promotion quality evidence in workflow summaries (#1165)
+## Phase 547 - Self-hosted runner disk cleanup safety (#2619)
+
+### Initiative and release
+
+CI runner workspace safety / operator-managed maintenance.
+
+### Objective and scope
+
+Record the confirmed disk-timer failure that deleted runner files during a live job, establish the
+policy against automatic deletion of runner workspaces and caches, and document stopped-runner
+maintenance requirements. Keep this failure mode separate from sparse-checkout poisoning, and
+record the second job symptom as accepted unless it recurs. This phase changes repository
+documentation only; host script installation and gate verification remain operator-owned. No
+workflow, application, API, schema, or host behavior is changed by this PR.
+
+### Status
+
+`in_progress` — documentation updates and validation are underway in the #2619 Worker PR.
+
+### Dependencies
+
+None. Phase 547 follows the current ledger high-water mark, Phase 546. No earlier phase is an
+explicit technical or operational dependency.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[CI Runner Workspace Hygiene](../ops/CI_RUNNER_WORKSPACE_HYGIENE.md),
+[CI Runner Policy](../ops/CI_RUNNER_POLICY.md), [Release Candidate Policy](../ops/RELEASE_CANDIDATE_POLICY.md),
+and issue [#2619](https://github.com/Sieitzz/dgfy-platform/issues/2619). Classification:
+`no-architecture-impact`; no ADR change is needed.
+
+### Implementation targets
+
+[`CI_RUNNER_WORKSPACE_HYGIENE.md`](../ops/CI_RUNNER_WORKSPACE_HYGIENE.md) and this ledger entry.
+The host script and external operations runbook are outside this repository task.
+
+### Acceptance and validation evidence
+
+- [x] The confirmed journal-window race and deleted runner files are documented separately from
+  sparse-checkout poisoning.
+- [x] The documentation states that runner workspaces, diagnostics, action/tool files, and runner
+  caches are not automatically removed, and that manual cleanup requires stopped-runner
+  maintenance.
+- [x] The Storefront job is recorded as completed/success and accepted unless it recurs; no code
+  fix is claimed for that symptom.
+- [x] Host installation and follow-up gate evidence remain explicitly outstanding and operator-owned.
+- [x] `npm run lint:docs`, `npm run check:architecture`, `npm run check:workspace-hygiene`,
+  `npm run check:runner-routing`, the develop-context app-version check, and `git diff --check`
+  pass on the implementation branch.
+
+### Evidence
+
+`npm run lint:docs` passed (36 governed docs; 105 ADRs); `npm run check:architecture` passed
+(63 modules/797 code files and 115 controller files); `npm run check:workspace-hygiene` and
+`npm run check:runner-routing` passed. The app-version check passed with PR context
+(`GITHUB_BASE_REF=develop`, `GITHUB_HEAD_REF=docs/issue-2619-runner-workspace-cleanup`) and found
+no changed apps or fan-out packages. Its bare local form has no PR target context and initially
+reported an inherited app-code diff from the preceding #2769 merge; no app files are changed by
+this phase. `git diff --check` passed. No host was accessed or changed, and no Promotion Quality
+Gate was dispatched in this implementation session.
+
+### Risks and decisions
+
+Disabling automatic runner-cache cleanup can leave disk usage high when unrelated cleanup is
+insufficient. The persistent-high-usage warning must continue to prompt operator-managed
+maintenance. A process-presence check alone is not a safe deletion guard because a job can start
+after the check. The live host remediation and gate result are not represented as complete by this
+documentation phase.
+
+### Completion date
+
+Not complete. Record after the documentation PR is merged and implementation validation passes.
+
+### Post-merge verification
+
+- [ ] operational — apply the reviewed replacement to both runner VMs; verify matching content and
+  checksum, preserved owner and mode, restored prior timer state, and runner health; owner: #2619
+  operator; blocks host-remediation acceptance.
+- [ ] operational — after host application, dispatch one full `promotion-quality-gate.yml` run on a
+  recorded SHA, inspect per-job and per-step outcomes and evidence artifacts, and record the run
+  link/SHA on #2619; owner: #2619 operator; blocks closing #2619.
+
+### Next phase number
+
+Phase 548. No explicit dependency.
+
+## Phase 548 - Retain promotion quality evidence in workflow summaries (#1165)
 
 ### Initiative and release
 
@@ -31727,8 +31815,10 @@ paths, keep the suite optional and advisory, and leave promotion eligibility unc
 
 ### Dependencies
 
-None. Phase 547 follows Phase 546's ledger entry; there is no explicit technical or operational
-dependency on that phase.
+Phase 547 (#2619)'s host application and follow-up full quality-gate pass are required before this
+phase's post-merge no-PR dispatch can serve as operational verification, because the reporter job
+must complete on the self-hosted runner. This dependency gates operational verification only; code
+implementation is independent.
 
 ### Contract and authority
 
@@ -31771,14 +31861,14 @@ when comment posting fails. `npm run test:pr-quality-workflow` passed 11 tests;
 compliance-sensitive changes and passed API-contract checks. The app-version check passed with PR
 context (`GITHUB_BASE_REF=develop`, `GITHUB_HEAD_REF=fix/1165-quality-summary`); no app or fan-out
 package changes apply. `git diff --check` passed. The operational workflow-dispatch check remains
-outstanding for post-merge verification.
+outstanding for post-merge verification after Phase 547's runner validation.
 
 ### Risks and decisions
 
 The workflow summary is informational and uses the existing bounded quality-job report. Summary
 write failure is non-fatal by design, so the existing PR comment and candidate evidence paths remain
-available. Fresh `origin/develop` already contained Phase 546 for #2769, so the remaining #1165 work
-uses Phase 547 under the continuous numbering rule. No policy or product decision is unresolved.
+available. Phase 547 for #2619 is retained as the preceding ledger entry; this #1165 scope is Phase
+548, with its operational dispatch sequenced after Phase 547's runner validation.
 
 ### Completion date
 
@@ -31786,10 +31876,10 @@ Not complete. Record after merge and implementation validation.
 
 ### Post-merge verification
 
-- [ ] operational — dispatch the promotion quality workflow on a branch with no open PR and verify
-  the run summary contains the expected SHA-bound advisory table and classifications; owner: #1165
-  operator; blocks closing #1165.
+- [ ] operational — after Phase 547's runner validation, dispatch the promotion quality workflow on
+  a branch with no open PR and verify the run summary contains the expected SHA-bound advisory table
+  and classifications; owner: #1165 operator; blocks closing #1165.
 
 ### Next phase number
 
-Phase 548. No explicit dependency.
+Phase 549. No explicit dependency.

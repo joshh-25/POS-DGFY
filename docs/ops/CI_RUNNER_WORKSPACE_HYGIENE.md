@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: infra
-last_reviewed: 2026-09-03
+last_reviewed: 2026-10-25
 applies_to: self_hosted_runner_workspace_state
 topic: ci_runner_workspace_hygiene
 ---
@@ -38,6 +38,54 @@ Net effect: sparse silently re-activates against whatever patterns are still sit
 any directory literally named `scripts` at any depth — so `infrastructure/docker/scripts` stayed
 on disk while every sibling app directory (`dgfy-api`, `dgfy-ims`, `dgfy-pos`, `dgfy-storefront`,
 `dgfy-migration-runner`) did not.
+
+## Disk-pressure cleanup can delete active runner state (#2619)
+
+This is a separate failure mode from sparse-checkout poisoning. Sparse-checkout leaves an
+incomplete Git worktree behind; disk-pressure cleanup can delete files out from under a running
+job.
+
+In Promotion Quality Gate run [39283210177](https://github.com/Sieitzz/dgfy-platform/actions/runs/39283210177),
+the `frontend-budgets-quality` job on `vm-openproject` lost `actions/checkout`, `actions/setup-node`,
+and Node while the host's `disk-check.timer` ran `/usr/local/sbin/disk-check.sh`. At the 80% disk
+threshold, its tier-two cleanup removed `_work/*` and `_diag/*`. The script's `runner_idle()`
+heuristic compared `Running job:` and `completed with result` lines in the last 50 runner journal
+entries. Runner logs emit two lines per job; an in-flight job could therefore leave 25 lines of
+each kind in that window and be misclassified as idle. The buildx-process guard did not protect a
+job that was not building an image. The issue comment records this evidence and the runner-side
+timestamps.
+
+The policy is to disable automatic cleanup of runner-owned state. A timer or process-presence check
+cannot make deletion race-safe: another job can start after the check and before removal. Automatic
+disk cleanup must not remove `_work`, `_diag`, GitHub action or tool caches, npm caches, Gradle
+caches, or Gradle JDKs. Keep the existing 80% threshold and timer, Docker cleanup, oversized-log
+handling, IDE cache cleanup, apt/journal cleanup, and persistent-high-usage warning. When those
+actions do not recover enough space, an operator must use stopped-runner maintenance.
+
+For manual runner-file maintenance:
+
+1. Preserve `_diag` and other incident evidence needed for investigation before removing anything.
+2. Use a planned maintenance window, stop the runner service, and confirm no job is active. A
+   momentary process check alone is insufficient because a new job could start after the check.
+3. Pause `disk-check.timer` before touching runner files. Wait for any already-running
+   `disk-check.service` to finish. When replacing the script, install the reviewed replacement
+   atomically and preserve the previous script as a backup with its owner and mode.
+4. Validate the replacement before restoring the timer's previous enabled state. If validation
+   fails, keep the timer paused and escalate; do not restore the unsafe script.
+5. After maintenance, verify the installed script matches the reviewed content and checksum, the
+   timer state is correct, and the runner returns online and idle.
+
+The host script and timer are outside this repository. Issue [#2619](https://github.com/Sieitzz/dgfy-platform/issues/2619)
+tracks applying the policy to both runner VMs and the follow-up gate evidence. This repository
+change records the policy; it does not claim host remediation is complete. Keep #2619 open until
+both hosts are verified and a full follow-up gate run has been inspected by job, step, and evidence
+artifact. A green workflow summary alone is insufficient; the run must show no missing actions,
+missing Node, runner-cache deletion, or other runner-side job failure.
+
+The second symptom in run 39283210177, `frontend-storefront-quality` remaining `in_progress` after
+the workflow completed, was not reproduced. GitHub later reported the job as completed/success, and
+the runner-side log showed normal completion. Accept this symptom unless it recurs; no repository
+code-level fix is claimed.
 
 ## Diagnosis signature
 
@@ -91,16 +139,17 @@ the bootstrap ordering problem this doc exists to explain.
 `scripts/check-workspace-hygiene.js` also forbids any `sparse-checkout:` site outside an explicit,
 currently-empty allowlist — the repo has no legitimate use for one today.
 
-## Manual clearing procedure
+## Manual sparse-checkout clearing procedure
 
-Non-destructive; safe to run on an idle runner. Order matters — `sparse-checkout disable` must run
-**first**, while git still reads `.git/config.worktree`, so it actually clears the skip-worktree
-index bits; only then remove the residual config/files.
+Use only during planned maintenance after applying the stopped-runner, paused-timer, and evidence-
+preservation requirements in the section above. An idle observation or process-presence check
+alone is insufficient to prevent a new job from starting during cleanup. Order matters:
+`sparse-checkout disable` must run **first**, while git still reads `.git/config.worktree`, so it
+actually clears the skip-worktree index bits; only then remove the residual config/files.
 
 ```bash
 WS=/home/github-runner/actions-runner/_work/dgfy-platform/dgfy-platform
-# Confirm idle first -- ps -eo pid,cmd | grep -i worker (no Runner.Worker process); pgrep -f
-# self-matches its own command line via ssh, so don't rely on it here.
+# Stop the runner service and confirm no job is active before touching its workspace.
 cp -a "$WS/.git/config" "$WS/.git/config.bak.$(date +%Y%m%d%H%M%S)"
 git -C "$WS" sparse-checkout disable || true
 for k in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
@@ -121,9 +170,10 @@ git -C "$WS" status --porcelain | grep -c '^ D'                         # expect
 ls "$WS/infrastructure/docker"                                          # expect all app dirs present
 ```
 
-**Fallback**, if any of the above misbehaves: `rm -rf "$WS"` while the runner is idle. The next
+**Fallback**, if any of the above misbehaves: keep the runner stopped, preserve any needed
+diagnostics, and have the operator remove `"$WS"` during the same maintenance window. The next
 job's `actions/checkout` re-clones from scratch (one full clone, ~1-2 minutes). Nothing in that
-directory is authoritative — this is always safe.
+directory is authoritative, but removal is safe only while the runner remains stopped.
 
 ## Known residual window
 

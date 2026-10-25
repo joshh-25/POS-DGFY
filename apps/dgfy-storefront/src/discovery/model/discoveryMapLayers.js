@@ -276,31 +276,35 @@ export const buildUserLocationSourceData = (userLocation = null) => {
 };
 
 export const ensureMapImage = (map, id, svg) => new Promise((resolve) => {
-  if (!map || !id || typeof map.hasImage !== 'function' || typeof map.addImage !== 'function') {
-    resolve(false);
-    return;
-  }
-  if (map.hasImage(id)) {
-    resolve(true);
-    return;
-  }
-  if (typeof window === 'undefined' || typeof window.Image !== 'function') {
-    resolve(false);
-    return;
-  }
-  const image = new window.Image(38, 48);
-  image.onload = () => {
-    try {
-      if (!map.hasImage(id)) {
-        map.addImage(id, image, { pixelRatio: 1 });
-      }
-      resolve(true);
-    } catch {
+  try {
+    if (!map || !id || typeof map.hasImage !== 'function' || typeof map.addImage !== 'function') {
       resolve(false);
+      return;
     }
-  };
-  image.onerror = () => resolve(false);
-  image.src = svgToDataUrl(svg);
+    if (map.hasImage(id)) {
+      resolve(true);
+      return;
+    }
+    if (typeof window === 'undefined' || typeof window.Image !== 'function') {
+      resolve(false);
+      return;
+    }
+    const image = new window.Image(38, 48);
+    image.onload = () => {
+      try {
+        if (!map.hasImage(id)) {
+          map.addImage(id, image, { pixelRatio: 1 });
+        }
+        resolve(true);
+      } catch {
+        resolve(false);
+      }
+    };
+    image.onerror = () => resolve(false);
+    image.src = svgToDataUrl(svg);
+  } catch {
+    resolve(false);
+  }
 });
 
 export const ensureDiscoveryMapLayers = (map) => {
