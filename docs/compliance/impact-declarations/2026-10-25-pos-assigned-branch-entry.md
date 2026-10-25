@@ -16,7 +16,7 @@ preflight_run_at: 2026-10-24T17:41:29Z
 preflight_request_ref: NOT-EXECUTED-2767-POS-ASSIGNED-BRANCH-ENTRY
 ---
 
-# POS assigned branch entry and sales journey (#2767, Phase 546)
+# POS assigned branch entry and sales journey (#2767, Phase 548)
 
 ## Compliance Impact Classification
 
@@ -57,5 +57,5 @@ fixture syntax check, and whitespace check passed. The full `npm run test:fronte
 not complete: the IMS run reported multiple unrelated suite failures, and the category-placement
 behavior suite also reported one failure in the aggregate run. That category suite passed in
 isolation immediately afterward (21/21 tests). The aggregate then remained in one CPU-bound worker
-for five minutes before interruption. Full details are recorded in Phase 546 of the implementation
+for five minutes before interruption. Full details are recorded in Phase 548 of the implementation
 phase ledger.
