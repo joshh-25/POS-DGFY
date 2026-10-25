@@ -31989,3 +31989,121 @@ Not complete. Record after merge and implementation validation.
 ### Next phase number
 
 Phase 550. No explicit dependency.
+
+## Phase 550 - Storefront iOS Support URL readiness (#2772)
+
+### Initiative and release
+
+Storefront customer support / iOS launch readiness.
+
+### Objective and scope
+
+Make the existing public Storefront `/contact-us` page suitable for use as the iOS App Store
+Support URL. Clearly identify DGFY Storefront app support for problem reports, feedback, and feature
+requests; manage the support email through the DGFY Platform Admin Contact Inquiries page; and retain
+the existing Pin4MS inquiry form and direct-link fallback. `support@dgfy.ph` is a provisional
+default that is shown publicly; email and monitoring verification remain optional. This spans the
+Storefront, Platform Admin, API, and landlord configuration boundary; POS, Android, merchant OPIS,
+and legal-document changes remain out of scope.
+
+### Status
+
+`in_progress` — implementation and documentation are complete; migration direction and the
+compliance declaration were approved by the operator. The change is not merged.
+
+### Dependencies
+
+None. Phase 550 follows the current ledger high-water mark, Phase 549. No earlier phase is an
+explicit technical or operational dependency. The schema migration must be applied before the new
+configuration can be used in a deployed environment.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [Catalog, Inventory, POS, and
+Storefront Ownership Boundaries](../architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md),
+[Platform Admin Identity and Page RBAC](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md),
+[Platform Admin App Boundary](../architecture/adr/0089-platform-admin-fifth-frontend-app-cross-host-admin-routing.md),
+[Storefront Support Contact Publication](../architecture/adr/0098-storefront-support-contact-publication.md),
+[Platform Admin Route Permission Matrix](../testing/platform-admin-route-permission-matrix.md), and
+[issue #2772](https://github.com/Sieitzz/dgfy-platform/issues/2772). Classification:
+`within-existing-boundary`; Storefront owns the public page, while Platform Admin owns global support
+configuration under the existing identity and page-grant boundary. ADR 0098 records that the
+configured address is published immediately and verification is optional.
+
+### Implementation targets
+
+[Storefront Contact Us page](../../apps/dgfy-storefront/src/discovery/pages/ContactUsPage.jsx),
+[Platform Admin Contact Inquiries page](../../apps/dgfy-admin/Pages/ContactInquiriesDashboard.jsx),
+the contact-inquiries API module, additive landlord configuration persistence, public API contract,
+focused tests, ADR 0098, the compliance declaration, and this ledger.
+
+### Acceptance and validation evidence
+
+- [x] The public route identifies DGFY Storefront app support and explains that users can report
+      problems, send feedback, and request features.
+- [x] Platform Admin can configure a support email; the provisional `support@dgfy.ph` default is
+      stored and appears publicly before optional verification.
+- [x] Optional OTP verification records only successful actual delivery; disabled enforcement and
+      development fallback codes do not count as verified, and do not block public display.
+- [x] The Pin4MS embed and direct fallback remain available together, including when the embed is
+      blocked or fails.
+- [x] Admin and Storefront production builds, architecture boundaries, ADR validation, docs lint,
+      changed-app version checks, and compliance declaration checks pass.
+- [ ] Focused Platform Admin/API/Storefront tests and rendered desktop/mobile route checks pass.
+- [ ] After deployment, verify the public page and actual production form delivery path using only
+      synthetic test content; record the URL and evidence for the iOS submission owner.
+
+### Evidence
+
+The initial Storefront-only version passed the focused Contact Us suite (5/5 tests), the Storefront
+production build (with its existing large-chunk advisory), `npm run lint:docs` (36 governed docs and
+105 ADRs), and rendered checks at 1440px and 390px. The public route and fallback rendered without
+horizontal overflow. The provider iframe was blocked in local preview by its `frame-ancestors` policy
+for localhost; the direct standalone form opened successfully and rendered without submitting data.
+Those results predate the expanded Platform Admin/API configuration work and do not verify a support
+address or production delivery path.
+
+For the expanded implementation, `npm run check:architecture` passed (63 modules, 800 code files,
+and 116 controller files); `npm run build:admin` and `npm run build:store` passed (Storefront reports
+its existing large-chunk advisory); `npm run lint:docs` passed (36 governed docs and 106 ADRs),
+`node scripts/check-adr.js` passed, `npm run check:app-versions` passed in develop-PR context, and
+`npm run check:compliance` passed the declaration's structural and API-contract checks. The staged
+tenant-schema coverage check passed for the one new migration. Changed API JavaScript/CommonJS syntax
+checks and `git diff --check` passed. Focused tests and updated rendered desktop/mobile checks were
+not run in this session. The declaration's `NOT-EXECUTED-2772-2026-10-25` value is the expected
+develop-PR placeholder, not live preflight evidence.
+
+### Risks and decisions
+
+The production Pin4MS delivery destination cannot be proven by the page unit test or local build.
+The provider iframe did not render in the local preview; the direct form fallback remained visible
+and opened successfully. The provisional support email is public under the operator's nonblocking
+policy. Production delivery and monitoring remain unverified until the authorized mailbox owner
+completes the optional checks; the iOS listing should not claim a verified support destination
+before that evidence.
+
+### Rollback
+
+Revert the app-support copy, email presentation, styles, API/Admin configuration, landlord schema
+migration, ADR, focused tests, compliance declaration, and this ledger entry. The seeded provisional
+address remains public until the migration/configuration change is rolled back or Admin changes it.
+
+### Post-merge verification
+
+- [ ] deployment — verify `https://dgfy.ph/contact-us` loads publicly on mobile, shows the approved
+      contact details, and preserves the form fallback; owner: Storefront QA/release. This blocks a
+      production-page verification claim.
+- [ ] support email — apply the landlord migration, confirm whether `support@dgfy.ph` receives mail,
+      and record optional OTP/monitoring evidence in Platform Admin; owner: Platform Admin/support
+      inbox owner. This blocks a verified-contact claim, but not public display.
+- [ ] provider — confirm the Pin4MS form reaches its configured support destination with designated
+      synthetic content and no customer data; owner: Storefront/form owner. This blocks a verified
+      production support-path claim.
+- [ ] operational — confirm the iOS listing's proposed Support URL is
+      `https://dgfy.ph/contact-us` and record mobile review evidence; owner: mobile submission owner.
+      This blocks iOS listing readiness.
+
+### Next phase number
+
+Phase 551. No explicit dependency.
