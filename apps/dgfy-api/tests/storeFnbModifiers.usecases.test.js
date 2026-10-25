@@ -652,7 +652,7 @@ describe('storefront F&B modifier checkout contract', () => {
     }));
   });
 
-  it('dispatches guest order alerts after activity recording and keeps checkout successful on alert failure', async () => {
+  it('dispatches guest order alerts after activity recording, emails only new orders, and keeps checkout successful on failure', async () => {
     const sequence = [];
     const transaction = createTransaction();
     transaction.commit = jest.fn(async () => {
@@ -689,7 +689,25 @@ describe('storefront F&B modifier checkout contract', () => {
       });
       throw new Error('sender unavailable');
     });
-    const useCase = buildCheckoutUseCase(repository, { recordOrderActivity, dispatchOrderSmsAlert });
+    const dispatchOrderConfirmationEmail = jest.fn(async (input) => {
+      sequence.push('email');
+      expect(input).toMatchObject({
+        tenantId,
+        storeCustomer: null,
+        order: {
+          pos_transaction_id: 501,
+          tracking_pin: 'SK-ABC123',
+          customer_email: 'guest@example.test',
+          items: []
+        }
+      });
+      throw new Error('email sender unavailable');
+    });
+    const useCase = buildCheckoutUseCase(repository, {
+      recordOrderActivity,
+      dispatchOrderSmsAlert,
+      dispatchOrderConfirmationEmail
+    });
     const payload = {
       idempotency_key: 'guest-sms-checkout',
       location_id: 4,
@@ -702,6 +720,7 @@ describe('storefront F&B modifier checkout contract', () => {
     };
 
     const first = await useCase({ tenantId, payload });
+    await new Promise((resolve) => setImmediate(resolve));
     const requestHash = repository.createOnlineTransactionWithLines.mock.calls[0][0].header.request_hash;
     repository.findTransactionByIdempotencyKey.mockResolvedValue({
       pos_transaction_id: 501,
@@ -715,12 +734,14 @@ describe('storefront F&B modifier checkout contract', () => {
       lines: []
     });
     const replay = await useCase({ tenantId, payload });
+    await new Promise((resolve) => setImmediate(resolve));
 
     expect(first.success).toBe(true);
     expect(replay.success).toBe(true);
     expect(replay.data.idempotent_replay).toBe(true);
-    expect(sequence).toEqual(['commit', 'activity', 'sms', 'commit', 'activity', 'sms']);
+    expect(sequence).toEqual(['commit', 'activity', 'sms', 'email', 'commit', 'activity', 'sms']);
     expect(dispatchOrderSmsAlert).toHaveBeenCalledTimes(2);
+    expect(dispatchOrderConfirmationEmail).toHaveBeenCalledTimes(1);
   });
 
   it('allows checkout with a price-only modifier when strict inventory reservation is enabled', async () => {

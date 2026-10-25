@@ -32107,3 +32107,85 @@ address remains public until the migration/configuration change is rolled back o
 ### Next phase number
 
 Phase 551. No explicit dependency.
+
+## Phase 551 - Storefront order confirmation email (#532)
+
+### Initiative and release
+
+Storefront customer commerce / transactional messaging.
+
+### Objective and scope
+
+Send a receipt-style confirmation after a newly created online storefront order commits, for guest
+or logged-in customers and COD or PayMongo-finalized orders. Include itemization, totals, payment
+status and method, order references, fulfillment details, partial-payment balance details, and a
+store-specific tracking link when one can be resolved. Delivery is best-effort and does not change
+the checkout result. Idempotent replays do not resend. No schema, migration, frontend, SMS, bounce,
+retry/outbox, formal receipt, or separate bookings flow changes.
+
+### Status
+
+`in_progress` — implementation and validation are underway on the #532 Worker branch.
+
+### Dependencies
+
+None. Phase 551 follows the current ledger high-water mark, Phase 550. Phase 550 remains in progress
+on an independent issue and is not a technical dependency.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0054](../architecture/adr/0054-outbound-email-delivery-log-and-bounce-capture.md),
+[Issue #532](https://github.com/Sieitzz/dgfy-platform/issues/532). Classification:
+`within-existing-boundary`; the existing store-to-DGFY service seam owns post-commit transactional
+notifications.
+
+### Implementation targets
+
+[`storeUseCases.js`](../../apps/dgfy-api/src/modules/store/usecases/storeUseCases.js),
+[`dgfyOrderConfirmationEmail.js`](../../apps/dgfy-api/src/modules/dgfy/services/dgfyOrderConfirmationEmail.js),
+[`storefrontOrderTrackingUrl.js`](../../apps/dgfy-api/src/modules/dgfy/services/storefrontOrderTrackingUrl.js),
+[`emailService.js`](../../apps/dgfy-api/src/services/emailService.js),
+[`emailTemplates.js`](../../apps/dgfy-api/src/templates/emailTemplates.js), and focused API tests.
+
+### Acceptance and validation evidence
+
+- [ ] A new order dispatches after commit; replay dispatches nothing; checkout remains successful
+  when the dispatcher fails, for COD and captured-payment checkout paths.
+- [ ] The HTML and plain-text email include itemization, totals, payment method/status, order
+  references, fulfillment details, and downpayment/balance for `partially_paid` orders.
+- [ ] Slug and custom-domain tracking URLs resolve correctly; an unavailable URL omits only the
+  CTA.
+- [ ] Blank/invalid email, unconfigured SMTP, and the kill switch skip cleanly; timeout and
+  pre-send failures are bounded and reported without PII.
+- [ ] Delivery log purpose and tenant id are set; no email body is persisted.
+- [ ] Focused tests, syntax checks, architecture/compliance/docs checks, and app-version floor
+  validation pass.
+- [ ] Manual template rendering/visual inspection for delivery, pickup, and partially-paid samples
+  is recorded as completed or explicitly deferred.
+
+### Risks and decisions
+
+There is no durable email dedupe key or outbox. The new-order-only hook prevents checkout replays
+from sending twice, while a process crash after commit can lose the email. A `Promise.race` timeout
+does not cancel an SMTP send already in flight. The delivery log adds a recipient email row per
+order; existing retention applies, while the PII map remains tracked as separate compliance debt
+under #243.
+
+### Completion date
+
+Not complete. Record after merge and implementation validation.
+
+### Post-merge verification
+
+- [ ] On STAGING, place one COD and one QRPh order using a real mailbox; verify email delivery and
+  that the tracking link opens the correct order for a slug store and a custom-domain store if one
+  is available; verify the delivery log has a `storefront_order_confirmation` row with
+  `status='sent'`; replay checkout and verify it creates no second confirmation row. Owner: #532
+  operator/release verifier; blocks deployed acceptance.
+
+### Next phase number
+
+Phase 552. No explicit dependency.

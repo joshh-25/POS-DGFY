@@ -76,7 +76,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0051 | [POS Employee Credit Tender and Ledger](0051-pos-employee-credit-tender-and-ledger.md) | `accepted` | pos_employee_credit_tender_and_ledger | 2027-01-30 | 0 |
 | 0052 | [DGFY Collection, Tenant Revenue Ledger, and Controlled Settlement](0052-tenant-revenue-collection-ledger-and-settlement.md) | `amended` | tenant_revenue_collection_ledger_settlement | 2027-01-31 | 1 |
 | 0053 | [Pluggable POS Hardware Device Drivers](0053-pluggable-pos-hardware-device-drivers.md) | `amended` | pluggable_pos_hardware_device_drivers | 2027-03-14 | 4 |
-| 0054 | [Outbound Email Delivery Log And Bounce Capture](0054-outbound-email-delivery-log-and-bounce-capture.md) | `accepted` | outbound_email_delivery_log_and_bounce_capture | 2027-02-07 | 0 |
+| 0054 | [Outbound Email Delivery Log And Bounce Capture](0054-outbound-email-delivery-log-and-bounce-capture.md) | `amended` | outbound_email_delivery_log_and_bounce_capture | 2027-04-25 | 0 |
 | 0055 | [Tenant-Scoped POS Catalog Realtime Invalidation](0055-tenant-scoped-pos-catalog-realtime-invalidation.md) | `accepted` | tenant_scoped_pos_catalog_realtime_invalidation | 2027-02-08 | 0 |
 | 0056 | [Store Configuration Templates and Profiles](0056-store-configuration-templates-and-profiles.md) | `amended` | store_configuration_templates_and_profiles | 2027-02-09 | 3 |
 | 0057 | [Services Fulfillment Profiles](0057-services-fulfillment-profiles.md) | `accepted` | services_fulfillment_profiles | 2027-02-09 | 5 |
