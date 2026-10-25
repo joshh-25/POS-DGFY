@@ -3,6 +3,7 @@ import { dgfyAccountRepository } from './repositories/dgfyAccountRepository.js';
 import { dgfyAffiliateRepository } from './repositories/dgfyAffiliateRepository.js';
 import { ensureDgfyCompanyRegistrationRejectionNotifications } from './services/dgfyCustomerNotifications.js';
 export { dispatchDgfyOrderSmsAlert } from './services/dgfyOrderSmsAlerts.js';
+export { dispatchDgfyOrderConfirmationEmail } from './services/dgfyOrderConfirmationEmail.js';
 import { buildGetDgfyLegalTermsUseCase } from './usecases/dgfyLegalUseCases.js';
 import {
     buildGetAdminDgfyAccountUseCase,

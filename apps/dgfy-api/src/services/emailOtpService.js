@@ -14,7 +14,8 @@ export const EMAIL_OTP_PURPOSES = Object.freeze({
   DGFY_PASSWORD_RESET: 'dgfy_password_reset',
   DGFY_BUSINESS_STEP_UP: 'dgfy_business_step_up',
   DGFY_LEGACY_LINK: 'dgfy_legacy_link',
-  STOREFRONT_GUEST_CHECKOUT: 'storefront_guest_checkout'
+  STOREFRONT_GUEST_CHECKOUT: 'storefront_guest_checkout',
+  PLATFORM_SUPPORT_CONTACT: 'platform_support_contact'
 });
 
 const PURPOSE_LABELS = Object.freeze({
@@ -26,7 +27,8 @@ const PURPOSE_LABELS = Object.freeze({
   [EMAIL_OTP_PURPOSES.DGFY_PASSWORD_RESET]: 'DGFY password reset',
   [EMAIL_OTP_PURPOSES.DGFY_BUSINESS_STEP_UP]: 'DGFY business security check',
   [EMAIL_OTP_PURPOSES.DGFY_LEGACY_LINK]: 'DGFY legacy account linking',
-  [EMAIL_OTP_PURPOSES.STOREFRONT_GUEST_CHECKOUT]: 'Storefront guest checkout'
+  [EMAIL_OTP_PURPOSES.STOREFRONT_GUEST_CHECKOUT]: 'Storefront guest checkout',
+  [EMAIL_OTP_PURPOSES.PLATFORM_SUPPORT_CONTACT]: 'DGFY Storefront support email verification'
 });
 
 const OTP_TTL_MINUTES = Number.parseInt(process.env.EMAIL_OTP_TTL_MINUTES || '10', 10);

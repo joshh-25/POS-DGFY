@@ -110,7 +110,21 @@ All responses follow a consistent JSON structure:
 ## Authentication & Multi-Tenancy
 
 ### Multi-Tenant Header Requirement
-All API requests (except for root `/admin` registration) must include the `x-company-token` header. This token determines which isolated database context is used for the request.
+Tenant-scoped API requests must include the `x-company-token` header. This token determines which
+isolated database context is used for the request. Public registration and
+`/api/v1/public/support-contact` are no-tenant exceptions.
+
+### Public Storefront Support Contact
+
+`GET /api/v1/public/support-contact` is a no-authentication, no-tenant-context endpoint used by the
+Storefront Contact Us page. It returns the address configured by Platform Admin even when optional
+email verification has not completed. It returns `{ "email": null }` only if no address is
+configured. The response uses `Cache-Control: no-store`.
+
+Platform Admin support-email configuration lives under `/api/v1/admin/contact-inquiries/support-email*`
+and requires the `admin.contact_inquiries` page grant. Saving an address publishes it immediately.
+Admin may optionally request and confirm a one-time verification code and record that the inbox is
+monitored. Changing the address clears the prior verification and monitoring timestamps.
 
 ---
 

@@ -136,6 +136,17 @@ function buildComment({ run, jobs, pr, failuresByJob = {} }) {
   ].join('\n');
 }
 
+function appendStepSummary(report, summaryPath = process.env.GITHUB_STEP_SUMMARY) {
+  if (!summaryPath) return false;
+  try {
+    fs.appendFileSync(summaryPath, `${report}\n`);
+    return true;
+  } catch (error) {
+    console.error(`[quality-evidence] could not append evidence to GITHUB_STEP_SUMMARY: ${error.message}`);
+    return false;
+  }
+}
+
 function recordCandidateQualityCheck(candidateId, qualityCheck, projectRoot) {
   const manifestPath = path.join(projectRoot, '.tmp', 'release-candidates', `${candidateId}.json`);
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
@@ -178,11 +189,13 @@ async function main(argv = process.argv.slice(2)) {
     [pr] = matches;
   }
 
+  const evidenceReport = buildComment({ run, jobs, pr, failuresByJob });
+  appendStepSummary(evidenceReport);
+
   if (pr) {
-    const comment = buildComment({ run, jobs, pr, failuresByJob });
     await githubRequest(token, repository, `/issues/${pr.number}/comments`, {
       method: 'POST',
-      body: JSON.stringify({ body: comment }),
+      body: JSON.stringify({ body: evidenceReport }),
     });
     console.log(`[quality-evidence] posted run ${options.runId} for ${run.head_sha} to PR #${pr.number}`);
   } else {

@@ -40,7 +40,7 @@ describe('POS catalog-only onboarding access contract', () => {
     expect(itemsWorkspace).toContain('if (!catalogOnlyAccess) {');
     expect(itemsWorkspace).toContain('catalogOnlyAccess = false');
 
-    expect(sidebar).toContain('label="Onboarding"');
+    expect(sidebar).toContain("label={posNavLabel('onboarding', 'Onboarding')}");
     expect(sidebar).toContain('testId="pos-nav-onboarding"');
     expect(sidebar).toContain('disabled={locked || !canAccessItemsWorkspace}');
     expect(sidebar).toContain('POS onboarding will be available after DGFY Admin enables POS');

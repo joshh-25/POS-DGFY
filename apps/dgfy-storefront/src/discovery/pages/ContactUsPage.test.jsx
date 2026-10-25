@@ -1,12 +1,20 @@
 /** @vitest-environment jsdom */
 import React, { useState } from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { BrowserRouter, MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
 import ContactUsPage from './ContactUsPage.jsx';
 import { useDiscoveryNavActions } from '../hooks/useDiscoveryNavActions.js';
 import { useStorefrontStore } from '../../store/useStorefrontStore.js';
+
+const mocks = vi.hoisted(() => ({
+  getPublicStorefrontSupportContact: vi.fn()
+}));
+
+vi.mock('../../services/supportContactService.js', () => ({
+  getPublicStorefrontSupportContact: mocks.getPublicStorefrontSupportContact
+}));
 
 function DiscoveryNavigationHarness() {
   const [, setActiveDiscoveryNavItem] = useState('Explore');
@@ -31,8 +39,13 @@ afterEach(() => {
   useStorefrontStore.getState().discoverySetActiveNavItem('Explore');
 });
 
+beforeEach(() => {
+  mocks.getPublicStorefrontSupportContact.mockReset();
+  mocks.getPublicStorefrontSupportContact.mockResolvedValue({ email: null });
+});
+
 describe('ContactUsPage', () => {
-  it('renders the hosted inquiry form without the redundant intro block and with an accessible fallback', () => {
+  it('keeps the inquiry form fallback available when no support email is configured', () => {
     render(
       <MemoryRouter initialEntries={['/contact-us']}>
         <Routes>
@@ -42,7 +55,12 @@ describe('ContactUsPage', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Contact Us', level: 1 })).toBeTruthy();
-    expect(screen.getByText('Have a question, idea, or business inquiry? Let’s start a conversation.')).toBeTruthy();
+    expect(screen.getByText('For general questions or business inquiries, use the form below.')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Need help with the DGFY Storefront app?', level: 2 })).toBeTruthy();
+    expect(screen.getByText(/A support email is not yet available/))
+      .toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'support@dgfy.ph' })).toBeNull();
+    expect(document.querySelector('a[href="mailto:support@dgfy.ph"]')).toBeNull();
     expect(screen.getByRole('region', { name: 'Contact inquiry form' })).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Send us an inquiry' })).toBeNull();
     expect(screen.queryByText(/This form is hosted by Pin4MS/)).toBeNull();
@@ -53,10 +71,28 @@ describe('ContactUsPage', () => {
     expect(iframe.getAttribute('height')).toBe('600');
     expect(iframe.getAttribute('loading')).toBe('lazy');
     expect(iframe.getAttribute('referrerpolicy')).toBe('strict-origin-when-cross-origin');
-    expect(screen.getByRole('link', { name: 'open the form in a new tab' }).getAttribute('href'))
-      .toBe('https://pin4ms.bblabs.dev/f/dgfy-gateway-1');
+    const fallbackLink = screen.getByRole('link', { name: 'open the form in a new tab' });
+    expect(fallbackLink.getAttribute('href')).toBe('https://pin4ms.bblabs.dev/f/dgfy-gateway-1');
+    expect(fallbackLink.getAttribute('target')).toBe('_blank');
+    expect(fallbackLink.getAttribute('rel')).toBe('noopener noreferrer');
     expect(screen.queryByRole('status')).toBeNull();
     expect(document.querySelector('form')).toBeNull();
+  });
+
+  it('shows the configured address returned by the public contact endpoint', async () => {
+    mocks.getPublicStorefrontSupportContact.mockResolvedValue({ email: 'help@dgfy.ph' });
+
+    render(
+      <MemoryRouter initialEntries={['/contact-us']}>
+        <Routes>
+          <Route path="/contact-us" element={<ContactUsPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const supportLink = await screen.findByRole('link', { name: 'help@dgfy.ph' });
+    expect(supportLink.getAttribute('href')).toBe('mailto:help@dgfy.ph');
+    expect(screen.queryByRole('link', { name: 'support@dgfy.ph' })).toBeNull();
   });
 
   it('keeps the existing customer sign-in action in the shared header', async () => {

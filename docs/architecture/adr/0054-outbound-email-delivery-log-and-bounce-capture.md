@@ -1,10 +1,10 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-07
-last_reviewed: 2026-08-07
-review_by: 2027-02-07
+last_reviewed: 2026-10-25
+review_by: 2027-04-25
 applies_to: email_delivery, auth, tenant_registration, dgfy_accounts, platform_invoicing
 topic: outbound_email_delivery_log_and_bounce_capture
 supersedes_in_part: docs/architecture/adr/0021-email-otp-verification-for-account-email-ownership.md
@@ -15,6 +15,7 @@ supersedes_in_part: docs/architecture/adr/0021-email-otp-verification-for-accoun
 ## Status
 
 Accepted (2026-08-07)
+Amended (2026-10-25): storefront order confirmation delivery; see Amendments.
 
 ## Context
 
@@ -111,6 +112,26 @@ paths would have meant instrumenting both.
    the envelope sender to the SMTP login mailbox. This must be confirmed
    against the live relay before the poller is enabled, and is independent
    of Decision 2 (which needs no mailbox at all).
+
+## Amendments
+
+### 2026-10-25 — Storefront order confirmation email (#532)
+
+1. Storefront order confirmation sends use `meta.purpose =
+   'storefront_order_confirmation'` and carry the tenant id into the existing
+   landlord-scoped delivery log. The email body remains unstored; recipient
+   retention and redaction follow Decisions 5 and 6 above. `[default]`
+2. The order confirmation is dispatched best-effort after the new order's
+   transaction commits. Idempotent checkout replays do not dispatch another
+   email. There is no durable email dedupe key or outbox: a process crash
+   between commit and send can lose the email, and this is accepted for this
+   phase. Email failure or timeout must not fail or roll back checkout.
+   `[default]`
+3. `STOREFRONT_ORDER_CONFIRMATION_EMAIL_ENABLED` defaults to enabled; only the
+   literal value `false` disables confirmation dispatch. Missing SMTP
+   configuration or a missing usable customer email skips the send. The
+   dispatcher bounds its wait to ten seconds, but that timeout does not cancel
+   an SMTP send already in flight. `[default]`
 
 ## Rollback Notes
 

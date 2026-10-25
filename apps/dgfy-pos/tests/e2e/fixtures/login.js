@@ -1,10 +1,15 @@
 import { expect } from '@playwright/test';
 
 export async function signIn(page, credentials, options = {}) {
+  const expectedPostcondition = options.expectedPostcondition;
+  if (!['branch-selection', 'pos-catalog'].includes(expectedPostcondition)) {
+    throw new Error('POS sign-in requires an explicit expectedPostcondition: branch-selection or pos-catalog.');
+  }
+
   const authResponses = [];
   page.on('response', (response) => {
     const pathname = new URL(response.url()).pathname;
-    if (/\/api\/v1\/(auth|dgfy\/(auth|account)|settings|pos\/)/i.test(pathname)) {
+    if (/\/api\/v1\/(auth|dgfy\/(auth|account)|settings|pos\/|onboarding\/status)/i.test(pathname)) {
       authResponses.push(`${response.status()} ${pathname}`);
     }
   });
@@ -17,6 +22,8 @@ export async function signIn(page, credentials, options = {}) {
   const companySelect = page.getByLabel('Company');
   const catalogHeading = page.getByRole('heading', { name: 'POS Catalog' });
   const loginHeading = page.getByRole('heading', { name: 'Terminal Login Required' });
+  const branchSelectionHeading = page.getByRole('heading', { name: /^(Choose|Confirm) your branch$/ });
+  const branchSelectionDialog = page.getByTestId('pos-branch-selector-dialog');
   const loginDrawer = page.locator('.dgfy-pos-terminal-lock-drawer');
   const waitForTenantStep = async (timeout) => {
     try {
@@ -26,6 +33,7 @@ export async function signIn(page, credentials, options = {}) {
           await catalogHeading.isVisible().catch(() => false)
           && !await loginHeading.isVisible().catch(() => false)
         )
+        || await branchSelectionHeading.isVisible().catch(() => false)
       ), { timeout }).toBe(true);
       return true;
     } catch {
@@ -71,9 +79,19 @@ export async function signIn(page, credentials, options = {}) {
     await page.getByRole('button', { name: /^continue to pos$/i }).click();
     const sessionResponse = await tenantSessionResponse;
     expect(sessionResponse.status(), `tenant session failed with HTTP ${sessionResponse.status()}`).toBe(200);
-  } else {
-    await expect(catalogHeading).toBeVisible();
   }
+
+  if (expectedPostcondition === 'branch-selection') {
+    await expect(branchSelectionDialog).toBeVisible();
+    await expect(branchSelectionHeading).toBeVisible();
+    return {
+      postcondition: 'branch-selection',
+      routeStatuses: authResponses
+    };
+  }
+
+  await expect(branchSelectionDialog).toBeHidden();
+  await expect(catalogHeading).toBeVisible();
   const openShiftHeading = page.getByRole('heading', { name: 'Open Shift', exact: true });
   // The drawer stays mounted when closed, so `isVisible()` on its heading does
   // not prove it is open: the off-screen transform leaves that check true.
@@ -88,4 +106,8 @@ export async function signIn(page, credentials, options = {}) {
     throw new Error(`POS login drawer remained open after authentication. API responses: ${authResponses.slice(-30).join(' | ')}`);
   }
   await expect(catalogHeading).toBeVisible();
+  return {
+    postcondition: 'pos-catalog',
+    routeStatuses: authResponses
+  };
 }

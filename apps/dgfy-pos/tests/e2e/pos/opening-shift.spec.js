@@ -79,7 +79,7 @@ test.describe('POS opening-shift flow', () => {
     let createdOpeningCash = 0;
 
     try {
-      await signIn(page, testCredentials);
+      await signIn(page, testCredentials, { expectedPostcondition: 'pos-catalog' });
       await expect(page.getByRole('heading', { name: 'POS Catalog' })).toBeVisible();
 
       await expect.poll(() => Boolean(authHeaders.authorization), { timeout: 15_000 }).toBe(true);

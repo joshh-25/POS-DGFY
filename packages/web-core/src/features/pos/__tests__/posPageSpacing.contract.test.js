@@ -36,9 +36,9 @@ describe('POS mobile page spacing contract', () => {
     expect(operationsWorkspaceSource).toContain('data-testid="pos-shift-sticky-tabs"');
     expect(operationsWorkspaceSource).toContain('className={`min-w-0 ${POS_MOBILE_STICKY_TAB_ROW_CLASS}`}');
     expect(operationsWorkspaceSource).toContain('className={`${POS_PAGE_CONTENT_STACK_CLASS} sm:gap-6`}');
-    expect(primaryShiftTabCall).toContain('mobileGridColumns={2}');
-    expect(lineTabNavigationSource).toContain("2: 'grid-cols-2'");
-    expect(lineTabNavigationSource).toContain('const mobileGridClass = MOBILE_GRID_CLASSES[mobileGridColumns] ||');
+    expect(primaryShiftTabCall).not.toContain('mobileGridColumns=');
+    expect(lineTabNavigationSource).toContain(": 'overflow-x-auto'");
+    expect(lineTabNavigationSource).toContain("'flex min-w-full items-end gap-3 px-1'");
     expect(terminalLayoutSource).toContain('SHIFT_WORKSPACE_MODES.has(posViewMode)');
   });
 
@@ -57,7 +57,8 @@ describe('POS mobile page spacing contract', () => {
     expect(settingsSource).toMatch(/<PosPageFrame\s+id=\{sectionId\}\s+page="settings"/);
     expect(operationsWorkspaceSource).toContain('<PosPageFrame\n      id={sectionId}\n      page="shift"\n      className="max-[767px]:overflow-x-clip"');
     expect(terminalLayoutSource).toContain('const STANDARD_POS_PAGE_FRAME_MODES = new Set([');
-    expect(terminalLayoutSource).toContain('pos-items-workspace-content max-[1023px]:pt-0');
+    expect(terminalLayoutSource).toContain("? ' pos-items-workspace-content'");
+    expect(terminalLayoutSource).toContain('${workspaceContentModifierClassName}${isItemsView ? \' max-[1023px]:pt-0\' : \'\'}');
     expect(operationsWorkspaceSource).toContain('pos-items-workspace-shell max-[767px]:pt-0');
     expect(pageScrollCss).toMatch(/\.dgfy-pos-shell\[data-pos-items-view="true"\] \.pos-items-workspace-content\s*\{[^}]*padding-top:\s*0;/s);
     expect(terminalLayoutSource).toContain('SHIFT_WORKSPACE_MODES.has(posViewMode)');

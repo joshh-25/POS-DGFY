@@ -31614,3 +31614,578 @@ converge. No unresolved product or scope decision remains.
 ### Next phase number
 
 Phase 546. No explicit dependency.
+
+## Phase 546 - Drain API requests before dependency shutdown (#2769)
+
+### Initiative and release
+
+API lifecycle reliability / graceful shutdown.
+
+### Objective and scope
+
+Stop accepting HTTP requests and await in-flight request draining before closing Redis and tenant
+database connections. Keep the 10-second forced-exit watchdog active through HTTP draining and
+dependency cleanup, and preserve the existing authentication failure policy and worker-stop order.
+No API response, schema, migration, configuration, scheduler, or worker lifecycle changes.
+
+### Status
+
+`in_progress` — implementation and validation are underway on the #2769 Worker branch.
+
+### Dependencies
+
+None. Phase 546 follows the current ledger high-water mark, Phase 545. No earlier phase is an
+explicit technical or operational dependency.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0001](../architecture/adr/0001-modular-monolith-boundaries.md),
+[ADR 0004](../architecture/adr/0004-architecture-compliance-automation.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[Test Cost Inventory](../testing/test-cost-inventory.md), and issue
+[#2769](https://github.com/Sieitzz/dgfy-platform/issues/2769). Classification:
+`within-existing-boundary`; this work does not change an architecture decision or clause.
+
+### Implementation targets
+
+[`server.js`](../../apps/dgfy-api/src/server.js),
+[`gracefulShutdown.js`](../../apps/dgfy-api/src/utils/gracefulShutdown.js),
+[`gracefulShutdown.unit.test.js`](../../apps/dgfy-api/tests/gracefulShutdown.unit.test.js),
+[`authFailClosed.test.js`](../../apps/dgfy-api/tests/authFailClosed.test.js), generated backend test
+inventories, and this ledger entry.
+
+### Acceptance and validation evidence
+
+- [x] Production shutdown calls `server.close()` and optional `closeIdleConnections()` before
+  Redis or tenant cleanup, and the cleanup order is covered by an isolated utility test.
+- [x] The 10-second watchdog bounds HTTP draining, Redis cleanup, and tenant cleanup; terminal
+  shutdown exits only once and success clears the watchdog.
+- [x] HTTP-close failures and Redis cleanup rejection log and exit 1; tenant cleanup rejection
+  retains its existing log-and-continue behavior.
+- [x] Fail-closed token blacklist validation still rejects with the existing 503 and message, and
+  the auth-failure suite restores the environment it changes.
+- [x] Focused tests, architecture/compliance checks, backend inventory checks, docs validation,
+  syntax checks, and `git diff --check` pass.
+- [ ] The generated test-cost inventory check passes. Its current failure is the unrelated set of
+  seven unmatched `#378` basenames under `apps/dgfy-admin`; this phase refreshes the generated
+  manifest but does not change the inventory scanner or its historical baseline list. PM tracked
+  that follow-up separately as [#2774](https://github.com/Sieitzz/dgfy-platform/issues/2774).
+
+### Evidence
+
+`gracefulShutdown.unit.test.js` passed 9 tests with `--detectOpenHandles`; `authFailClosed.test.js`
+passed 3 tests against the repository's disposable MySQL 8 test container. `npm run
+check:architecture` passed (63 modules/797 code files and 115 controller files); `npm run
+check:compliance`, `npm run lint:docs` (36 governed docs / 105 ADRs), `npm run
+audit:backend-tests:check`, `node scripts/check-app-version-bump.js`, syntax checks, and
+`git diff --check` passed. The backend inventory was regenerated and its check passed. The test-cost
+manifest was regenerated with 1706 records; `npm run audit:test-cost:check` remains non-green because
+the scanner reports seven unmatched `#378` basenames under `apps/dgfy-admin`, which its configured
+frontend roots do not scan; PM filed the separate follow-up as
+[#2774](https://github.com/Sieitzz/dgfy-platform/issues/2774). Unit mocks prove shutdown ordering
+and bounded cleanup behavior only; they do not prove production restart causality or deployed
+behavior.
+
+### Risks and decisions
+
+The issue's production causality remains inferred from event timing; Redis restart is a separate
+plausible cause. Requests still in flight at the 10-second deadline can be terminated. Existing
+worker stop awaits occur before this watchdog, outside this phase's scope.
+
+### Completion date
+
+Not complete. Record after merge and implementation validation.
+
+### Post-merge verification
+
+- [ ] operational — observe an authorized PROD restart that demonstrably recreates the API
+  container under authenticated traffic; compare `DGFY-BACKEND-2` timestamps with the deploy's
+  `Pull and restart platform containers` step and record API container identity and whether Redis
+  restarted; owner: #2769 operator/release verifier; blocks production acceptance of #2769.
+
+### Next phase number
+
+Phase 547. No explicit dependency.
+
+## Phase 547 - Self-hosted runner disk cleanup safety (#2619)
+
+### Initiative and release
+
+CI runner workspace safety / operator-managed maintenance.
+
+### Objective and scope
+
+Record the confirmed disk-timer failure that deleted runner files during a live job, establish the
+policy against automatic deletion of runner workspaces and caches, and document stopped-runner
+maintenance requirements. Keep this failure mode separate from sparse-checkout poisoning, and
+record the second job symptom as accepted unless it recurs. This phase changes repository
+documentation only; host script installation and gate verification remain operator-owned. No
+workflow, application, API, schema, or host behavior is changed by this PR.
+
+### Status
+
+`in_progress` — documentation updates and validation are underway in the #2619 Worker PR.
+
+### Dependencies
+
+None. Phase 547 follows the current ledger high-water mark, Phase 546. No earlier phase is an
+explicit technical or operational dependency.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[CI Runner Workspace Hygiene](../ops/CI_RUNNER_WORKSPACE_HYGIENE.md),
+[CI Runner Policy](../ops/CI_RUNNER_POLICY.md), [Release Candidate Policy](../ops/RELEASE_CANDIDATE_POLICY.md),
+and issue [#2619](https://github.com/Sieitzz/dgfy-platform/issues/2619). Classification:
+`no-architecture-impact`; no ADR change is needed.
+
+### Implementation targets
+
+[`CI_RUNNER_WORKSPACE_HYGIENE.md`](../ops/CI_RUNNER_WORKSPACE_HYGIENE.md) and this ledger entry.
+The host script and external operations runbook are outside this repository task.
+
+### Acceptance and validation evidence
+
+- [x] The confirmed journal-window race and deleted runner files are documented separately from
+  sparse-checkout poisoning.
+- [x] The documentation states that runner workspaces, diagnostics, action/tool files, and runner
+  caches are not automatically removed, and that manual cleanup requires stopped-runner
+  maintenance.
+- [x] The Storefront job is recorded as completed/success and accepted unless it recurs; no code
+  fix is claimed for that symptom.
+- [x] Host installation and follow-up gate evidence remain explicitly outstanding and operator-owned.
+- [x] `npm run lint:docs`, `npm run check:architecture`, `npm run check:workspace-hygiene`,
+  `npm run check:runner-routing`, the develop-context app-version check, and `git diff --check`
+  pass on the implementation branch.
+
+### Evidence
+
+`npm run lint:docs` passed (36 governed docs; 105 ADRs); `npm run check:architecture` passed
+(63 modules/797 code files and 115 controller files); `npm run check:workspace-hygiene` and
+`npm run check:runner-routing` passed. The app-version check passed with PR context
+(`GITHUB_BASE_REF=develop`, `GITHUB_HEAD_REF=docs/issue-2619-runner-workspace-cleanup`) and found
+no changed apps or fan-out packages. Its bare local form has no PR target context and initially
+reported an inherited app-code diff from the preceding #2769 merge; no app files are changed by
+this phase. `git diff --check` passed. No host was accessed or changed, and no Promotion Quality
+Gate was dispatched in this implementation session.
+
+### Risks and decisions
+
+Disabling automatic runner-cache cleanup can leave disk usage high when unrelated cleanup is
+insufficient. The persistent-high-usage warning must continue to prompt operator-managed
+maintenance. A process-presence check alone is not a safe deletion guard because a job can start
+after the check. The live host remediation and gate result are not represented as complete by this
+documentation phase.
+
+### Completion date
+
+Not complete. Record after the documentation PR is merged and implementation validation passes.
+
+### Post-merge verification
+
+- [ ] operational — apply the reviewed replacement to both runner VMs; verify matching content and
+  checksum, preserved owner and mode, restored prior timer state, and runner health; owner: #2619
+  operator; blocks host-remediation acceptance.
+- [ ] operational — after host application, dispatch one full `promotion-quality-gate.yml` run on a
+  recorded SHA, inspect per-job and per-step outcomes and evidence artifacts, and record the run
+  link/SHA on #2619; owner: #2619 operator; blocks closing #2619.
+
+### Next phase number
+
+Phase 548. No explicit dependency.
+
+## Phase 548 - Staging quality triage: POS branch entry and shared contracts (#2767)
+
+### Initiative and release
+
+Staging run 40086857329 quality repair / ordinary `develop` branch.
+
+### Objective and scope
+
+Repair the eight shared POS frontend contract failures and the POS sales journey's fixture,
+authenticated branch-entry flow, and assigned-location authorization. Preserve checkout, stock,
+receipt history, export, shift ownership and server authority. Record a disposition for every raw
+failed run step; API matrix and dependency findings stay with their existing owners. No API or
+schema behavior, dependency, workflow policy, merge, deployment, or production verification is in
+scope. Classification: `within-existing-boundary`.
+
+### Status
+
+`in_progress` — scoped implementation, local validation, and the approved compliance declaration
+are complete on the #2767 Worker branch; PR review and merge remain outstanding.
+
+### Dependencies
+
+None. Phase 548 follows the current ledger high-water mark, Phase 547. The in-progress Phase
+547 entry for #2619 is not an explicit technical dependency. The separate API and dependency repair issues are not
+prerequisites for this frontend repair.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0020](../architecture/adr/0020-mode-aware-rbac-and-role-presets.md),
+[ADR 0031](../architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md),
+[POS Cashier Location Access Phase 354](POS_CASHIER_LOCATION_ACCESS_PHASE_354.md),
+[POS Cashier Location Access Phase 355](POS_CASHIER_LOCATION_ACCESS_PHASE_355.md),
+[Release Candidate Policy](../ops/RELEASE_CANDIDATE_POLICY.md), and issue
+[#2767](https://github.com/Sieitzz/dgfy-platform/issues/2767). Classification:
+`within-existing-boundary`; no ADR change is needed.
+
+### Implementation targets
+
+`packages/web-core/src/features/pos/pages/TerminalPage.jsx`, its assigned-branch access helper and
+tests, the five affected shared contract suites and nearby rendered tests; the POS E2E login helper,
+sales journey and sign-in callers; `apps/dgfy-api/tests/fixtures/prepare-pos-sales-e2e-user.mjs`;
+the Phase 354 behavior amendment; and this ledger entry.
+
+### Acceptance and validation evidence
+
+- [x] All eight original contract failures pass with equivalent rendered or structural behavior
+  coverage; read-only branch review and manual-lock resume behavior remain covered.
+- [x] A restricted non-master admin with effective action permissions and a matching location grant
+  can enter the assigned branch. Missing permissions/grants, read-only branch viewing, inactive or
+  mismatched terminals, occupancy by another operator, and another user's shift remain denied.
+- [x] The POS sales journey reaches authenticated branch selection, opens a real shift through the
+  UI, completes checkout, verifies stock decrement, receipt detail, CSV content, and shift cleanup.
+- [x] POS and IMS builds, scoped frontend suites/E2E, architecture, docs, version, syntax, marker,
+  and whitespace checks pass; raw failures and their existing owners are recorded.
+- [ ] The full `npm run test:frontend` aggregate completes. The IMS workspace run was interrupted
+  after five minutes in one continuously CPU-bound Vitest worker. It reported multiple unrelated
+  suite failures and one category-placement behavior failure; that changed suite passed in
+  isolation immediately afterward (21/21 tests), and the focused POS/shared set passed (255/255).
+- [x] `npm run check:compliance` passes after Pat approved and recorded the major POS/terminal
+  declaration in `docs/compliance/impact-declarations/2026-10-25-pos-assigned-branch-entry.md`.
+- [x] No merge, deployment, or deployed-environment claim is made. Ordinary develop app version
+  floors remain unchanged.
+
+### Evidence
+
+`npm run test:frontend:contracts` passed (132 files, 837 tests); the focused POS/shared set passed
+(15 files, 255 tests). `npm run test:pos-sales-e2e` passed against local MySQL/Redis with one
+Playwright worker, including branch-entry and Shift desktop/mobile screenshots, shift opening,
+checkout, stock decrement, receipt detail, CSV filename/content, and shift cleanup. Its
+non-secret response disposition attachment classifies pre-auth bootstrap 401s, the restricted
+admin's master-admin-only onboarding 403, and the optional disabled cashier-attendance endpoint.
+`npm run test:frontend:storefront` passed (252 files, 1,418 tests). `npm run build:pos` and
+`npm run build:skupervisor` passed. `npm run check:architecture`, `npm run lint:docs`,
+`npm run check:app-versions`, `node --check` for the fixture, and `git diff --check` passed.
+`npm run test:frontend` did not complete: its IMS run reported multiple unrelated-suite failures
+and remained in one CPU-bound worker for five minutes before interruption. The aggregate also
+reported one failure in the changed category-placement behavior suite, but that suite passed in
+isolation immediately afterward (21/21 tests); the focused 15-file POS/shared set also passed
+(255/255). `npm run check:compliance` passed after Pat approved the major POS/terminal declaration
+in the implementation session; its `NOT-EXECUTED-*` reference records that no live request-time
+preflight ran and remains subject to the normal reconciliation sweep. The issue's existing run
+inventory and trace comments are SHA-bound; API matrix findings remain routed to #2577, dependency
+audit findings remain with #2199/#2170 and #1786/#2211 as applicable, and S3 fallback evidence is
+recorded without any presigned URL.
+
+### Risks and decisions
+
+Role-independent branch entry must continue to require effective action permissions and location
+grants at both directory generation and action time. The selected tenant user used during DGFY
+login must be the same identity used for those checks. The frontend remains advisory; API
+revalidation and existing terminal, occupancy, ownership, audit and financial invariants remain
+authoritative. No unresolved product or architecture decision remains.
+
+### Post-merge verification
+
+- [ ] operational — after relevant fixes land, dispatch the existing quality workflow only when
+  appropriate, inspect raw outcomes, and link remaining failures to their existing owner issues;
+  owner: Pat/operator; blocks closing #2767. No baseline-only run is dispatched by the Worker.
+
+### Next phase number
+
+Phase 549. No explicit dependency.
+
+## Phase 549 - Retain promotion quality evidence in workflow summaries (#1165)
+
+### Initiative and release
+
+Promotion quality evidence durability / advisory reporting.
+
+### Objective and scope
+
+Append the promotion quality reporter's existing SHA-bound advisory evidence to the GitHub Actions
+run summary for both matching-PR and no-PR runs. Preserve the PR comment and candidate-recording
+paths, keep the suite optional and advisory, and leave promotion eligibility unchanged.
+
+### Status
+
+`in_progress` — implementation and focused validation are underway on the #1165 Worker branch.
+
+### Dependencies
+
+Phase 547 (#2619)'s host application and follow-up full quality-gate pass are required before this
+phase's post-merge no-PR dispatch can serve as operational verification, because the reporter job
+must complete on the self-hosted runner. This dependency gates operational verification only; code
+implementation is independent.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[Release Candidate Policy](../ops/RELEASE_CANDIDATE_POLICY.md), [Planner/Worker Handoff Compatibility](../ai/PLANNER_WORKER_HANDOFF_COMPATIBILITY.md),
+and issue [#1165](https://github.com/Sieitzz/dgfy-platform/issues/1165), especially its
+[no-PR summary gap update](https://github.com/Sieitzz/dgfy-platform/issues/1165#issuecomment-6252784606).
+Classification: `no-architecture-impact`; no ADR change is needed.
+
+### Implementation targets
+
+[`post-quality-suite-evidence.js`](../../scripts/post-quality-suite-evidence.js),
+[`post-quality-suite-evidence.test.js`](../../scripts/post-quality-suite-evidence.test.js), and this
+ledger entry. The existing `report-quality-evidence` workflow job already invokes the reporter after
+the advisory jobs; no workflow wiring change is in scope.
+
+### Acceptance and validation evidence
+
+- [x] The same rendered, SHA-bound advisory report is appended to `GITHUB_STEP_SUMMARY` for runs
+  with and without a matching open PR, after freshness resolution and before any PR comment post.
+- [x] Existing summary content is preserved; an unset summary path is a no-op; append errors are
+  diagnosed while comment and candidate recording continue; later comment failures preserve the
+  summary already written.
+- [x] Step failures, missing jobs, and skipped jobs remain visible as advisory outcomes, with no
+  change to promotion eligibility.
+- [x] `npm run test:quality-evidence`, `npm run test:pr-quality-workflow`,
+  `node scripts/check-pr-quality-workflow.js`, `npm run check:architecture`, `npm run lint:docs`,
+  and `git diff --check` pass.
+
+### Evidence
+
+`npm run test:quality-evidence` passed 9 tests, including no-PR summary output, matching-PR
+freshness parity, append-error continuation through PR/candidate recording, and summary retention
+when comment posting fails. `npm run test:pr-quality-workflow` passed 11 tests;
+`node scripts/check-pr-quality-workflow.js` passed; `npm run check:architecture` passed (63 modules,
+797 code files, and 115 controller files); `npm run lint:docs` passed (36 governed docs / 105 ADRs);
+`node --check` passed for both changed JavaScript files; `npm run check:compliance` detected no
+compliance-sensitive changes and passed API-contract checks. The app-version check passed with PR
+context (`GITHUB_BASE_REF=develop`, `GITHUB_HEAD_REF=fix/1165-quality-summary`); no app or fan-out
+package changes apply. `git diff --check` passed. The operational workflow-dispatch check remains
+outstanding for post-merge verification after Phase 547's runner validation.
+
+### Risks and decisions
+
+The workflow summary is informational and uses the existing bounded quality-job report. Summary
+write failure is non-fatal by design, so the existing PR comment and candidate evidence paths remain
+available. Phase 547 for #2619 and Phase 548 for #2767 are retained as preceding ledger entries;
+this #1165 scope is Phase 549, with its operational dispatch sequenced after Phase 547's runner
+validation.
+
+### Completion date
+
+Not complete. Record after merge and implementation validation.
+
+### Post-merge verification
+
+- [ ] operational — after Phase 547's runner validation, dispatch the promotion quality workflow on
+  a branch with no open PR and verify the run summary contains the expected SHA-bound advisory table
+  and classifications; owner: #1165 operator; blocks closing #1165.
+
+### Next phase number
+
+Phase 550. No explicit dependency.
+
+## Phase 550 - Storefront iOS Support URL readiness (#2772)
+
+### Initiative and release
+
+Storefront customer support / iOS launch readiness.
+
+### Objective and scope
+
+Make the existing public Storefront `/contact-us` page suitable for use as the iOS App Store
+Support URL. Clearly identify DGFY Storefront app support for problem reports, feedback, and feature
+requests; manage the support email through the DGFY Platform Admin Contact Inquiries page; and retain
+the existing Pin4MS inquiry form and direct-link fallback. `support@dgfy.ph` is a provisional
+default that is shown publicly; email and monitoring verification remain optional. This spans the
+Storefront, Platform Admin, API, and landlord configuration boundary; POS, Android, merchant OPIS,
+and legal-document changes remain out of scope.
+
+### Status
+
+`in_progress` — implementation and documentation are complete; migration direction and the
+compliance declaration were approved by the operator. The change is not merged.
+
+### Dependencies
+
+None. Phase 550 follows the current ledger high-water mark, Phase 549. No earlier phase is an
+explicit technical or operational dependency. The schema migration must be applied before the new
+configuration can be used in a deployed environment.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [Catalog, Inventory, POS, and
+Storefront Ownership Boundaries](../architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md),
+[Platform Admin Identity and Page RBAC](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md),
+[Platform Admin App Boundary](../architecture/adr/0089-platform-admin-fifth-frontend-app-cross-host-admin-routing.md),
+[Storefront Support Contact Publication](../architecture/adr/0098-storefront-support-contact-publication.md),
+[Platform Admin Route Permission Matrix](../testing/platform-admin-route-permission-matrix.md), and
+[issue #2772](https://github.com/Sieitzz/dgfy-platform/issues/2772). Classification:
+`within-existing-boundary`; Storefront owns the public page, while Platform Admin owns global support
+configuration under the existing identity and page-grant boundary. ADR 0098 records that the
+configured address is published immediately and verification is optional.
+
+### Implementation targets
+
+[Storefront Contact Us page](../../apps/dgfy-storefront/src/discovery/pages/ContactUsPage.jsx),
+[Platform Admin Contact Inquiries page](../../apps/dgfy-admin/Pages/ContactInquiriesDashboard.jsx),
+the contact-inquiries API module, additive landlord configuration persistence, public API contract,
+focused tests, ADR 0098, the compliance declaration, and this ledger.
+
+### Acceptance and validation evidence
+
+- [x] The public route identifies DGFY Storefront app support and explains that users can report
+      problems, send feedback, and request features.
+- [x] Platform Admin can configure a support email; the provisional `support@dgfy.ph` default is
+      stored and appears publicly before optional verification.
+- [x] Optional OTP verification records only successful actual delivery; disabled enforcement and
+      development fallback codes do not count as verified, and do not block public display.
+- [x] The Pin4MS embed and direct fallback remain available together, including when the embed is
+      blocked or fails.
+- [x] Admin and Storefront production builds, architecture boundaries, ADR validation, docs lint,
+      changed-app version checks, and compliance declaration checks pass.
+- [ ] Focused Platform Admin/API/Storefront tests and rendered desktop/mobile route checks pass.
+- [ ] After deployment, verify the public page and actual production form delivery path using only
+      synthetic test content; record the URL and evidence for the iOS submission owner.
+
+### Evidence
+
+The initial Storefront-only version passed the focused Contact Us suite (5/5 tests), the Storefront
+production build (with its existing large-chunk advisory), `npm run lint:docs` (36 governed docs and
+105 ADRs), and rendered checks at 1440px and 390px. The public route and fallback rendered without
+horizontal overflow. The provider iframe was blocked in local preview by its `frame-ancestors` policy
+for localhost; the direct standalone form opened successfully and rendered without submitting data.
+Those results predate the expanded Platform Admin/API configuration work and do not verify a support
+address or production delivery path.
+
+For the expanded implementation, `npm run check:architecture` passed (63 modules, 800 code files,
+and 116 controller files); `npm run build:admin` and `npm run build:store` passed (Storefront reports
+its existing large-chunk advisory); `npm run lint:docs` passed (36 governed docs and 106 ADRs),
+`node scripts/check-adr.js` passed, `npm run check:app-versions` passed in develop-PR context, and
+`npm run check:compliance` passed the declaration's structural and API-contract checks. The staged
+tenant-schema coverage check passed for the one new migration. Changed API JavaScript/CommonJS syntax
+checks and `git diff --check` passed. Focused tests and updated rendered desktop/mobile checks were
+not run in this session. The declaration's `NOT-EXECUTED-2772-2026-10-25` value is the expected
+develop-PR placeholder, not live preflight evidence.
+
+### Risks and decisions
+
+The production Pin4MS delivery destination cannot be proven by the page unit test or local build.
+The provider iframe did not render in the local preview; the direct form fallback remained visible
+and opened successfully. The provisional support email is public under the operator's nonblocking
+policy. Production delivery and monitoring remain unverified until the authorized mailbox owner
+completes the optional checks; the iOS listing should not claim a verified support destination
+before that evidence.
+
+### Rollback
+
+Revert the app-support copy, email presentation, styles, API/Admin configuration, landlord schema
+migration, ADR, focused tests, compliance declaration, and this ledger entry. The seeded provisional
+address remains public until the migration/configuration change is rolled back or Admin changes it.
+
+### Post-merge verification
+
+- [ ] deployment — verify `https://dgfy.ph/contact-us` loads publicly on mobile, shows the approved
+      contact details, and preserves the form fallback; owner: Storefront QA/release. This blocks a
+      production-page verification claim.
+- [ ] support email — apply the landlord migration, confirm whether `support@dgfy.ph` receives mail,
+      and record optional OTP/monitoring evidence in Platform Admin; owner: Platform Admin/support
+      inbox owner. This blocks a verified-contact claim, but not public display.
+- [ ] provider — confirm the Pin4MS form reaches its configured support destination with designated
+      synthetic content and no customer data; owner: Storefront/form owner. This blocks a verified
+      production support-path claim.
+- [ ] operational — confirm the iOS listing's proposed Support URL is
+      `https://dgfy.ph/contact-us` and record mobile review evidence; owner: mobile submission owner.
+      This blocks iOS listing readiness.
+
+### Next phase number
+
+Phase 551. No explicit dependency.
+
+## Phase 551 - Storefront order confirmation email (#532)
+
+### Initiative and release
+
+Storefront customer commerce / transactional messaging.
+
+### Objective and scope
+
+Send a receipt-style confirmation after a newly created online storefront order commits, for guest
+or logged-in customers and COD or PayMongo-finalized orders. Include itemization, totals, payment
+status and method, order references, fulfillment details, partial-payment balance details, and a
+store-specific tracking link when one can be resolved. Delivery is best-effort and does not change
+the checkout result. Idempotent replays do not resend. No schema, migration, frontend, SMS, bounce,
+retry/outbox, formal receipt, or separate bookings flow changes.
+
+### Status
+
+`in_progress` — implementation and validation are underway on the #532 Worker branch.
+
+### Dependencies
+
+None. Phase 551 follows the current ledger high-water mark, Phase 550. Phase 550 remains in progress
+on an independent issue and is not a technical dependency.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0054](../architecture/adr/0054-outbound-email-delivery-log-and-bounce-capture.md),
+[Issue #532](https://github.com/Sieitzz/dgfy-platform/issues/532). Classification:
+`within-existing-boundary`; the existing store-to-DGFY service seam owns post-commit transactional
+notifications.
+
+### Implementation targets
+
+[`storeUseCases.js`](../../apps/dgfy-api/src/modules/store/usecases/storeUseCases.js),
+[`dgfyOrderConfirmationEmail.js`](../../apps/dgfy-api/src/modules/dgfy/services/dgfyOrderConfirmationEmail.js),
+[`storefrontOrderTrackingUrl.js`](../../apps/dgfy-api/src/modules/dgfy/services/storefrontOrderTrackingUrl.js),
+[`emailService.js`](../../apps/dgfy-api/src/services/emailService.js),
+[`emailTemplates.js`](../../apps/dgfy-api/src/templates/emailTemplates.js), and focused API tests.
+
+### Acceptance and validation evidence
+
+- [ ] A new order dispatches after commit; replay dispatches nothing; checkout remains successful
+  when the dispatcher fails, for COD and captured-payment checkout paths.
+- [ ] The HTML and plain-text email include itemization, totals, payment method/status, order
+  references, fulfillment details, and downpayment/balance for `partially_paid` orders.
+- [ ] Slug and custom-domain tracking URLs resolve correctly; an unavailable URL omits only the
+  CTA.
+- [ ] Blank/invalid email, unconfigured SMTP, and the kill switch skip cleanly; timeout and
+  pre-send failures are bounded and reported without PII.
+- [ ] Delivery log purpose and tenant id are set; no email body is persisted.
+- [ ] Focused tests, syntax checks, architecture/compliance/docs checks, and app-version floor
+  validation pass.
+- [ ] Manual template rendering/visual inspection for delivery, pickup, and partially-paid samples
+  is recorded as completed or explicitly deferred.
+
+### Risks and decisions
+
+There is no durable email dedupe key or outbox. The new-order-only hook prevents checkout replays
+from sending twice, while a process crash after commit can lose the email. A `Promise.race` timeout
+does not cancel an SMTP send already in flight. The delivery log adds a recipient email row per
+order; existing retention applies, while the PII map remains tracked as separate compliance debt
+under #243.
+
+### Completion date
+
+Not complete. Record after merge and implementation validation.
+
+### Post-merge verification
+
+- [ ] On STAGING, place one COD and one QRPh order using a real mailbox; verify email delivery and
+  that the tracking link opens the correct order for a slug store and a custom-domain store if one
+  is available; verify the delivery log has a `storefront_order_confirmation` row with
+  `status='sent'`; replay checkout and verify it creates no second confirmation row. Owner: #532
+  operator/release verifier; blocks deployed acceptance.
+
+### Next phase number
+
+Phase 552. No explicit dependency.

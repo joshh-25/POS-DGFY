@@ -5,6 +5,8 @@ import { storefrontDomainFeaturePolicy } from './services/storefrontDomainFeatur
 import { buildStorefrontDomainOperationUseCases } from './usecases/storefrontDomainOperationUseCases.js';
 import { buildStorefrontDomainUseCases } from './usecases/storefrontDomainUseCases.js';
 
+export { storefrontDomainRepository };
+
 export const storefrontDomainUseCases = buildStorefrontDomainUseCases({
     repository: storefrontDomainRepository,
     dnsVerifier: verifyStorefrontDns,
