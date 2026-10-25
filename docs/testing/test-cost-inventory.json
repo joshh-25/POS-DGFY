@@ -1,6 +1,6 @@
 {
   "schema": "dgfy-test-cost-inventory/v1",
-  "generated_at": "2026-10-23T09:00:03.616Z",
+  "generated_at": "2026-10-25T02:53:57.647Z",
   "generator": "scripts/audit-test-cost-inventory.js",
   "sources": {
     "backend_db_manifest": "scripts/backend-db-dependent-tests.js",
@@ -50,7 +50,7 @@
     }
   ],
   "stats": {
-    "apps/dgfy-api :: fast-mocked-external :: default": 615,
+    "apps/dgfy-api :: fast-mocked-external :: default": 618,
     "apps/dgfy-api :: fast-pure :: default": 251,
     "apps/dgfy-api :: db-required :: opt-in": 34,
     "apps/dgfy-api :: browser-e2e :: opt-in": 2,
@@ -61,8 +61,8 @@
     "apps/dgfy-pos :: fast-pure :: default": 8,
     "apps/dgfy-pos :: fast-mocked-external :: default": 7,
     "apps/dgfy-pos :: browser-e2e :: opt-in": 20,
-    "apps/dgfy-storefront :: fast-pure :: default": 131,
-    "apps/dgfy-storefront :: fast-mocked-external :: default": 119,
+    "apps/dgfy-storefront :: fast-pure :: default": 132,
+    "apps/dgfy-storefront :: fast-mocked-external :: default": 120,
     "apps/dgfy-storefront :: browser-e2e :: opt-in": 16,
     "packages/web-core :: fast-pure :: default": 256,
     "packages/web-core :: fast-mocked-external :: default": 219,
@@ -7441,6 +7441,30 @@
       "known_baseline_failure_378": false
     },
     {
+      "path": "apps/dgfy-api/tests/externalEventSeedMapping.test.js",
+      "workspace": "apps/dgfy-api",
+      "surface": "DGFY API",
+      "classification": "fast-mocked-external",
+      "dependencies": {
+        "db_required": false,
+        "redis_required": false,
+        "network_provider_required": false,
+        "browser_runtime_required": false,
+        "fixture_seed_required": false
+      },
+      "default_opt_in": "default",
+      "runner": "Jest (fast tier)",
+      "command": "npm run test:backend:fast",
+      "safe_command": "npm run test:backend:fast (DB_HOST/DB_PORT guarded unreachable)",
+      "notes": "External boundary mocked or fixture-keyed; passes under the fast-tier unreachable-DB guard.",
+      "runtime_bucket": "fast (<30s full-file, static estimate)",
+      "runtime_provenance": {
+        "method": "static-estimate",
+        "detail": "size + case count; see manifest measurements for timed samples"
+      },
+      "known_baseline_failure_378": false
+    },
+    {
       "path": "apps/dgfy-api/tests/externalProductImageImport.test.js",
       "workspace": "apps/dgfy-api",
       "surface": "DGFY API",
@@ -7490,6 +7514,30 @@
     },
     {
       "path": "apps/dgfy-api/tests/externalRedirectFoundation.test.js",
+      "workspace": "apps/dgfy-api",
+      "surface": "DGFY API",
+      "classification": "fast-mocked-external",
+      "dependencies": {
+        "db_required": false,
+        "redis_required": false,
+        "network_provider_required": false,
+        "browser_runtime_required": false,
+        "fixture_seed_required": false
+      },
+      "default_opt_in": "default",
+      "runner": "Jest (fast tier)",
+      "command": "npm run test:backend:fast",
+      "safe_command": "npm run test:backend:fast (DB_HOST/DB_PORT guarded unreachable)",
+      "notes": "External boundary mocked or fixture-keyed; passes under the fast-tier unreachable-DB guard.",
+      "runtime_bucket": "medium (30s-2min, static estimate)",
+      "runtime_provenance": {
+        "method": "static-estimate",
+        "detail": "size + case count; see manifest measurements for timed samples"
+      },
+      "known_baseline_failure_378": false
+    },
+    {
+      "path": "apps/dgfy-api/tests/externalRedirectRepository.visibility.test.js",
       "workspace": "apps/dgfy-api",
       "surface": "DGFY API",
       "classification": "fast-mocked-external",
@@ -8585,6 +8633,30 @@
       "command": "npm run test:backend:db",
       "safe_command": "npm run test:backend:db (requires MySQL; see #372)",
       "notes": "Listed in scripts/backend-db-dependent-tests.js, the execution source of truth.",
+      "runtime_bucket": "fast (<30s full-file, static estimate)",
+      "runtime_provenance": {
+        "method": "static-estimate",
+        "detail": "size + case count; see manifest measurements for timed samples"
+      },
+      "known_baseline_failure_378": false
+    },
+    {
+      "path": "apps/dgfy-api/tests/gracefulShutdown.unit.test.js",
+      "workspace": "apps/dgfy-api",
+      "surface": "DGFY API",
+      "classification": "fast-mocked-external",
+      "dependencies": {
+        "db_required": false,
+        "redis_required": false,
+        "network_provider_required": false,
+        "browser_runtime_required": false,
+        "fixture_seed_required": false
+      },
+      "default_opt_in": "default",
+      "runner": "Jest (fast tier)",
+      "command": "npm run test:backend:fast",
+      "safe_command": "npm run test:backend:fast (DB_HOST/DB_PORT guarded unreachable)",
+      "notes": "External boundary mocked or fixture-keyed; passes under the fast-tier unreachable-DB guard.",
       "runtime_bucket": "fast (<30s full-file, static estimate)",
       "runtime_provenance": {
         "method": "static-estimate",
@@ -24018,6 +24090,31 @@
       "known_baseline_failure_378": false
     },
     {
+      "path": "apps/dgfy-storefront/src/__tests__/discoveryCategoryStage.test.jsx",
+      "workspace": "apps/dgfy-storefront",
+      "surface": "Public Storefront",
+      "invoked_from": "apps/dgfy-storefront",
+      "classification": "fast-pure",
+      "dependencies": {
+        "db_required": false,
+        "redis_required": false,
+        "network_provider_required": false,
+        "browser_runtime_required": false,
+        "fixture_seed_required": false
+      },
+      "default_opt_in": "default",
+      "runner": "Vitest",
+      "command": "npm --prefix apps/dgfy-storefront test -- --run src/__tests__/discoveryCategoryStage.test.jsx",
+      "safe_command": "npm --prefix apps/dgfy-storefront test -- --run src/__tests__/discoveryCategoryStage.test.jsx (no MySQL/Redis/network/browser required)",
+      "notes": "No DB/Redis/network/browser signal detected.",
+      "runtime_bucket": "fast (<30s full-file, static estimate)",
+      "runtime_provenance": {
+        "method": "static-estimate",
+        "detail": "size + case count; see manifest measurements for timed samples"
+      },
+      "known_baseline_failure_378": false
+    },
+    {
       "path": "apps/dgfy-storefront/src/__tests__/discoveryFilterState.test.js",
       "workspace": "apps/dgfy-storefront",
       "surface": "Public Storefront",
@@ -24193,6 +24290,31 @@
       "known_baseline_failure_378": false
     },
     {
+      "path": "apps/dgfy-storefront/src/__tests__/discoveryStoreResultsModel.test.js",
+      "workspace": "apps/dgfy-storefront",
+      "surface": "Public Storefront",
+      "invoked_from": "apps/dgfy-storefront",
+      "classification": "fast-pure",
+      "dependencies": {
+        "db_required": false,
+        "redis_required": false,
+        "network_provider_required": false,
+        "browser_runtime_required": false,
+        "fixture_seed_required": false
+      },
+      "default_opt_in": "default",
+      "runner": "Vitest",
+      "command": "npm --prefix apps/dgfy-storefront test -- --run src/__tests__/discoveryStoreResultsModel.test.js",
+      "safe_command": "npm --prefix apps/dgfy-storefront test -- --run src/__tests__/discoveryStoreResultsModel.test.js (no MySQL/Redis/network/browser required)",
+      "notes": "No DB/Redis/network/browser signal detected.",
+      "runtime_bucket": "fast (<30s full-file, static estimate)",
+      "runtime_provenance": {
+        "method": "static-estimate",
+        "detail": "size + case count; see manifest measurements for timed samples"
+      },
+      "known_baseline_failure_378": false
+    },
+    {
       "path": "apps/dgfy-storefront/src/__tests__/discoveryStoreResultsSort.test.js",
       "workspace": "apps/dgfy-storefront",
       "surface": "Public Storefront",
@@ -24297,7 +24419,7 @@
       "workspace": "apps/dgfy-storefront",
       "surface": "Public Storefront",
       "invoked_from": "apps/dgfy-storefront",
-      "classification": "fast-pure",
+      "classification": "fast-mocked-external",
       "dependencies": {
         "db_required": false,
         "redis_required": false,
@@ -24309,7 +24431,7 @@
       "runner": "Vitest",
       "command": "npm --prefix apps/dgfy-storefront test -- --run src/__tests__/externalDiscoveryPresentation.test.js",
       "safe_command": "npm --prefix apps/dgfy-storefront test -- --run src/__tests__/externalDiscoveryPresentation.test.js (no MySQL/Redis/network/browser required)",
-      "notes": "No DB/Redis/network/browser signal detected.",
+      "notes": "External boundary (fetch/API client/router) mocked; jsdom only.",
       "runtime_bucket": "fast (<30s full-file, static estimate)",
       "runtime_provenance": {
         "method": "static-estimate",

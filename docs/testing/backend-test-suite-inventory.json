@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-10-23T07:48:57.979Z",
-  "totalFiles": 900,
+  "generatedAt": "2026-10-25T02:54:22.119Z",
+  "totalFiles": 904,
   "byClassification": {
-    "keep": 830,
+    "keep": 834,
     "delete": 22,
     "consolidate": 40,
     "trim": 3,
@@ -10,12 +10,12 @@
   },
   "bySuffix": {
     "migration": 57,
-    "(none)": 307,
+    "(none)": 308,
     "middleware": 14,
     "handler": 1,
     "transport": 46,
     "integration": 13,
-    "unit": 97,
+    "unit": 98,
     "applicationResult": 20,
     "cacheInvalidation": 1,
     "asyncCrashRecovery": 1,
@@ -35,6 +35,7 @@
     "routeContracts": 1,
     "api": 1,
     "usecases": 37,
+    "applicationIdNullable.db.integration": 1,
     "e2e.transport": 1,
     "documentaryReadiness": 1,
     "profileMerge": 1,
@@ -59,6 +60,7 @@
     "repository": 13,
     "loggingPolicy": 1,
     "helper": 1,
+    "visibility": 1,
     "routes": 2,
     "qa": 1,
     "complianceActivationReadiness.e2e": 1,
@@ -161,7 +163,7 @@
     "supertest": 1,
     "enforcement.contract": 1
   },
-  "dbManifestCount": 33,
+  "dbManifestCount": 34,
   "findingsCount": 3,
   "files": [
     {
@@ -2877,12 +2879,12 @@
     },
     {
       "path": "tests/authFailClosed.test.js",
-      "lines": 130,
+      "lines": 136,
       "caseCount": 3,
       "describeTitles": [
         "Auth Redis Failure Policy"
       ],
-      "expectCount": 8,
+      "expectCount": 9,
       "expectResCount": 8,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -2904,7 +2906,8 @@
           "docs/testing/test-cost-inventory.json"
         ],
         "historical": [
-          "docs/archive/system-audit-2026-03/1.1-Token_blacklist_fails_open.md"
+          "docs/archive/system-audit-2026-03/1.1-Token_blacklist_fails_open.md",
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": [
           "scripts/backend-db-dependent-tests.js"
@@ -5835,14 +5838,14 @@
     },
     {
       "path": "tests/companyRegistrationUploadMigration.test.js",
-      "lines": 173,
-      "caseCount": 4,
+      "lines": 241,
+      "caseCount": 10,
       "describeTitles": [
         "company registration upload migrations"
       ],
-      "expectCount": 13,
+      "expectCount": 24,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 13,
+      "toHaveBeenCalledCount": 22,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -5936,6 +5939,44 @@
       "classification": "keep",
       "reason": "default keep (suffix: (none))",
       "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/companyRegistrationUploads.applicationIdNullable.db.integration.test.js",
+      "lines": 272,
+      "caseCount": 6,
+      "describeTitles": [
+        "company_registration_uploads.application_id MySQL integration",
+        "company_registration_uploads.application_id PROD-shaped MySQL upgrade"
+      ],
+      "expectCount": 9,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": true,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "applicationIdNullable.db.integration",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": [
+          "scripts/backend-db-dependent-tests.js"
+        ]
+      },
+      "classification": "keep",
+      "reason": "hardcoded reference: scripts/backend-db-dependent-tests.js",
+      "rule": "R1-pin",
       "findings": []
     },
     {
@@ -11744,6 +11785,43 @@
       "findings": []
     },
     {
+      "path": "tests/externalEventSeedMapping.test.js",
+      "lines": 223,
+      "caseCount": 10,
+      "describeTitles": [
+        "external event seed allow-list"
+      ],
+      "expectCount": 43,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 4,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/externalProductImageImport.test.js",
       "lines": 107,
       "caseCount": 4,
@@ -11815,15 +11893,15 @@
     },
     {
       "path": "tests/externalRedirectFoundation.test.js",
-      "lines": 109,
-      "caseCount": 8,
+      "lines": 244,
+      "caseCount": 14,
       "describeTitles": [
         "external destination policy",
         "external listing redirect"
       ],
-      "expectCount": 18,
+      "expectCount": 49,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 2,
+      "toHaveBeenCalledCount": 6,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -11831,7 +11909,7 @@
       "isSnapshot": false,
       "onDbManifest": false,
       "usesCreateTestTenant": false,
-      "srcImportCount": 3,
+      "srcImportCount": 4,
       "deadImportCount": 0,
       "suffix": "(none)",
       "conditionalSkip": false,
@@ -11846,6 +11924,41 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/externalRedirectRepository.visibility.test.js",
+      "lines": 132,
+      "caseCount": 4,
+      "describeTitles": [
+        "external discovery visibility repository"
+      ],
+      "expectCount": 23,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 16,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 1,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "visibility",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: visibility)",
       "rule": "R5-default",
       "findings": []
     },
@@ -13529,6 +13642,43 @@
       "classification": "keep",
       "reason": "hardcoded reference: scripts/backend-db-dependent-tests.js",
       "rule": "R1-pin",
+      "findings": []
+    },
+    {
+      "path": "tests/gracefulShutdown.unit.test.js",
+      "lines": 220,
+      "caseCount": 8,
+      "describeTitles": [
+        "shutdownHttpServer"
+      ],
+      "expectCount": 45,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 36,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "unit",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: unit)",
+      "rule": "R5-default",
       "findings": []
     },
     {
@@ -30696,14 +30846,14 @@
     },
     {
       "path": "tests/storefrontDiscoveryFreshnessService.test.js",
-      "lines": 57,
-      "caseCount": 1,
+      "lines": 85,
+      "caseCount": 2,
       "describeTitles": [
         "storefrontDiscoveryFreshnessService"
       ],
-      "expectCount": 7,
+      "expectCount": 9,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 3,
+      "toHaveBeenCalledCount": 4,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -30824,14 +30974,14 @@
     },
     {
       "path": "tests/storefrontDiscoveryRepository.test.js",
-      "lines": 1056,
-      "caseCount": 31,
+      "lines": 1165,
+      "caseCount": 37,
       "describeTitles": [
         "storefrontDiscoveryRepository (index-backed search + metadata)"
       ],
-      "expectCount": 81,
+      "expectCount": 95,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 10,
+      "toHaveBeenCalledCount": 14,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
