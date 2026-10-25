@@ -11,8 +11,8 @@ verification_evidence: focused storefront confirmation Jest suites (82 tests pas
 rollback_note: Revert the post-commit dispatcher, email sender/template, tracking URL helper, focused tests, ADR amendment, and this declaration together. No order/payment state, schema, migration, or email-log schema changes are introduced; already sent emails cannot be recalled.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-25T07:34:29Z
-preflight_request_ref: NOT-EXECUTED-532-2026-10-25-STOREFRONT-ORDER-CONFIRMATION
+preflight_run_at: 2026-10-25T10:10:42.021Z
+preflight_request_ref: PREFLIGHT-40183300949-2026-10-25-STOREFRONT-ORDER-CONFIRMATION-EMAIL
 ---
 
 # Storefront order confirmation email
