@@ -116,7 +116,7 @@ describe('ContactInquiriesDashboard', () => {
     test('publishes the saved provisional address without waiting for optional verification', async () => {
         render(<ContactInquiriesDashboard />);
 
-        const candidateField = await screen.findByLabelText('Storefront support email');
+        const candidateField = await screen.findByLabelText('Storefront support email', { selector: 'input' });
         expect(candidateField.value).toBe('support@dgfy.ph');
         expect(screen.getByText(/visible to customers once saved, even if optional verification has not been completed/i)).toBeTruthy();
 
