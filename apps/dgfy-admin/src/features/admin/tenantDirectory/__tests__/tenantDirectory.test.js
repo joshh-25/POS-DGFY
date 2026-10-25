@@ -9,7 +9,9 @@ import {
     hasActiveFilters,
     matchesSearch,
     parseDirectoryParams,
-    serializeDirectoryParams
+    paginateTenants,
+    serializeDirectoryParams,
+    sortTenants
 } from '../tenantDirectory.js';
 
 const tenants = [
@@ -93,17 +95,20 @@ describe('tenant directory facets', () => {
     });
 
     it('keeps capability on, off, unavailable, and n/a distinct', () => {
-        expect(deriveTenantFacets({ capabilities: { ims_enabled: true } }).ims).toBe('on');
-        expect(deriveTenantFacets({ capabilities: { ims_enabled: false } }).ims).toBe('off');
-        expect(deriveTenantFacets({ capabilities: { unavailable: true, ims_enabled: false } }).ims).toBe('unavailable');
+        expect(deriveTenantFacets({ status: 'active', capabilities: { ims_enabled: true } }).ims).toBe('on');
+        expect(deriveTenantFacets({ status: 'active', capabilities: { ims_enabled: false } }).ims).toBe('off');
+        expect(deriveTenantFacets({ status: 'active', capabilities: { unavailable: true, ims_enabled: false } }).ims).toBe('unavailable');
         expect(deriveTenantFacets({ capabilities: null }).ims).toBe('na');
         expect(deriveTenantFacets({ capabilities: 'invalid' }).ims).toBe('na');
-        expect(deriveTenantFacets({ capabilities: {} }).ims).toBe('unavailable');
+        expect(deriveTenantFacets({ status: 'active', capabilities: {} }).ims).toBe('unavailable');
+        expect(deriveTenantFacets({ status: 'active', capabilities: null }, { capabilitiesLoaded: false }).ims).toBe('loading');
+        expect(deriveTenantFacets({ status: 'active', capabilities: null }).ims).toBe('unavailable');
+        expect(deriveTenantFacets({ status: 'archived', capabilities: null }, { capabilitiesLoaded: false }).ims).toBe('na');
         expect(deriveTenantFacets({ ownership_status: 'handover_pending' }).ownership).toBe('handover_pending');
         expect(filterTenants([
-            { id: 'off', capabilities: { ims_enabled: false } },
-            { id: 'unavailable', capabilities: { unavailable: true } },
-            { id: 'na', capabilities: null }
+            { id: 'off', status: 'active', capabilities: { ims_enabled: false } },
+            { id: 'unavailable', status: 'active', capabilities: { unavailable: true } },
+            { id: 'na', status: 'inactive', capabilities: null }
         ], { ...DEFAULT_DIRECTORY_STATE, status: 'all', ims: 'off' }).map((tenant) => tenant.id)).toEqual(['off']);
     });
 });
@@ -160,6 +165,40 @@ describe('tenant directory URL state', () => {
             pos: 'off'
         });
         expect(hasActiveFilters(DEFAULT_DIRECTORY_STATE)).toBe(false);
+    });
+
+    it('validates sort, page, and page size while preserving unrelated route context', () => {
+        expect(parseDirectoryParams('sort=name_desc&page=3&page_size=50&returnTo=%2Fadmin%2Ftenants%2Fx')).toEqual({
+            ...DEFAULT_DIRECTORY_STATE,
+            sort: 'name_desc',
+            page: 3,
+            page_size: 50
+        });
+        expect(parseDirectoryParams('sort=unknown&page=0&page_size=25')).toEqual(DEFAULT_DIRECTORY_STATE);
+        expect(serializeDirectoryParams({ ...DEFAULT_DIRECTORY_STATE, sort: 'oldest', page: 3, page_size: 50 }, 'returnTo=%2Fadmin%2Ftenants%2Fx').toString())
+            .toBe('returnTo=%2Fadmin%2Ftenants%2Fx&sort=oldest&page=3&page_size=50');
+        expect(hasActiveFilters({ ...DEFAULT_DIRECTORY_STATE, sort: 'oldest', page: 3, page_size: 50 })).toBe(false);
+    });
+});
+
+describe('tenant directory ordering and paging', () => {
+    const rows = [
+        { id: 'b', name: 'Beta', created_at: '2026-01-01T00:00:00Z' },
+        { id: 'a', name: 'alpha', created_at: '2026-01-01T00:00:00Z' },
+        { id: 'c', name: 'Gamma', created_at: 'not-a-date' }
+    ];
+
+    it('sorts by name or creation date with deterministic ties and keeps the source order untouched', () => {
+        expect(sortTenants(rows, 'name_asc').map((row) => row.id)).toEqual(['a', 'b', 'c']);
+        expect(sortTenants(rows, 'name_desc').map((row) => row.id)).toEqual(['c', 'b', 'a']);
+        expect(sortTenants(rows, 'newest').map((row) => row.id)).toEqual(['a', 'b', 'c']);
+        expect(rows.map((row) => row.id)).toEqual(['b', 'a', 'c']);
+    });
+
+    it('clamps an out-of-range page and reports an empty range clearly', () => {
+        const largeSet = Array.from({ length: 25 }, (_, index) => ({ id: String(index + 1) }));
+        expect(paginateTenants(largeSet, 8, 10)).toMatchObject({ page: 3, totalPages: 3, rangeStart: 21, rangeEnd: 25, rows: largeSet.slice(20) });
+        expect(paginateTenants([], 1, 20)).toMatchObject({ page: 1, totalPages: 1, rangeStart: 0, rangeEnd: 0, rows: [] });
     });
 });
 

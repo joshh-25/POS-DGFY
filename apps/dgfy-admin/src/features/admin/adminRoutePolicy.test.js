@@ -21,6 +21,17 @@ describe('Admin route policy', () => {
         }
     });
 
+    it('keeps the global Billing path distinct from tenant ids and requires Platform Master access', () => {
+        const globalBilling = resolveAdminRoute('/admin/tenants/billing');
+        const tenantBilling = resolveAdminRoute('/admin/tenants/tenant-42/billing');
+        expect(globalBilling).toMatchObject({ path: '/admin/tenants/billing', masterOnly: true });
+        expect(tenantBilling).toMatchObject({ path: '/admin/tenants/:id/billing', masterOnly: true });
+        expect(canAccessAdminRoute(globalBilling, { permissions: ['admin.tenants'] })).toBe(false);
+        expect(canAccessAdminRoute(tenantBilling, { permissions: ['admin.tenants'] })).toBe(false);
+        expect(canAccessAdminRoute(globalBilling, { is_master: true })).toBe(true);
+        expect(canAccessAdminRoute(tenantBilling, { is_master: true })).toBe(true);
+    });
+
     it('does not match prefix lookalikes or unknown routes', () => {
         expect(resolveAdminRoute('/admin/tenants-lookalike')).toBeNull();
         expect(resolveAdminRoute('/admin/tenants-new')).toBeNull();

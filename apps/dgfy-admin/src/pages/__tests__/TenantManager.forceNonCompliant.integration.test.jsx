@@ -7,6 +7,7 @@ import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom';
 import TenantManager from '../../../Pages/TenantManager.jsx';
 import TenantDetailLayout from '../../../Pages/TenantDetailLayout.jsx';
 import TenantCompliance from '../../../Pages/TenantCompliance.jsx';
+import { TenantDirectoryProvider } from '../../features/admin/tenantDirectory/TenantDirectoryContext.jsx';
 
 const mocks = vi.hoisted(() => ({
   adminServiceMock: {
@@ -132,7 +133,7 @@ describe('tenant Compliance section mode guardrails', () => {
   });
 
   it('removes compliance mode actions from tenant cards after moving them to Compliance', async () => {
-    render(<MemoryRouter><TenantManager /></MemoryRouter>);
+    render(<TenantDirectoryProvider><MemoryRouter><TenantManager /></MemoryRouter></TenantDirectoryProvider>);
 
     await screen.findByRole('heading', { name: 'Legacy Retail' });
     await screen.findByRole('heading', { name: 'Non-compliant Retail' });

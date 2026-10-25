@@ -107,7 +107,7 @@ describe('TenantOverview', () => {
     }) });
     renderOverview('/admin/tenants/tenant-1');
     expect(await screen.findByText(/This tenant is archived\. Details and audit history are read-only/)).toBeTruthy();
-    expect(screen.getByText('Billing navigation is hidden for archived tenants.')).toBeTruthy();
+    expect(screen.getByText('Revenue & settlement remains available read-only.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /enable|disable|archive|restore/i })).toBeNull();
   });
 });

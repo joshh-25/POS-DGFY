@@ -3,8 +3,10 @@ import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Link, MemoryRouter, Outlet, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import TenantManager from '../../../Pages/TenantManager.jsx';
+import TenantBilling from '../../../Pages/TenantBilling.jsx';
+import { TenantDirectoryProvider } from '../../features/admin/tenantDirectory/TenantDirectoryContext.jsx';
 
 const mocks = vi.hoisted(() => {
   const writeMethodNames = [
@@ -114,21 +116,31 @@ const HistoryForwardButton = () => {
   return <button type="button" onClick={() => navigate(1)}>Navigate forward</button>;
 };
 
+const DirectoryDetailProbe = () => {
+  const { id } = useParams();
+  const location = useLocation();
+  return <main><h1>Tenant detail {id}</h1><Link to={{ pathname: '/admin/tenants', search: location.search }}>Back to tenant directory</Link></main>;
+};
+
 const renderDirectory = (initialEntry = '/admin/tenants', adminProfile = null) => render(
-  <MemoryRouter initialEntries={[initialEntry]}>
-    <LocationProbe />
-    <HistoryBackButton />
-    <HistoryForwardButton />
-    <Routes>
-      <Route element={<Outlet context={{ adminProfile }} />}>
-        <Route path="/admin/tenants" element={<TenantManager />} />
-      </Route>
-    </Routes>
-  </MemoryRouter>
+  <TenantDirectoryProvider>
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <LocationProbe />
+      <HistoryBackButton />
+      <HistoryForwardButton />
+      <Routes>
+        <Route element={<Outlet context={{ adminProfile }} />}>
+          <Route path="/admin/tenants" element={<TenantManager />} />
+          <Route path="/admin/tenants/billing" element={<TenantBilling />} />
+          <Route path="/admin/tenants/:id" element={<DirectoryDetailProbe />} />
+        </Route>
+      </Routes>
+    </MemoryRouter>
+  </TenantDirectoryProvider>
 );
 
-const waitForDirectory = async (count = '4 of 5') => {
-  await screen.findByText(count);
+const waitForDirectory = async () => {
+  await screen.findByText(/Showing \d+(?:–\d+)? of \d+/);
 };
 
 describe('TenantManager searchable directory', () => {
@@ -155,7 +167,12 @@ describe('TenantManager searchable directory', () => {
     renderDirectory();
     await waitForDirectory();
     expect(mocks.adminServiceMock.getTenants).toHaveBeenCalledTimes(1);
-    expect(mocks.adminServiceMock.getTenants).toHaveBeenCalledWith('all');
+    expect(mocks.adminServiceMock.getTenants).toHaveBeenCalledWith('all', { includeCapabilities: false });
+    expect(mocks.adminServiceMock.getTenantRevenueDashboard).not.toHaveBeenCalled();
+    expect(mocks.adminServiceMock.listTenantRevenueTransactions).not.toHaveBeenCalled();
+    expect(mocks.adminServiceMock.listTenantSettlementBatches).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('Status')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Filters' }));
 
     await user.type(screen.getByPlaceholderText('Search by name, admin email, domain, or tenant ID'), 'kate');
     await user.selectOptions(screen.getByLabelText('Status'), 'active');
@@ -167,21 +184,28 @@ describe('TenantManager searchable directory', () => {
     await user.selectOptions(screen.getByLabelText('Storefront capability'), 'on');
 
     expect(screen.getByRole('heading', { name: 'Kate Market' })).toBeTruthy();
-    expect(screen.getByText('1 of 5')).toBeTruthy();
-    expect(mocks.adminServiceMock.getTenants).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Showing 1 of 1')).toBeTruthy();
+    expect(mocks.adminServiceMock.getTenants).toHaveBeenCalledTimes(2);
+    expect(mocks.adminServiceMock.getTenants).toHaveBeenLastCalledWith('all', { includeCapabilities: true });
     Object.values(mocks.writeMocks).forEach((mock) => expect(mock).not.toHaveBeenCalled());
     expect(screen.getByTestId('location-search').textContent).toContain('q=kate');
     expect(screen.getByTestId('location-search').textContent).toContain('status=active');
     expect(screen.getByTestId('location-search').textContent).toContain('storefront=on');
   });
 
-  it('preselects Revenue only for Platform Master and guards its data requests from delegates', async () => {
+  it('redirects the legacy billing anchor to Billing and preselects only authorized tenant data', async () => {
     const tenantId = directoryTenants[0].id;
     renderDirectory(`/admin/tenants?tenant_id=${tenantId}#revenue-settlement`, { is_master: true, permissions: ['admin.tenants'] });
     expect(await screen.findByRole('heading', { name: 'Revenue & Settlement' })).toBeTruthy();
     expect(await screen.findByText(/Showing revenue and settlement for Kate Market/)).toBeTruthy();
     expect(screen.getByLabelText('Tenant').value).toBe(tenantId);
-    await waitFor(() => expect(mocks.adminServiceMock.getTenantRevenueDashboard).toHaveBeenCalledWith(expect.objectContaining({ tenant_id: tenantId })));
+    await waitFor(() => expect(mocks.adminServiceMock.getTenantRevenueDashboard).toHaveBeenCalledTimes(1));
+    expect(mocks.adminServiceMock.getTenantRevenueDashboard).toHaveBeenCalledWith(expect.objectContaining({ tenant_id: tenantId }));
+    expect(mocks.adminServiceMock.listTenantRevenueTransactions).toHaveBeenCalledWith(expect.objectContaining({ tenant_id: tenantId }));
+    expect(mocks.adminServiceMock.listTenantSettlementBatches).toHaveBeenCalledWith(expect.objectContaining({ tenant_id: tenantId }));
+    expect(mocks.adminServiceMock.listTenantRevenueReconciliation).toHaveBeenCalledWith(expect.objectContaining({ tenant_id: tenantId }));
+    expect(mocks.adminServiceMock.listTenantRevenueAdjustments).toHaveBeenCalledWith(expect.objectContaining({ tenant_id: tenantId }));
+    expect(mocks.adminServiceMock.listTenantRevenueFeePolicies).toHaveBeenCalledExactlyOnceWith(tenantId);
     Object.values(mocks.writeMocks).forEach((mock) => expect(mock).not.toHaveBeenCalled());
 
     cleanup();
@@ -191,8 +215,33 @@ describe('TenantManager searchable directory', () => {
     renderDirectory(`/admin/tenants?tenant_id=${tenantId}#revenue-settlement`, { is_master: false, permissions: ['admin.tenants'] });
     await waitForDirectory();
     expect(screen.queryByRole('heading', { name: 'Revenue & Settlement' })).toBeNull();
+    expect(mocks.adminServiceMock.getTenants).toHaveBeenCalledWith('all', { includeCapabilities: false });
     expect(mocks.adminServiceMock.getTenantRevenueDashboard).not.toHaveBeenCalled();
     expect(mocks.adminServiceMock.listTenantRevenueTransactions).not.toHaveBeenCalled();
+    expect(screen.queryByRole('link', { name: 'Billing' })).toBeNull();
+  });
+
+  it('loads global financial data only on Billing and supports tenant selection', async () => {
+    const user = userEvent.setup();
+    mocks.adminServiceMock.getTenantRevenueDashboard.mockResolvedValue({
+      data: { totals: { gross_centavos: 10000, dgfy_fee_centavos: 500, pending_centavos: 2500, settled_centavos: 7000 }, counts: { open_exceptions: 0 } }
+    });
+    renderDirectory('/admin/tenants/billing', { is_master: true, permissions: ['admin.tenants'] });
+
+    expect(await screen.findByRole('heading', { name: 'Revenue & Settlement' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Billing' })).toBeTruthy();
+    expect(await screen.findByText('Gross Sales')).toBeTruthy();
+    expect(mocks.adminServiceMock.getTenants).toHaveBeenCalledExactlyOnceWith('all', { includeCapabilities: false });
+    expect(mocks.adminServiceMock.getTenantRevenueDashboard).toHaveBeenCalledTimes(1);
+    expect(mocks.adminServiceMock.getTenantRevenueDashboard.mock.calls[0][0]).not.toHaveProperty('tenant_id');
+    expect(mocks.adminServiceMock.listTenantRevenueTransactions.mock.calls[0][0]).not.toHaveProperty('tenant_id');
+
+    await user.selectOptions(screen.getByLabelText('Tenant'), directoryTenants[0].id);
+    await waitFor(() => expect(mocks.adminServiceMock.getTenantRevenueDashboard).toHaveBeenCalledTimes(2));
+    expect(mocks.adminServiceMock.getTenantRevenueDashboard.mock.calls[1][0]).toHaveProperty('tenant_id', directoryTenants[0].id);
+    expect(mocks.adminServiceMock.listTenantRevenueTransactions.mock.calls[1][0]).toHaveProperty('tenant_id', directoryTenants[0].id);
+    expect(mocks.adminServiceMock.getTenants).toHaveBeenCalledTimes(1);
+    Object.values(mocks.writeMocks).forEach((mock) => expect(mock).not.toHaveBeenCalled());
   });
 
   it('keeps provisioning off the directory and preserves query context on Add tenant and Overview links', async () => {
@@ -203,26 +252,28 @@ describe('TenantManager searchable directory', () => {
     expect(screen.queryByText('Assisted provisioning')).toBeNull();
     expect(screen.queryByPlaceholderText('Company name')).toBeNull();
     expect(screen.getByRole('link', { name: 'Add tenant' }).getAttribute('href')).toBe(`/admin/tenants/new${search}`);
-    expect(screen.getByRole('link', { name: 'Kate Market' }).getAttribute('href')).toBe(
+    expect(screen.getByRole('link', { name: 'Open Kate Market tenant overview' }).getAttribute('href')).toBe(
       `/admin/tenants/550e8400-e29b-41d4-a716-446655440000${search}`
     );
   });
 
   it('hides archived by default, counts the whole set, and labels archived tenants', async () => {
+    const user = userEvent.setup();
     renderDirectory();
     await waitForDirectory();
+    await user.click(screen.getByRole('button', { name: 'Filters' }));
 
     expect(screen.getByText('1 archived hidden')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Total tenants: 5' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Pending tenants: 1' })).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Archived Foods' })).toBeNull();
 
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Show archived' }));
+    await user.click(screen.getByRole('button', { name: 'Show archived' }));
     expect(screen.getByTestId('location-search').textContent).toContain('status=archived');
     expect(await screen.findByRole('heading', { name: 'Archived Foods' })).toBeTruthy();
     const archivedCard = screen.getByRole('heading', { name: 'Archived Foods' }).closest('.bg-white');
     expect(within(archivedCard).getByText('Archived')).toBeTruthy();
-    expect(screen.getByText('1 of 5')).toBeTruthy();
+    expect(screen.getByText('Showing 1 of 1')).toBeTruthy();
   });
 
   it('uses the identity-only search copy and does not match a company token', async () => {
@@ -264,10 +315,11 @@ describe('TenantManager searchable directory', () => {
     renderDirectory('/admin/tenants?q=kate&status=active');
     await screen.findByRole('heading', { name: 'Kate Market' });
     expect(screen.getByPlaceholderText('Search by name, admin email, domain, or tenant ID').value).toBe('kate');
+    await user.click(screen.getByRole('button', { name: 'Filters · active' }));
     expect(screen.getByText('Search: kate')).toBeTruthy();
 
     await user.selectOptions(screen.getByLabelText('Status'), 'all');
-    expect(await screen.findByText('1 of 5')).toBeTruthy();
+    expect(await screen.findByText('Showing 1 of 1')).toBeTruthy();
     expect(screen.getByTestId('location-search').textContent).toContain('status=all');
     await user.click(screen.getByRole('button', { name: 'Navigate back' }));
     await screen.findByRole('heading', { name: 'Kate Market' });
@@ -282,13 +334,14 @@ describe('TenantManager searchable directory', () => {
     await user.click(screen.getByRole('button', { name: 'Clear all' }));
     expect(screen.getByTestId('location-search').textContent).toBe('');
     expect(screen.getByPlaceholderText('Search by name, admin email, domain, or tenant ID').value).toBe('');
-    expect(screen.getByText('4 of 5')).toBeTruthy();
+    expect(screen.getByText('Showing 1–4 of 4')).toBeTruthy();
   });
 
   it('replaces URL history while typing and pushes facet changes for back and forward', async () => {
     const user = userEvent.setup();
     renderDirectory();
     await waitForDirectory();
+    await user.click(screen.getByRole('button', { name: 'Filters' }));
 
     await user.type(screen.getByPlaceholderText('Search by name, admin email, domain, or tenant ID'), 'kate');
     expect(screen.getByTestId('location-search').textContent).toBe('?q=kate');
@@ -375,5 +428,120 @@ describe('TenantManager searchable directory', () => {
     expect(screen.getByPlaceholderText('Search by name, admin email, domain, or tenant ID').value).toBe('kate');
     expect(screen.getByTestId('location-search').textContent).toContain('status=active');
     expect(screen.queryByText('Loading tenants...')).toBeNull();
+  });
+
+  it('paginates in URL state and returns from a tenant without refetching the cached directory', async () => {
+    const user = userEvent.setup();
+    const manyTenants = Array.from({ length: 25 }, (_, index) => ({
+      id: `tenant-${String(index + 1).padStart(2, '0')}`,
+      name: `Tenant ${String(index + 1).padStart(2, '0')}`,
+      status: 'active',
+      created_at: '2026-01-01T00:00:00Z',
+      capabilities: null
+    }));
+    mocks.adminServiceMock.getTenants.mockResolvedValue({ data: manyTenants });
+    renderDirectory();
+    await screen.findByRole('heading', { name: 'Tenant 01' });
+    expect(screen.getByText('Showing 1–20 of 25')).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Tenant 21' })).toBeNull();
+    const firstCard = screen.getByRole('link', { name: 'Open Tenant 01 tenant overview' });
+    expect(firstCard.tabIndex).toBe(0);
+    expect(within(firstCard).queryByRole('link')).toBeNull();
+    expect(within(firstCard).queryByRole('button')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Filters' }));
+    await user.selectOptions(screen.getByLabelText('Page size'), '10');
+    expect(await screen.findByText('Showing 1–10 of 25')).toBeTruthy();
+    expect(screen.getByTestId('location-search').textContent).toBe('?page_size=10');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByText('Showing 11–20 of 25')).toBeTruthy();
+    expect(screen.getByTestId('location-search').textContent).toBe('?page=2&page_size=10');
+    await user.selectOptions(screen.getByLabelText('Page size'), '50');
+    expect(await screen.findByText('Showing 1–25 of 25')).toBeTruthy();
+    expect(screen.getByTestId('location-search').textContent).toBe('?page_size=50');
+    await user.selectOptions(screen.getByLabelText('Sort'), 'name_desc');
+    expect(await screen.findByRole('heading', { name: 'Tenant 25' })).toBeTruthy();
+    expect(screen.getByTestId('location-search').textContent).toBe('?sort=name_desc&page_size=50');
+    await user.selectOptions(screen.getByLabelText('Sort'), 'newest');
+    await user.selectOptions(screen.getByLabelText('Page size'), '20');
+    expect(await screen.findByRole('heading', { name: 'Tenant 01' })).toBeTruthy();
+    expect(screen.getByTestId('location-search').textContent).toBe('');
+
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByRole('heading', { name: 'Tenant 21' })).toBeTruthy();
+    expect(screen.getByText('Showing 21–25 of 25')).toBeTruthy();
+    expect(screen.getByTestId('location-search').textContent).toBe('?page=2');
+
+    await user.click(screen.getByRole('link', { name: 'Open Tenant 21 tenant overview' }));
+    expect(await screen.findByRole('heading', { name: 'Tenant detail tenant-21' })).toBeTruthy();
+    await user.click(screen.getByRole('link', { name: 'Back to tenant directory' }));
+    expect(await screen.findByRole('heading', { name: 'Tenant 21' })).toBeTruthy();
+    expect(screen.getByTestId('location-search').textContent).toBe('?page=2');
+    expect(mocks.adminServiceMock.getTenants).toHaveBeenCalledExactlyOnceWith('all', { includeCapabilities: false });
+  });
+
+  it('does not loop capability reads after failure and retries only on request', async () => {
+    const user = userEvent.setup();
+    mocks.adminServiceMock.getTenants
+      .mockResolvedValueOnce({ data: directoryTenants.map((tenant) => ({ ...tenant, capabilities: null })) })
+      .mockRejectedValueOnce(new Error('capability read failed'))
+      .mockResolvedValueOnce({ data: directoryTenants });
+    renderDirectory();
+    await waitForDirectory();
+    await user.click(screen.getByRole('button', { name: 'Filters' }));
+    await user.selectOptions(screen.getByLabelText('IMS capability'), 'on');
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    await waitFor(() => expect(mocks.adminServiceMock.getTenants).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mocks.adminServiceMock.getTenants).toHaveBeenCalledTimes(2);
+
+    await user.click(screen.getByRole('button', { name: 'Retry capability read' }));
+    await screen.findByRole('heading', { name: 'Kate Market' });
+    expect(mocks.adminServiceMock.getTenants).toHaveBeenCalledTimes(3);
+  });
+
+  it('shows capability enrichment loading for a direct capability-filter URL', async () => {
+    const user = userEvent.setup();
+    let resolveCapabilities;
+    mocks.adminServiceMock.getTenants.mockReturnValueOnce(new Promise((resolve) => { resolveCapabilities = resolve; }));
+    renderDirectory('/admin/tenants?ims=on');
+    await user.click(screen.getByRole('button', { name: 'Filters · active' }));
+    expect(screen.getByText('Loading capability data for active tenants…')).toBeTruthy();
+    expect(mocks.adminServiceMock.getTenants).toHaveBeenCalledExactlyOnceWith('all', { includeCapabilities: true });
+
+    await act(async () => resolveCapabilities({ data: directoryTenants }));
+    expect(await screen.findByRole('heading', { name: 'Kate Market' })).toBeTruthy();
+    expect(screen.queryByText('Loading capability data')).toBeNull();
+  });
+
+  it('reloads the in-memory directory after a tenant mutation invalidation event', async () => {
+    renderDirectory();
+    await screen.findByRole('heading', { name: 'Kate Market' });
+    mocks.adminServiceMock.getTenants.mockResolvedValueOnce({
+      data: [{ ...directoryTenants[0], name: 'Kate Market Updated' }, ...directoryTenants.slice(1)]
+    });
+
+    window.dispatchEvent(new window.Event('admin:tenant-directory-invalidated'));
+
+    expect(await screen.findByRole('heading', { name: 'Kate Market Updated' })).toBeTruthy();
+    expect(mocks.adminServiceMock.getTenants).toHaveBeenCalledTimes(2);
+    expect(mocks.adminServiceMock.getTenants).toHaveBeenLastCalledWith('all', { includeCapabilities: false });
+  });
+
+  it('ignores an older list response that resolves after invalidation and a newer request', async () => {
+    let resolveOldRequest;
+    mocks.adminServiceMock.getTenants
+      .mockReturnValueOnce(new Promise((resolve) => { resolveOldRequest = resolve; }))
+      .mockResolvedValueOnce({ data: [{ ...directoryTenants[0], name: 'Latest Tenant Result' }] });
+    renderDirectory();
+    expect(screen.getByText('Loading tenants...')).toBeTruthy();
+
+    window.dispatchEvent(new window.Event('admin:tenant-directory-invalidated'));
+    expect(await screen.findByRole('heading', { name: 'Latest Tenant Result' })).toBeTruthy();
+    await act(async () => resolveOldRequest({ data: [{ ...directoryTenants[0], name: 'Stale Tenant Result' }] }));
+
+    expect(screen.getByRole('heading', { name: 'Latest Tenant Result' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Stale Tenant Result' })).toBeNull();
+    expect(mocks.adminServiceMock.getTenants).toHaveBeenCalledTimes(2);
   });
 });
