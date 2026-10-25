@@ -21,7 +21,7 @@ test('F&B modifier creation and item assignment are located in standalone POS @f
     if (response.status() >= 500) diagnostics.push(`http5xx: ${response.status()} ${response.url()}`);
   });
 
-  await signIn(page, testCredentials);
+  await signIn(page, testCredentials, { expectedPostcondition: 'pos-catalog' });
   await skipPosAdminShiftPrompt(page);
   diagnostics.length = 0;
 
