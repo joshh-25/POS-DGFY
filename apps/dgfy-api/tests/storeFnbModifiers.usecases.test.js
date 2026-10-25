@@ -675,6 +675,7 @@ describe('storefront F&B modifier checkout contract', () => {
         customer_email: 'guest@example.test',
         store_customer_id: null,
         total_amount: 100,
+        vat_amount: 10.71,
         lines: []
       })
     });
@@ -698,6 +699,7 @@ describe('storefront F&B modifier checkout contract', () => {
           pos_transaction_id: 501,
           tracking_pin: 'SK-ABC123',
           customer_email: 'guest@example.test',
+          vat_amount: 10.71,
           items: []
         }
       });

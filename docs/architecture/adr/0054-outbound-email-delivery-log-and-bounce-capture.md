@@ -133,6 +133,22 @@ paths would have meant instrumenting both.
    dispatcher bounds its wait to ten seconds, but that timeout does not cancel
    an SMTP send already in flight. `[default]`
 
+### 2026-10-25 — Storefront confirmation email presentation parity (#532)
+
+1. The customer confirmation email presents persisted order amounts using the
+   storefront's breakdown rules; it does not recompute totals and never shows
+   the legacy service-fee snapshot. The email-only VAT field is copied from the
+   committed order and does not widen the customer API response. `[default]`
+2. When available, the email includes the store's public profile image from the
+   discovery index. A missing or unsafe URL uses a monogram. Email clients may
+   block remote images; the adjacent store name and image alternative text
+   remain available. The image URL is not recipient-specific and no tracking
+   pixel is used. `[default]`
+3. Relative `/uploads/storefront-assets/` image paths and the support link use
+   the existing `STOREFRONT_PUBLIC_ORIGIN`; no additional environment setting
+   is introduced. Missing origin or branding data omits the image/support link
+   without blocking delivery. `[default]`
+
 ## Rollback Notes
 
 1. `EMAIL_DELIVERY_LOG_ENABLED=false` disables delivery-log writes; sending
