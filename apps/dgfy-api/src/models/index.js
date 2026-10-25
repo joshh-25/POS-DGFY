@@ -234,6 +234,7 @@ import PlatformAdminPermissionFactory from './Landlord/PlatformAdminPermission.j
 import PlatformAdminSessionFactory from './Landlord/PlatformAdminSession.js';
 import PlatformAdminAuditLogFactory from './Landlord/PlatformAdminAuditLog.js';
 import ContactInquiryProviderConfigFactory from './Landlord/ContactInquiryProviderConfig.js';
+import PlatformStorefrontSupportContactFactory from './Landlord/PlatformStorefrontSupportContact.js';
 import CompanyRegistrationApplicationFactory from './Landlord/CompanyRegistrationApplication.js';
 import CompanyRegistrationAttemptFactory from './Landlord/CompanyRegistrationAttempt.js';
 import CompanyRegistrationEventFactory from './Landlord/CompanyRegistrationEvent.js';
@@ -336,6 +337,7 @@ const PlatformAdminPermission = PlatformAdminPermissionFactory(sequelize);
 const PlatformAdminSession = PlatformAdminSessionFactory(sequelize);
 const PlatformAdminAuditLog = PlatformAdminAuditLogFactory(sequelize);
 const ContactInquiryProviderConfig = ContactInquiryProviderConfigFactory(sequelize);
+const PlatformStorefrontSupportContact = PlatformStorefrontSupportContactFactory(sequelize);
 const CompanyRegistrationApplication = CompanyRegistrationApplicationFactory(sequelize);
 const CompanyRegistrationAttempt = CompanyRegistrationAttemptFactory(sequelize);
 const CompanyRegistrationEvent = CompanyRegistrationEventFactory(sequelize);
@@ -1496,6 +1498,7 @@ const db = {
   ,PlatformAdminSession
   ,PlatformAdminAuditLog
   ,ContactInquiryProviderConfig
+  ,PlatformStorefrontSupportContact
   ,CompanyRegistrationApplication
   ,CompanyRegistrationAttempt
   ,CompanyRegistrationEvent
@@ -1753,6 +1756,7 @@ export {
   PlatformAdminSession,
   PlatformAdminAuditLog,
   ContactInquiryProviderConfig,
+  PlatformStorefrontSupportContact,
   CompanyRegistrationApplication,
   CompanyRegistrationAttempt,
   CompanyRegistrationEvent,

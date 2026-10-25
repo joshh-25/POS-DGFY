@@ -789,6 +789,7 @@ import geoSearchRoutes from './routes/geoSearch.js';
 import routeCalculatorRoutes from './routes/routeCalculator.js';
 import internalStorefrontDomainOperationRoutes from './routes/internalStorefrontDomainOperations.js';
 import registrationRoutes from './routes/registration.js';
+import publicSupportContactRoutes from './routes/publicSupportContact.js';
 import dgfyLaundryRoutes from './routes/dgfyLaundry.js';
 import oidcRoutes from './routes/oidc.js';
 import dgfyLaundryOrderRoutes from './routes/dgfyLaundryOrders.js';
@@ -803,6 +804,7 @@ app.use('/api/v1/geo', routeCalculatorRoutes);
 // Public - no tenant context needed, called before any tenant exists (all
 // three signup surfaces' Industry pickers).
 app.use('/api/v1/registration', registrationRoutes);
+app.use('/api/v1/public/support-contact', publicSupportContactRoutes);
 
 app.use(tenantHandler);
 
