@@ -4730,7 +4730,10 @@ export const buildStoreCheckoutUseCase = ({
             })).catch(() => null);
             void Promise.resolve().then(() => dispatchOrderConfirmationEmail({
                 tenantId: normalizedTenantId,
-                order: serializeOrderForCustomer(created),
+                order: {
+                    ...serializeOrderForCustomer(created),
+                    vat_amount: created.vat_amount ?? null
+                },
                 storeCustomer: normalizedStoreCustomer
             })).catch(() => null);
 
