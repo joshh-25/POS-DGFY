@@ -16,7 +16,7 @@ preflight_reason_code: ALLOWED
 preflight_run_at: 2026-10-24T16:34:12.472Z
 ---
 
-# Platform Admin tenant-console integration cleanup and URL privacy remediation (#2757, #2748, Phase 557)
+# Platform Admin tenant-console integration cleanup and URL privacy remediation (#2757, #2748, Phase 560)
 
 Complete the final tenant-console cleanup, repair the missing-registration empty state and known test selector failure, and remove query strings from Admin telemetry URLs while preserving browser URL/history behavior and non-Admin telemetry.
 

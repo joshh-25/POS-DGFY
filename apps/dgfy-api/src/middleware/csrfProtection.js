@@ -8,7 +8,7 @@ const SESSION_ESTABLISHMENT_ROUTES = [
   /^\/api\/v1\/store\/auth\/(login|register)\b/i
 ];
 
-const hasBrowserSessionCookie = (req) => /(^|;\s*)(sku_(refresh_token|dgfy_session|store_session|admin_session|pos_operator_authority)|opis_(refresh_token|tenant_context|csrf_token)|admin_(session|csrf_token))=/i.test(String(req.headers.cookie || ''));
+const hasBrowserSessionCookie = (req) => /(^|;\s*)(sku_(refresh_token|dgfy_session|store_session|admin_session|pos_operator_authority|oidc_browser_binding)|sku_oidc_storefront_binding_[A-Za-z0-9_-]{24,128}|opis_(refresh_token|tenant_context|csrf_token)|admin_(session|csrf_token))=/i.test(String(req.headers.cookie || ''));
 const hasBearerAuthorization = (req) => /^Bearer\s+\S+/i.test(String(req.headers.authorization || '').trim());
 const isSessionEstablishmentRoute = (req) => SESSION_ESTABLISHMENT_ROUTES.some((pattern) => (
   pattern.test(String(req.originalUrl || req.url || ''))

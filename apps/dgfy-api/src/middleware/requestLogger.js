@@ -1,4 +1,5 @@
 import logger from '../config/logger.js';
+import { sanitizeSensitiveLogPath } from '../services/observabilityUtils.js';
 
 /**
  * Request logging middleware using Winston
@@ -15,7 +16,7 @@ export const requestLogger = (req, res, next) => {
   // Log request start
   logger.http('Incoming Request', {
     method: req.method,
-    path: req.path,
+    path: sanitizeSensitiveLogPath(req.path || req.originalUrl),
     ip: req.ip || req.connection.remoteAddress,
     userAgent: req.get('user-agent'),
     user_id: req.user?.user_id || null,
@@ -26,7 +27,7 @@ export const requestLogger = (req, res, next) => {
     const duration = Date.now() - startTime;
     const logData = {
       method: req.method,
-      path: req.path,
+      path: sanitizeSensitiveLogPath(req.path || req.originalUrl),
       status: res.statusCode,
       duration: `${duration}ms`,
       ip: req.ip || req.connection.remoteAddress,

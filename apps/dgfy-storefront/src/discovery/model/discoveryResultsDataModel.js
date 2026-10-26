@@ -1,5 +1,6 @@
 ﻿export {
   buildStoresWithNearestBranch,
+  filterDiscoveryStoresByCategory,
   filterDiscoveryStores,
   sortDiscoveryResultStores
 } from './discoveryStoreResultsModel.js';

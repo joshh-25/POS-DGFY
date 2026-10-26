@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { buildDiscoveryPinLayerModel } from '../discovery/model/discoveryMapLayers.js';
 import { buildStoreMarkerPreviewModel, createStoreMarkerPreviewNode } from '../discovery/model/storefrontMarkerPreview.js';
 import { getBusinessModePinMeta, renderBusinessModePinSpriteSvg } from '../discovery/model/businessModePins.js';
+import { getExternalListingPresentation } from '../discovery/model/externalListingPresentation.js';
 import { resolveExternalActionHref } from '../discovery/model/externalListingActions.js';
 
 const examples = [
@@ -47,6 +48,13 @@ describe('external discovery presentation', () => {
     expect(action).toHaveBeenCalledTimes(1);
     card.querySelector('.store-marker-preview-externalClose').click();
     expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the corrected Proventous display name while retaining its provider key', () => {
+    expect(getExternalListingPresentation({
+      entity_type: 'external_listing',
+      external_provider: 'proventus'
+    })).toMatchObject({ name: 'Proventous', action: 'View Job' });
   });
 
   it('accepts only sanitized public URLs and never constructs a partner destination', () => {

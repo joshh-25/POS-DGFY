@@ -48,7 +48,7 @@ export const extractExternalEventSeed = (input = {}) => {
     throw new Error('At least one MapViu export is required');
   }
   const companies = hasProventus ? proventusRows(proventusExports) : null;
-  if (hasProventus && !companies) throw new Error('Proventus companies array is required');
+  if (hasProventus && !companies) throw new Error('Proventous companies array is required');
   if (!hasSynqcore && !hasMapviu && !hasProventus) throw new Error('At least one external event source is required');
 
   const listings = [];

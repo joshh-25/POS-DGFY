@@ -31534,376 +31534,6 @@ gated blocking flip.
 
 Phase 542. No explicit dependency.
 
-## Phase 542 - Searchable Platform Admin tenant directory (#2743)
-
-### Initiative and release
-
-DGFY Admin tenant management UX / Wave 1 of epic #2696.
-
-### Objective and scope
-
-Make the Platform Admin tenant directory searchable by tenant identity fields, filterable by
-status, effective plan, compliance mode, ownership, and capability state, and bookmarkable through
-URL query state. Load the full tenant list once and keep status tiles independent of active filters.
-Distinguish initial loading/failure, stale-data refresh failure, empty data, and no matches. Keep
-per-tenant controls and the existing API contract unchanged. Classification: `regulatory` because
-`TenantManager.jsx` is a `settings,compliance` compliance-sensitive surface.
-
-### Status
-
-`in_progress` — scoped implementation and local validation are complete on the registered epic
-branch; the child PR targets that branch and references #2743. The issue remains In Progress
-through the child PR and its merge into the integration branch.
-
-### Dependencies
-
-No explicit dependency. Uses the tenant search/filter contract recorded by #2742 and the registered
-integration branch for epic #2696. Phase 541 is in progress but declares no dependency on this work.
-
-### Contract and authority
-
-[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
-[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
-[ADR 0047](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md),
-[ADR 0089](../architecture/adr/0089-platform-admin-fifth-frontend-app-cross-host-admin-routing.md),
-[ADR 0067](../architecture/adr/0067-frontend-browser-support-baseline-and-es-compat-guardrail.md),
-[Platform Admin Tenant Console](PLATFORM_ADMIN_TENANT_CONSOLE.md),
-[Tenant Management](TENANT_MANAGEMENT.md), and the #2743 issue. Classification: `regulatory`; no
-architecture boundary or permission grant changes.
-
-### Implementation targets
-
-`apps/dgfy-admin/src/features/admin/tenantDirectory/tenantDirectory.js` and its unit tests,
-`TenantDirectoryToolbar.jsx`, the directory list region of `apps/dgfy-admin/Pages/TenantManager.jsx`,
-directory integration tests and updated placeholder assertions, the Search/Filter bullet in
-`docs/features/TENANT_MANAGEMENT.md`, this ledger entry, and
-`docs/compliance/impact-declarations/2026-10-24-admin-tenant-directory.md`. No backend, service,
-migration, shared observability, or app-version changes.
-
-### Acceptance and validation evidence
-
-- [x] Search is identity-only; the pure module tests cover name, admin email, domain, ID prefix,
-  case/trim behavior, token exclusion, and terms that must not match.
-- [x] Structured facets AND with search; the pure tests cover effective-plan fallback, compliance,
-  ownership, capability `on`/`off`/`unavailable`/`na`, unknown statuses, archived defaults, URL
-  serialization, status counts, and options.
-- [x] The component test verifies one initial `getTenants('all')` call and no extra request or
-  mutation when search and every facet change.
-- [x] Component tests cover archived visibility/badge, whole-set tiles, chips, Clear all, URL
-  history, identity search, and distinct loading/error/empty/no-match states.
-- [x] Focused directory tests pass; the full Admin suite ran with 167 passing tests and six
-  unrelated existing StoreTemplateManager failures, tracked by #2750. Admin production build and
-  lint pass; mocked desktop/mobile rendered route proof has clean console and one primary
-  interaction without mobile horizontal overflow.
-- [x] `TENANT_MANAGEMENT.md` Search/Filter bullet matches shipped behavior; docs, architecture,
-  compliance, app-version, diff, and changed-file marker checks pass.
-
-### Evidence
-
-Focused directory validation passed 18 Vitest tests across two files. The full Admin suite passed
-167 tests; six unrelated failures in the unchanged
-`StoreTemplateManager.registrationIndustries.integration.test.jsx` file are tracked by #2750.
-The Admin production build passed; Admin lint passed with zero errors and two existing warnings.
-Mocked desktop/mobile browser proof passed with no console/page errors, no filter-triggered API or
-mutation calls, URL state surviving reload, and no horizontal overflow at 390 px. `npm run
-lint:docs`, `npm run check:architecture`, `npm run check:compliance`, `node
-scripts/check-app-version-bump.js`, and `git diff --check` passed; the changed-file temporary-marker
-scan found no matches. The local request-time preflight passed against disposable API/MySQL/Redis
-fixtures and reconciled the declaration to `PREFLIGHT-LOCAL-1792811289372-2026-10-24-ADMIN-TENANT-DIRECTORY`.
-
-### Risks and decisions
-
-- Query-string search may expose the `q` value to PostHog and Sentry URL capture; remediation is
-  tracked separately in [#2748](https://github.com/Sieitzz/dgfy-platform/issues/2748), since the
-  shared observability clients are outside this child PR's scope.
-- The `TENANT_MANAGEMENT.md` List View bullet remains stale by #2743's scope boundary; #2742 owns
-  the follow-up documentation reconciliation, recorded in its issue comments.
-- On PROD, capability reads were unavailable for every active tenant in the 2026-10-24 sample;
-  the UI preserves `Unavailable` and never treats it as Off. The underlying read failure remains
-  with #1923/#2633/#2639/#2560.
-- The list remains in `TenantManager.jsx`'s list region. No capability, compliance, or modal region
-  is changed, reducing conflict risk with #1923/#2633/#2639.
-
-### Post-merge verification
-
-- [ ] deployment — after the final integration PR reaches `develop` and the app is deployed to
-  DEV, verify search, each filter, chip dismissal, Clear all, refresh, browser history, and archived
-  labeling with desktop and mobile viewports; owner: Pat; blocks #2743's deployed QA acceptance.
-- [ ] compliance — confirm the final integration commit retains this declaration's reconciled
-  local preflight reference and the compliance gate remains green; owner: compliance sweep; blocks
-  claiming the integrated declaration is verified.
-- [ ] privacy — complete the shared Admin URL-scrubbing follow-up in #2748; owner: PM/Worker; this
-  does not block #2743's child PR acceptance but remains a known residual risk until delivered.
-
-### Next phase number
-
-Phase 543. No explicit dependency.
-
-## Phase 543 - Tenant detail foundation and Add tenant page (#2755)
-
-### Initiative and release
-
-DGFY Admin tenant management UX / Wave 2 of epic #2696.
-
-### Objective and scope
-
-Add a targeted, safe single-tenant Platform Admin read; bookmarkable tenant Overview and Add tenant
-routes; nested authorization and sidebar ownership; directory-query restoration; ID-free Admin route
-labels; and a dedicated assisted-provisioning page. Preserve the directory payload, existing
-provisioning payloads/audit behavior, route grants, and archived API write behavior. Classification:
-`regulatory` because the changed API and Admin paths cover `settings,compliance` surfaces.
-
-### Status
-
-`in_progress` — implementation and local validation are in progress on the registered epic child
-branch. The child PR targets `epic/2696-admin-tenant-management-ux`, references #2755, and keeps the
-issue In Progress through integration. This phase remains in progress until the aggregate change
-reaches `develop` and its implementation gates pass.
-
-### Dependencies
-
-Uses the integrated #2742 inventory and #2743 directory output on the #2696 integration branch.
-Within this phase, the detail read precedes Overview; route authorization precedes both nested pages.
-No other phase lifecycle dependency is claimed.
-
-### Contract and authority
-
-[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
-[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
-[ADR 0047](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md),
-[ADR 0089](../architecture/adr/0089-platform-admin-fifth-frontend-app-cross-host-admin-routing.md),
-[Platform Admin route permission matrix](../testing/platform-admin-route-permission-matrix.md),
-[Platform Admin Tenant Console](PLATFORM_ADMIN_TENANT_CONSOLE.md),
-[Tenant Management](TENANT_MANAGEMENT.md), [PR conventions](../ai/PR.md), and issue #2755.
-Classification: `regulatory`; no architecture boundary, schema, or permission-grant change.
-
-### Implementation targets
-
-API single-tenant repository contract, shared presentation, detail use case, handlers, route, and
-compatibility facade under `apps/dgfy-api`; Admin routes, route policy, route labels, service wrapper,
-Overview, Add tenant, and directory links under `apps/dgfy-admin`; focused API/Admin tests; the route
-permission matrix; this ledger; tenant-console and Tenant Management docs; and the reconciled
-declaration `docs/compliance/impact-declarations/2026-10-24-admin-tenant-detail-foundation.md`.
-No migration, shared web-core implementation, or app-version bump.
-
-### Acceptance and validation evidence
-
-- [x] The targeted API returns the safe enriched list-item shape, preserves active capability
-  failure semantics, returns 404 for a missing tenant, and does not list all tenants for detail.
-- [x] API focused suites pass, including safe repository projection, list/detail use cases, route
-  classification, middleware grants/session denial, handler response, and static route precedence.
-  The authenticated DB-backed tenant lifecycle suite also passes with a persisted tenant returned
-  through the mounted detail endpoint and private fields excluded.
-- [x] Admin focused suites pass for direct Overview reads, not-found/error/retry, ID changes,
-  archived read-only presentation, query-preserving links, Add tenant payloads/grants/secrets, nested
-  authorization, route labels, service encoding, and directory regression behavior.
-- [x] Full Admin suite, Admin lint/build, changed `Pages/` lint, architecture/docs/compliance and
-  epic-base app-version checks, browser-session security regressions, rendered desktop/mobile
-  evidence, and changed-file marker/diff checks are recorded below. The full Admin suite has six
-  failures in the unchanged StoreTemplateManager registration-industries test tracked by #2750;
-  185 other tests pass.
-- [ ] Final child PR records its current head, validation evidence, payload decision, compliance
-  reference, #2748 dependency, and post-merge checklist; no merge or deploy is part of this phase.
-
-### Evidence
-
-Focused API validation: 8 Jest suites/75 tests passed; the DB-backed Admin Tenant Lifecycle suite
-passed 10/10 tests, including the authenticated tenant detail endpoint. The disposable
-`auth_security_session` DB matrix passed 7 suites/38 tests, and
-`browserSessionCookies.test.js` passed 11/11 tests. Focused Admin validation passed 7 Vitest files/84
-tests. The full Admin suite ran 28 files: 185/191 tests passed; its six failures are confined to
-unchanged `StoreTemplateManager.registrationIndustries.integration.test.jsx` and match the existing
-#2750 failure. Admin lint passed with one existing unused-import warning in `src/main.jsx`; explicit
-`Pages/` lint passed with the existing `TenantManager.jsx` max-lines warning. `build:admin`, shared
-browser-token-storage guard (2/2), API `node --check`, architecture, docs/ADR lint, compliance, and
-the epic-base app-version check passed. Mocked local Playwright evidence passed at 1440×1000 and
-390×844: direct Overview uses the targeted endpoint without a directory read, all directory facets
-and unrelated query state return intact, mocked Add tenant submission keeps success on-page without
-a directory fetch, no console/page errors or framework overlay appeared, and neither viewport
-overflowed horizontally. `git diff --check` passed and the changed-file commit-marker scan found no
-matches. Screenshots and backend matrix logs are local under ignored `.tmp/` artifacts.
-
-### Risks and decisions
-
-- Keep the existing full directory payload and client filtering. Defer payload decoupling until a
-  healthy active-capability-read sample supports that change; the 2026-10-24 PROD sample had 53/53
-  active capability reads unavailable and cannot establish healthy-path cost.
-- Archived Overview is read-only UI only. Existing status-specific API write behavior is unchanged.
-- Route-label normalization removes tenant IDs but does not scrub SDK-captured URLs or query strings.
-  #2748 remains required before the final DEV soak.
-- No deployed tenant data or external environment was changed. The local request-time preflight was
-  reconciled before implementation; declaration evidence is recorded in the linked artifact.
-
-### Post-merge verification
-
-- [ ] deployment — after the aggregate #2696 change reaches `develop`, verify direct Overview reload,
-  archived read-only presentation, all query facets through directory → detail → back, and Add tenant
-  on desktop and mobile; owner: Pat; blocks #2755 deployed QA acceptance.
-- [ ] privacy — complete shared Admin URL/query scrubbing in #2748 before the final DEV soak; owner:
-  PM/Worker; this is an explicit dependency for the soak.
-- [ ] compliance — verify the integrated commit retains the reconciled preflight reference and the
-  compliance gate remains green; owner: compliance sweep.
-
-### Next phase number
-
-Phase 544. No explicit dependency.
-
-## Phase 544 - Tenant management detail sections (#2756)
-
-### Initiative and release
-
-DGFY Admin tenant management UX / Wave 3 of epic #2696.
-
-### Objective and scope
-
-Move tenant Lifecycle, Registration, Compliance, Store setup, and Access & storefront actions from
-the directory into bookmarkable detail sections; add Overview owner assignment and validated,
-non-mutating preselection for the global Billing tools. Preserve existing API grants, reasons,
-eligibility, audits, and events. Capability reads that are unavailable remain unknown and disable
-writes. The #1923 STAGING persistence/publication checks and PROD capability-read recovery remain
-external verification before release qualification; they do not block integrating the UI move into
-the epic branch. The optional combined Activity page is deferred, with audit entry points retained
-in the owning sections. Classification: `regulatory`; no API behavior, schema, migration, permission
-grant, or app-version change is introduced.
-
-### Status
-
-`in_progress` — all scoped section moves, including Access, are implemented on the registered epic
-child branch. PR #2764 is ready for review against the epic branch. This phase remains in progress
-until its implementation merges into the epic; environment-specific STAGING and PROD verification
-remains outstanding and is not claimed here. The issue stays In Progress through integration.
-
-### Dependencies
-
-- Phase 543 / PR #2760 supplies the targeted single-tenant read, Overview route, nested route policy,
-  directory query restoration, and Add tenant foundation on the integration branch.
-- #1824 and #2005 govern asynchronous provisioning and deletion behavior. This phase preserves
-  their current API contracts and does not escalate retries or deletion with `force`.
-- #2719 repair code is already present in the integration ancestry; verify the target code chain and
-  disposable-DB behavior before treating the Store setup path as fully validated.
-- The existing capability controls were already available on the directory. This phase moves them
-  to Access without changing API policy or grants. The detail page preserves unavailable/unknown
-  state and disables writes until a fresh targeted read succeeds. #1923's STAGING toggle persistence,
-  audit/read-back, discovery and direct-link checks remain external release verification; #2633 and
-  #2639 deployment evidence and PROD capability-read recovery also remain unresolved. None is
-  represented as passed by this UI move or as a requirement to deploy this child PR to STAGING.
-- #2748 shared Admin URL/query privacy remediation remains required before the final DEV soak; it
-  does not block this child implementation PR.
-
-### Contract and authority
-
-[Start Here](../START_HERE.md),
-[Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
-[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
-[ADR Index](../architecture/adr/INDEX.md),
-[ADR 0047](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md),
-[ADR 0089](../architecture/adr/0089-platform-admin-fifth-frontend-app-cross-host-admin-routing.md),
-[Platform Admin route permission matrix](../testing/platform-admin-route-permission-matrix.md),
-[Platform Admin Tenant Console](PLATFORM_ADMIN_TENANT_CONSOLE.md),
-[Tenant Management](TENANT_MANAGEMENT.md), [PR conventions](../ai/PR.md), and issue #2756.
-Classification: `regulatory`; the compliance declaration is
-[`2026-10-24-admin-tenant-management-sections.md`](../compliance/impact-declarations/2026-10-24-admin-tenant-management-sections.md).
-
-### Implementation targets
-
-Admin detail shell and Lifecycle, Registration, Compliance, Store setup, and Access pages;
-Overview owner assignment; global Payment Operations, Invoice, and Revenue preselection; Admin
-behavioral tests and the test-only tenant-route controller mock; tenant-console and Tenant
-Management references; this ledger and the reconciled compliance declaration. No API production
-code, migration, schema, shared web-core, or app-version file is changed.
-
-### Acceptance and validation evidence
-
-- [x] Detail sections load the selected tenant through the targeted read; direct routes, stale
-  responses, missing/error states, and full directory query preservation are covered. Access owns
-  the existing capability/readiness controls and audit entry point.
-- [x] Lifecycle approval, rejection reason, retry, asynchronous progress polling, reactivation,
-  status-only edit, and typed-name deletion use the existing endpoint payloads. Invoice creation
-  remains a separate grant-checked action, and deletion never escalates with `force`.
-- [x] Registration evidence is presented as labeled values; private preview/download uses the
-  authenticated blob endpoint; revocation remains optional-reason and audit-backed. Missing legal
-  acceptance flags render as `Not recorded`, never as accepted.
-- [x] Compliance reads are lazy and preserve successful panels when another read fails. Mode,
-  evidence, incident, and audit actions continue to use server eligibility and existing payloads.
-- [x] Store setup owns template application, POS metadata/review/audit, and custom domains. Only
-  Platform Master requests the published template catalog. Owner assignment enforces both grants
-  (or Platform Master), active tenant/account selection, reason, and explicit `force: true`
-  confirmation.
-- [x] Payment, Invoice, and Revenue preselection validate authorized data and never mutate merely
-  by opening a linked global page. Revenue panel requests and mount remain master-only.
-- [x] Access capability/readiness controls and audit move to the detail route with the existing
-  API contracts. Unknown/unavailable values are not rendered as On/Off and disable all writes.
-  Writes require a fresh targeted tenant read-back before success is reported.
-- [ ] #1923 STAGING persistence/publication checks, #2633/#2639 deployed-behavior evidence, and PROD
-  capability-read recovery remain external verification; no such evidence is claimed here, and it
-  does not block the child PR's epic-branch integration.
-- [x] Current focused Admin validation passes 4 files / 37 tests, including Access capability
-  writes, fail-closed unavailable reads, audit loading, and route/query behavior. Existing API
-  authorization, upload, deletion, capability write/read-back, template, and audit contracts
-  previously passed 10 suites / 88 tests.
-- [x] The most recent full Admin suite before the final Access relocation reported 202 passing
-  tests and six failures confined to the unchanged
-  `StoreTemplateManager.registrationIndustries.integration.test.jsx` suite tracked by #2750.
-- [x] Admin production build, Admin lint, explicit lint of changed Admin pages/tests, architecture,
-  docs/ADR lint, compliance, epic-base app-version policy, and `git diff --check` pass. Existing
-  lint warnings are recorded in the implementation report.
-- [x] Mocked browser proof passes for the Access route on desktop and mobile: the impact preview
-  opens and cancels, audit history loads, the full query survives navigation, no mutations or
-  browser errors occur, and the 390 px viewport has no horizontal overflow. Earlier proof covered
-  the other detail destinations before the final Access relocation; current DEV is not claimed to
-  contain this final Access implementation.
-- [x] Focused disposable Linux/MySQL 8/Redis 7 backend matrix completed against implementation
-  commit `7cec71f966139ce9d231e48e185086e4180f84bd`, with coverage complete for 872 fast-tier and
-  34 DB-tier test files. The DB tier passed all 34 files. The fast tier was non-green: 6,703 tests
-  passed and 50 failed across 24 suites, including 12 runtime-error suites. The changed
-  `adminTenantCapabilities.transport.test.js` passed. The fast-tier failures are in unmodified
-  suites; a baseline run was not performed. The container recorded 12 OOM-killed child processes.
-  This focused run is advisory and does not replace the remaining skipped release gates.
-
-### Evidence
-
-The local compliance preflight passed against disposable API/MySQL/Redis fixtures with
-`no_breach`, reason `ALLOWED`, at `2026-10-24T09:48:00.701Z`; request reference
-`PREFLIGHT-LOCAL-1792835197869-2026-10-24-ADMIN-TENANT-MANAGEMENT-SECTIONS` is reconciled in the
-declaration. The most recent full Admin run before final Access relocation completed with 202
-passing tests and six unrelated failures in the unchanged #2750 StoreTemplateManager suite. Current
-focused Admin tests pass 4 files / 37 tests; focused API contract results (10 suites / 88 tests)
-were recorded before this UI-only relocation. The
-focused disposable backend matrix targeted implementation commit
-`7cec71f966139ce9d231e48e185086e4180f84bd`: all 34 DB-tier files passed; the fast tier had 6,703
-passing tests and 50 failures across 24 unmodified suites, with 12 runtime-error suites and 12
-container OOM-killed child processes. The matrix reported overall fail (child exit 2); 16 other
-release gates were skipped by the focused scope. Its SHA-bound reports are under ignored
-`.tmp/release-gates/7cec71f966139ce9d231e48e185086e4180f84bd/`. The later commit records this result
-and changes documentation only. Rendered-route screenshots and the JSON report are under ignored
-`.tmp/tenant-detail-sections-proof/`.
-
-### Risks and decisions
-
-- The capability-read failure remains unresolved. Access shows unknown/unavailable and disables
-  writes until a fresh read succeeds; no production root cause or resolution is asserted. The
-  required STAGING and PROD evidence remains an explicit release-verification follow-up.
-- #2748 remains a known URL/query privacy dependency before the final DEV soak.
-- Activity stays deferred. Existing capability, compliance, POS metadata, and domain audit views
-  remain beside their owning controls.
-- No deployed tenant data, production service, or external environment was mutated.
-
-### Post-merge verification
-
-- [ ] deployment — after the aggregate #2696 change reaches `develop` and #2748 is resolved, verify
-  Overview, Lifecycle, Registration, Compliance, Store setup, Access, directory return context,
-  and global Billing links on desktop and mobile; owner: Pat; blocks deployed QA acceptance.
-- [ ] operational — verify the #1923 Storefront/Maps and Registration Readiness writes survive
-  reload with audit/read-back, verify public discovery/direct-link behavior, collect #2633/#2639
-  deployed regression evidence, and resolve the PROD capability-read failure before release
-  qualification; owner: Pat/QA. This does not block merging the UI move into the epic branch.
-- [ ] compliance — confirm the aggregate commit retains the reconciled preflight reference and the
-  compliance gate stays green; owner: compliance sweep.
-
-### Next phase number
-
-Phase 545. No explicit dependency.
-
 ## Phase 545 - Resume-compatible AI session handoffs (#2753)
 
 ### Initiative and release
@@ -33080,6 +32710,371 @@ validation passes.
 
 Phase 557. No explicit dependency.
 
+## Phase 557 - DGFY outbound email branding (#2830)
+
+### Initiative and release
+
+Outbound email slice of legacy-name retirement issue #2830 under epic #352. Ordinary implementation
+branch targeting `develop`.
+
+### Objective and scope
+
+Use plain `DGFY` in active platform-authored outbound email branding and the generic sender fallback.
+Preserve tenant and store names, configured sender overrides and addresses, legal issuer data,
+destinations, attachments, layouts, and SMTP delivery behavior. Add a complete active-send inventory,
+regression coverage for every active template and email-specific wrapper plus direct send owners,
+and current sender guidance. Keep disabled PayPal template code and historical records unchanged.
+Do not mutate STAGING/PROD configuration, deploy, or send real email in this phase.
+
+### Status
+
+`in_progress` — source, regression coverage, inventory, and this ledger entry are being implemented
+from fresh `origin/develop`. Phase 556 (#2387) had already landed on that base, so this work takes
+the next free number, 557; the following number is 558.
+
+### Dependencies
+
+None. The STAGING/PROD sender-name checks and any required persistent configuration updates are
+post-merge operator verification, not implementation dependencies.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0012](../architecture/adr/0012-dgfy-global-convenience-fee-and-ui-brand-separation.md),
+[ADR 0021](../architecture/adr/0021-email-otp-verification-for-account-email-ownership.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0054](../architecture/adr/0054-outbound-email-delivery-log-and-bounce-capture.md),
+[ADR 0060](../architecture/adr/0060-sops-age-encrypted-secrets-at-rest.md),
+[ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md),
+[Backend Test Matrix Gate](../testing/README.md#backend-test-matrix-gate),
+[Email Inventory](OUTBOUND_EMAIL_INVENTORY.md),
+[Issue #2830](https://github.com/Sieitzz/dgfy-platform/issues/2830). Classification:
+`no-architecture-impact`; existing email transport, ownership, and OTP semantics are unchanged, so no
+ADR amendment, new seam, migration, or allowlist is required.
+
+### Implementation targets
+
+[Email templates](../../apps/dgfy-api/src/templates/emailTemplates.js),
+[email service](../../apps/dgfy-api/src/services/emailService.js),
+[user email fallbacks](../../apps/dgfy-api/src/services/userService.js),
+[delivery verification script](../../apps/dgfy-api/scripts/verify-email-delivery.js),
+[branding contract test](../../apps/dgfy-api/tests/emailBranding.contract.test.js),
+[delivery provider tests](../../apps/dgfy-api/tests/emailService.deliveryProvider.test.js),
+[inline invitation tests](../../apps/dgfy-api/tests/dgfyAuthUseCases.test.js),
+[tracking recovery tests](../../apps/dgfy-api/tests/dgfyCustomerUseCases.test.js),
+[service reminder tests](../../apps/dgfy-api/tests/servicesMode.usecases.test.js),
+[invoice delivery tests](../../apps/dgfy-api/tests/platformInvoiceUseCases.test.js),
+[API environment examples](../../apps/dgfy-api/.env.example),
+[API specification](../api/specification.md),
+[collaborator environment guide](../setup/COLLABORATOR_LOCAL_ENV.md),
+[tenant email guidance](TENANT_MANAGEMENT.md), and this ledger.
+
+### Acceptance and validation evidence
+
+- [x] All active authored legacy platform labels in subjects, headers, footers, HTML/plain-text
+  bodies, and the generic sender fallback now use plain DGFY or neutral copy; explicitly branded
+  OTP, affiliate, and storefront sends stay DGFY.
+- [x] Every active template export and email-specific wrapper is covered by the branding guard; inline
+  business invitations, tracking recovery, service reminders, invoice payloads, and operator
+  verification copy are checked through existing seams or a non-sending diagnostic assertion.
+- [x] Tenant/store values, sender overrides and addresses, links, tokens, invoice attachment/legal
+  issuer/QA notice, and layouts remain intact; affiliate account branches and all OTP purposes are
+  inventoried.
+- [x] Rendered staff invitation, welcome, company approval/rejection, and changed billing samples are
+  reviewed at desktop and narrow widths using synthetic data; no real email is sent.
+- [x] Focused email/template/inline-owner tests pass; the required `npm run test:backend:matrix`
+  outcome is recorded without weakening or reclassifying existing suites.
+- [x] `npm run check:compliance` passes with the human-approved declaration for the changed
+  `userService.js` path.
+- [x] `npm run check:architecture`, `npm run lint:docs`, PR-context
+  `node scripts/check-app-version-bump.js`, changed-file `node --check`, and `git diff --check` pass.
+- [x] Current environment examples and guidance show `EMAIL_FROM_NAME=DGFY`, while STAGING/PROD
+  verification remains an explicit human follow-up.
+
+### Validation evidence (Worker run, 2026-10-26)
+
+- The focused email/template/inline-owner Jest command passed 11 suites and 234 tests. After adding
+  explicit welcome, onboarding, subscription, PayMongo, and plan-change destination assertions, the
+  branding contract suite passed again (6 tests).
+- Rendered all 15 active legacy-branded invitation, welcome, company, billing, plan-change,
+  reactivation, and resubmission templates at 1200px and 390px widths with synthetic fixtures.
+  Reviewed the local screenshots under `.tmp/email-branding-previews/`; all 30 renders had no
+  horizontal overflow, and supplied destinations remained present. No email was sent.
+- `node --check` passed for every changed API JavaScript file; architecture checks passed (63 modules,
+  802 code files, and 116 controller files); `npm run lint:docs` passed (36 governed docs and 106
+  ADRs); the app-version gate passed in PR context with no package-version change required; and
+  `git diff --check` passed.
+- After Pat approved the required major declaration, `npm run check:compliance` passed and checked
+  the `userService.js` surface plus 10 compliance-sensitive documentation/API-contract rules. The
+  declaration records that no live preflight was run and uses the accepted PR-open placeholder.
+- `npm run test:backend:matrix` stopped before execution because the existing
+  `tests/staffRoleInvitationPersistence.phase554.db.integration.test.js` suite is missing from
+  `scripts/backend-db-dependent-tests.js`. No unrelated manifest change was made.
+- `npm run check:compliance` initially reported `apps/dgfy-api/src/services/userService.js` as a
+  sensitive change; after the approved major declaration was added, it passed. No live preflight was
+  performed; the declaration records the PR-open placeholder for the continuous sweep.
+
+### Risks and non-goals
+
+A configured `EMAIL_FROM_NAME` overrides the code fallback, so runtime settings may continue to show
+old branding until an operator corrects the persistent configuration and applies it through normal
+release controls. The read-only PROD evidence recorded for planning found the name wrapped in
+literal quotation marks and `EMAIL_FROM=noreply@dgfy.ph`; STAGING values remain unverified. Preserve
+the public sender address and all historical/environment-specific data outside this issue. This
+phase does not change delivery, retry, logging, OTP/security, billing, checkout, app/UI, provider,
+or fiscal identity behavior. Already delivered messages cannot be recalled.
+
+### Completion date
+
+Not complete. Record only after the scoped implementation is merged to `develop` and implementation
+validation passes.
+
+### Post-merge verification
+
+- [ ] **STAGING configuration** — read the filtered effective `EMAIL_FROM_NAME` and `EMAIL_FROM`
+  values; set the persistent display name to exactly `DGFY` if needed, preserve the current sender
+  address, and record the applied configuration revision. Owner: release operator.
+- [ ] **PROD configuration** — normalize the persistent `EMAIL_FROM_NAME` value to exactly `DGFY`
+  (remove embedded quotation marks if still present), preserve `EMAIL_FROM=noreply@dgfy.ph`, apply
+  through normal release controls, and record the configuration revision. Owner: release operator.
+- [ ] **deployed verification** — after the normal deployment, verify the exact source/image and
+  effective sender configuration in STAGING and PROD; record controlled rendered/send evidence only
+  through the approved operator procedure. Owner: release operator / verifier.
+
+### Next phase number
+
+Phase 558. No explicit dependency.
+## Phase 558 - DGFY Storefront OIDC browser interaction (#2837)
+
+### Initiative and release
+
+DGLaundry partner authentication, DGFY source slice for issue #2837; ordinary `develop` delivery.
+
+### Objective and scope
+
+Keep the OIDC issuer on the configured `api.*` origin while moving interactive DGFY authentication,
+registration, password reset, and company choice to Storefront. Add a one-use issuer-to-Storefront
+handoff and per-interaction host-only browser cookie, an issuer browser binding, an absolute
+600-second Redis interaction, a 60-second-or-shorter single-use issuer completion ticket, exact
+environmental Storefront destination validation, forced-login proof, accepted-membership
+revalidation, identity-only onboarding grants, readable failures, and telemetry redaction. Preserve
+JSON authorize behavior, existing code/token lifetimes, CSRF/CORS policy, and DGLaundry ownership
+of company onboarding and operational authority. No schema migration, host mutation, deployment,
+or production activation is in scope.
+
+### Status
+
+`in_progress` — the DGFY source slice and available validation are recorded; PR #2842 is open. Merge and joint hosted acceptance remain outstanding.
+
+### Dependencies
+
+- No earlier ledger phase blocks this DGFY source implementation.
+- The separate DGLaundry companion in #2837 must raise its callback transaction expiry to 900,000 ms
+  and pass `dglaundry_intent=create_company` through PAR. That companion, matching hosted issuer /
+  client / Redis values, and real cross-host cookie behavior block joint hosted acceptance, not this
+  source PR.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0079](../architecture/adr/0079-dglaundry-external-runtime-and-provider-contract.md),
+[DGFY Partner Integration Contract](../api/PARTNER_INTEGRATION_CONTRACT.md),
+[Partner OpenAPI](../api/partner-dglaundry-openapi.yaml), [Testing Rules](../testing/README.md),
+and [Apps Layout Migration](../architecture/apps-layout-migration.md). Classification: cross-boundary;
+ADR 0079's untagged/default browser interaction is amended in this PR. ADR 0026 cookie and CSRF
+authority and ADR 0071 app-source boundaries remain in force. No exception or allowlist is added.
+
+### Implementation targets
+
+API OIDC negotiation, Redis interaction repository/use cases/controllers/routes, DGFY login proof,
+CSRF binding-cookie coverage, strict hosted environment validation, and Sentry redaction; Storefront
+interaction/error routes and continuation through existing account flows; company selector
+hardening; partner contract/OpenAPI, ADR amendment, this ledger entry, and focused regression and
+rendered browser evidence. Changes to `packages/web-core` require builds of every consuming app.
+
+### Acceptance and validation evidence
+
+- [ ] HTML negotiation is explicit and quality-aware; JSON callers retain unauthenticated 401 and
+  existing authenticated protocol outcomes.
+- [ ] PAR claims once, interaction expiry is absolute at ten minutes, binding is host-only, ticket
+  expiry is at most one minute, and code TTL remains 120 seconds.
+- [ ] Account, company, forced login, switch-account, signup, OTP/legal, reset-password, and
+  new-company continuation are bound to the server interaction; fixed and lost memberships fail
+  closed.
+- [ ] Issuer completion enforces Origin, CSRF, host binding, current account/client/company state,
+  atomic ticket/interaction consumption, registered callback, and one code at most.
+- [ ] Identity-only no-company/new-company grants omit company-context scope and claim and do not
+  provision authority.
+- [ ] Error routes, telemetry, and logs do not expose interaction IDs, request URIs, tickets,
+  authorization codes, or session tokens.
+- [ ] Required backend/frontend regression suites, backend matrix, frontend contracts, Storefront
+  and any shared-code consumer builds, app-version/architecture/compliance/docs/environment gates,
+  and `git diff --check` are run and exact outcomes recorded before PR.
+- [ ] Local-only Playwright proof follows `web-performance-qa`: one worker, distinct local hostnames,
+  real cookie behavior, cold login, chooser/onboarding navigation, desktop/mobile, page identity,
+  and console/framework-overlay health.
+- [ ] DGLaundry companion prompt and all joint hosted verification dependencies remain explicit;
+  local DGFY proof is not described as joint or deployed acceptance.
+
+### Validation evidence (2026-10-26)
+
+- Focused API OIDC/provider/cookie/CSRF/environment/telemetry suites — PASS, 10 suites / 156 tests.
+- Storefront suite — PASS, 255 files / 1,435 tests. Storefront OIDC interaction tests — PASS,
+  2 files / 5 tests.
+- Shared analytics and Sentry observability suites — PASS, 2 files / 81 tests; changed-file web-core
+  lint and Storefront lint — PASS. API changed-source lint and `node --check` — PASS.
+- Storefront, IMS, POS, OPIS, and Admin production builds — PASS.
+- Storefront frontend contracts — PASS, 39 files / 220 tests; broader frontend contracts — PASS,
+  132 files / 837 tests.
+- `npm run check:architecture` — PASS (63 modules / 807 code files / 117 controllers);
+  `npm run check:compliance` — PASS; `npm run check:production-env` — PASS with the existing
+  generic-fixture `DEPLOY_ENV_LABEL` warnings; `npm run lint:docs` — PASS (36 governed docs / 106
+  ADRs); `git diff --check` — PASS.
+- `npm run test:backend:matrix` — BLOCKED before test execution by the existing unlisted
+  `tests/staffRoleInvitationPersistence.phase554.db.integration.test.js` inventory entry.
+- `npm run test:frontend` — INCOMPLETE: the IMS portion reported failures in untouched IMS test
+  areas and did not finish after more than five minutes; it was interrupted. The changed shared
+  observability suites were rerun separately and pass as recorded above.
+- Cross-host Playwright proof — DEFERRED: local Redis/MySQL are unavailable and this checkout has
+  no API or Storefront `.env` test configuration. No cold-login, staging, or DGLaundry-hosted flow
+  is claimed as proven. The separate DGLaundry companion and joint staging evidence remain required.
+
+### Risks and non-goals
+
+Completion bridges are security-sensitive; host-only browser binding, server-side proof, fresh
+authority checks, durable state, and atomic redemption are required evidence. The DGLaundry
+companion and hosted configuration are external dependencies. No production mutation, DGLaundry
+repository edit, cross-origin credentialed CORS change, global cookie-domain change, general
+registration redesign, or migration is included.
+
+### Completion date
+
+Not complete. Record only after the source implementation is merged and its scoped implementation
+validation passes; retain hosted verification in the checklist below.
+
+### Post-merge verification
+
+- [ ] **provider** — separate DGLaundry owner implements 15-minute callback transaction persistence
+  and `create_company` PAR intent, then jointly proves cold login, forced account choice, company
+  selection, and new-company continuation on staging. Owner: DGLaundry companion owner / #2837;
+  blocks joint hosted acceptance.
+- [ ] **deployment** — deploy matching API and Storefront source/configuration through the approved
+  release workflow; record both source SHAs, image/config revisions, and rollback references. Owner:
+  release operator; blocks deployed proof.
+- [ ] **operational** — verify browser error recovery and secret-free telemetry on deployed hosts,
+  then record joint evidence under #2837/#2304. Owner: verifier; blocks authentication-hardening
+  closure. Production activation remains separately gated by #2834.
+
+### Next phase number
+
+Phase 559. No explicit dependency.
+
+## Phase 559 - Make external partner listings opt-in in Storefront discovery (#2833)
+
+### Initiative and release
+
+Storefront external discovery defaults, issue #2833. Planner handoff: [`.tmp/plan-2833.md`](../../.tmp/plan-2833.md).
+Branch: `feat/2833-discovery-native-only-defaults`, targeting `develop`.
+
+### Objective and scope
+
+Keep customer discovery focused on DGFY native listings by default while preserving explicit
+category-based access to supported partner listings. **All** and native categories include only
+`entity_type = dgfy_native`; Hotel maps exclusively to Synqcore, Real Estate to MapViu, Taxi to
+Eytitu, and Job to Proventous (`external_provider = proventus`). Provider identity and entity type
+determine eligibility; category text, workflow mode, free-text searches, missing entity type, and
+unknown providers do not opt a listing in. Apply the eligibility rule to result cards, map pins,
+hero/fallback pins, remembered pins, cluster counts, and selected cluster content. Correct the
+customer-facing Proventous label while preserving the stable `proventus` identifier and public
+links.
+
+No schema, migration, dependency, or API-shape change is in scope. No deployment or merge is part
+of this phase.
+
+### Status
+
+`in_progress` — implementation and local feature validation are complete on the `develop`-based
+worker branch; PR review and merge remain outstanding. App versions stay unchanged on this
+`develop` PR per Pat's explicit direction in #2048; the conflicting ADR wording is recorded below.
+
+### Dependencies
+
+No blocking dependencies. This phase uses the existing external listing entity/provider fields and
+the existing Storefront discovery filter and map surfaces.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0010](../architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md),
+[ADR 0071](../architecture/adr/0071-independently-deployable-frontend-apps.md),
+[ADR 0089](../architecture/adr/0089-dedicated-back-office-application.md),
+[External Discovery Redirect Foundation](EXTERNAL_DISCOVERY_REDIRECT_FOUNDATION.md),
+[API specification](../api/specification.md), and [testing guide](../testing/README.md).
+Classification: snapshot implementation within the existing discovery and external-listing
+contracts; no cross-boundary architecture change or exception/allowlist is introduced.
+
+### Implementation targets
+
+Storefront discovery eligibility, category options, result/pin/cluster state, and focused tests under
+`apps/dgfy-storefront/src/discovery/` and `apps/dgfy-storefront/src/__tests__/`; Proventous display
+labels and focused tests in `apps/dgfy-api/`, `apps/dgfy-admin/`, and Storefront; current feature/API
+prose and this phase ledger.
+
+### Acceptance and validation evidence
+
+- [x] All and native categories show only native listings. Free-text search does not expose partner
+  listings. Selecting each partner category shows only rows whose entity type and provider match
+  its explicit mapping; unknown or unclassified rows stay hidden.
+- [x] Map pins, result cards, hero/fallback and remembered pins, cluster counts/cards, and selected
+  content follow the same eligibility rule when filters change.
+- [x] Proventous is the customer-facing name across Storefront, API-backed Admin responses, and
+  current feature/API prose; stable `proventus` keys and links are unchanged.
+- [x] No schema, migration, dependency, or public API-shape change is introduced.
+- [x] Focused Storefront, Admin, and API tests; Storefront/Admin builds; API syntax; architecture,
+  docs, compliance, version-policy, and diff checks are recorded below.
+- [x] Local rendered desktop and mobile discovery QA is recorded; no cloud or deployment action is
+  performed.
+
+### Validation evidence (2026-10-26)
+
+- Storefront: `npm --prefix apps/dgfy-storefront test -- src/__tests__/discoveryStoreResultsModel.test.js src/__tests__/discoveryFlow.integration.test.jsx src/__tests__/discoveryCategoryStage.test.jsx src/__tests__/externalDiscoveryPresentation.test.js src/__tests__/discoveryMapLayers.test.js src/__tests__/discoveryFilterState.test.js` — **PASS, 85/85 across 6 files**.
+- Admin: `npm --prefix apps/dgfy-admin test -- src/pages/__tests__/ExternalDiscoveryManager.visibility.integration.test.jsx` — **PASS, 3/3**.
+- API: `npm --prefix apps/dgfy-api test -- --runTestsByPath tests/externalRedirectFoundation.test.js tests/externalEventSeedMapping.test.js` — **PASS, 27/27**. `node --check` passed for both modified API domain files.
+- Builds: `npm run build:store` and `npm run build:admin` — **PASS**. Storefront emitted the existing large-chunk advisory.
+- Changed-source lint — **PASS, 0 errors**. Storefront full lint exits 0 with 140 warnings; Admin full lint exits 0 with 2 warnings. API full lint has 3 errors in untouched `dgfyAccountRepository.js` and `staffRoleUseCases.js`; the changed API source files lint cleanly.
+- Governance: `npm run check:architecture` **PASS** (63 modules / 802 code files; 116 controller files); `npm run lint:docs` **PASS** (36 governed docs / 106 ADRs); `npm run check:compliance` **PASS** (no compliance-sensitive changes); `git diff --check` **PASS**.
+- Version policy: no app package or lockfile versions change in this PR. Pat's 2026-09-27 direction in [#2048](https://github.com/Sieitzz/dgfy-platform/issues/2048#issuecomment-5855120969) says develop work does not bump versions and promotion handles the bump. After restoring the original app floors, `GITHUB_BASE_REF=develop GITHUB_HEAD_REF=feat/2833-discovery-native-only-defaults npm run check:app-versions` **PASSes** for API `1.51.0`, Storefront `1.44.0`, and Admin `1.15.1` under the checker's `unchanged` mode. ADR 0081 Decision 6 still says ordinary `develop` PRs require any increase, so the ADR conflicts with the explicit operator direction, current checker, and implement skill. The related open [#1568](https://github.com/Sieitzz/dgfy-platform/issues/1568) tracks the Worker version-bump obligation and needs reconciliation; no global policy or tooling change is part of #2833.
+- Local rendered QA: desktop `/map-dgfy` synthetic-fixture captures show two native pins/cards by default, only the mapped Proventous row after explicit Job selection, and native-only results after free-text search. Mobile `/map-dgfy` at 390×844 shows populated content and native-only pins/cards; partner, unknown-provider, and unclassified rows are absent, with no page errors. Screenshots are local-only under `.tmp/qa-2833/`; requests to non-local origins were blocked. No cloud or deployment action was performed.
+
+### Risks and non-goals
+
+Eligibility is intentionally fail-closed: a partner row lacking an exact supported provider or
+`external_listing` entity type is not shown. Partner category selection is explicit opt-in; free-text
+query and legacy category/workflow values cannot grant it. API response shape, migrations, external
+provider configuration, and deployed-environment verification are outside this phase.
+
+### Completion date
+
+Not complete. Record only after the scoped implementation is merged and implementation validation
+passes.
+
+### Post-merge verification
+
+- [ ] **release** — through the approved Storefront release process, verify the merged SHA is the
+  deployed source and record the deployment evidence. Owner: DGFY release operator.
+- [ ] **discovery behavior** — on the deployed Storefront, confirm All and free-text searches show
+  native listings only, each partner category shows only its mapped provider, and changing filters
+  clears stale partner pins/cards/selections. Owner: Storefront verifier.
+- [ ] **partner labels** — confirm Admin/API-backed listing labels render as Proventous while
+  provider identity remains `proventus`. Owner: Storefront verifier.
+
+### Next phase number
+
+Phase 560. No explicit dependency.
+
 ---
 
 **Dated note, 2026-10-26 — Phase-number collision between the #2696 tenant-management epic branch and `develop`, resolved per the Phase Sequencing and Lifecycle Rules (the `develop` reservation wins; unmerged collisions move to the next free number):**
@@ -33107,7 +33102,23 @@ The preceding note records the first sync, which moved the epic's unmerged phase
 | 557 | Tenant-console integration cleanup and URL privacy (#2757, #2748, #2750) | **moved from 555**; originally assigned 552 in the first sync |
 | 558 | Efficient tenant directory and Billing workspace (#2776) | **moved from 556**; originally assigned 553 in the first sync |
 
-## Phase 557 - Tenant-console integration cleanup and URL privacy (#2757, #2748, #2750)
+---
+
+**Dated note, 2026-10-27 (third develop sync) — the #2696 phase reservations collided with three newer entries on `develop`:**
+
+Since the prior sync, `develop` assigned Phase 557 to DGFY outbound email branding (#2830), Phase 558 to Storefront OIDC browser interaction (#2837), and Phase 559 to making external partner listings opt-in (#2833). Per the ledger rules, those develop assignments keep their numbers. The epic's still-unmerged tenant-console cleanup moves from Phase 557 to **Phase 560**; its efficient tenant directory and Billing workspace moves from Phase 558 to **Phase 561**. Epic phases 542–544 remain unchanged. The preceding dated notes record the earlier allocations at the time of those syncs.
+
+| Phase | Owner | Disposition |
+|---:|---|---|
+| 557 | DGFY outbound email branding (#2830) | unchanged — reserved on `develop` |
+| 558 | DGFY Storefront OIDC browser interaction (#2837) | unchanged — reserved on `develop` |
+| 559 | Make external partner listings opt-in in Storefront discovery (#2833) | unchanged — reserved on `develop` |
+| 560 | Tenant-console integration cleanup and URL privacy (#2757, #2748, #2750) | moved from Phase 557 |
+| 561 | Efficient tenant directory and Billing workspace (#2776) | moved from Phase 558 |
+
+---
+
+## Phase 560 - Tenant-console integration cleanup and URL privacy (#2757, #2748, #2750)
 
 ### Initiative and release
 
@@ -33253,10 +33264,12 @@ Failure origin was not baseline-compared. Full logs and `local_readiness.json` a
 
 ### Next phase number
 
-Phase 558. Phase 557 depends on integrated Phases 543 and 544; no other explicit dependency blocks
+Phase 561. Phase 560 depends on integrated Phases 543 and 544; no other explicit dependency blocks
 implementation.
 
-## Phase 558 - Efficient tenant directory and Billing workspace (#2776)
+---
+
+## Phase 561 - Efficient tenant directory and Billing workspace (#2776)
 
 ### Initiative and release
 
@@ -33282,7 +33295,7 @@ remain tracked below and do not change implementation completion.
 
 - Phases 543–544 and 557 / Waves 2–4 are present on the registered epic base; the route foundation,
   sections, and integration cleanup are available to this wave.
-- This entry moved from Phase 553 to Phase 558 across the dated 2026-10-26 collision notes above;
+- This entry moved from Phase 553 to Phase 561 across the dated 2026-10-26 collision notes above;
   `develop` already reserves Phases 552–556.
 - Phase 546 (#2769) is already recorded on `origin/develop`; it is unrelated and does not block this
   issue. No explicit dependency on #2769 exists. #1923 STAGING persistence/publication checks,
@@ -33411,5 +33424,5 @@ deployment, production data access, or financial mutation occurred in this Worke
 
 ### Next phase number
 
-Phase 559. Phase 558 depends on the Wave 2–4 routes integrated on the epic branch; Phase 546 on
+Phase 562. Phase 561 depends on the Wave 2–4 routes integrated on the epic branch; Phase 546 on
 `origin/develop` is unrelated and creates no additional dependency.

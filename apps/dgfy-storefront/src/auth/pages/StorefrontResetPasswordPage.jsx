@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 
@@ -54,10 +54,12 @@ const inputClass = 'h-12 rounded-xl border-[#CBD5E1] bg-white text-sm text-[#0F1
  */
 export default function StorefrontResetPasswordPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const routeParams = readDgfyRouteParams(searchParams);
+  const oidcInteractionId = String(searchParams.get('oidc_interaction_id') || '').trim();
   const [resetForm, setResetForm] = useState({
-    email: routeParams.email || '',
+    email: routeParams.email || String(location.state?.resetEmail || ''),
     code: '',
     password: '',
     confirmPassword: ''
@@ -71,8 +73,9 @@ export default function StorefrontResetPasswordPage() {
     intent: routeParams.intent,
     mode: 'sign-in',
     returnTo: routeParams.returnTo,
-    email
-  })}`;
+    reason: oidcInteractionId ? 'signed-out' : routeParams.reason,
+    email: oidcInteractionId ? '' : email
+  })}${oidcInteractionId ? `&oidc_interaction_id=${encodeURIComponent(oidcInteractionId)}` : ''}`;
 
   const handleRequestPasswordReset = async (event) => {
     event.preventDefault();
@@ -103,7 +106,10 @@ export default function StorefrontResetPasswordPage() {
       toast.success('Password reset successfully');
       navigate(buildSignInPath(resetForm.email), {
         replace: true,
-        state: { notice: 'Password reset complete. Sign in with your new password.' }
+        state: {
+          notice: 'Password reset complete. Sign in with your new password.',
+          ...(oidcInteractionId ? { oidcLoginHint: resetForm.email } : {})
+        }
       });
     } catch (requestError) {
       toast.error(requestError.response?.data?.message || 'Password reset failed.');
@@ -219,6 +225,7 @@ export default function StorefrontResetPasswordPage() {
             <p className="text-center text-sm" style={{ color: '#64748B' }}>
               <Link
                 to={buildSignInPath(resetForm.email)}
+                state={oidcInteractionId ? { oidcLoginHint: resetForm.email } : undefined}
                 className="font-semibold hover:underline"
                 style={{ color: '#1A4E8D' }}
               >

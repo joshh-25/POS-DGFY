@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   classifyRequestFailure,
+  isSensitiveSentryPath,
   normalizeRequestUrl,
   resolveSentryBrowserConfig,
   resolveSentryEnvironment,
@@ -216,6 +217,17 @@ describe('browser Sentry config', () => {
     expect(resolveTracingMode({ VITE_SENTRY_TRACES_SAMPLE_RATE: '0' })).toBe('propagate');
     expect(resolveTracingMode({ VITE_SENTRY_TRACES_SAMPLE_RATE: '0.1' })).toBe('spans');
     expect(resolveTracingMode({ VITE_SENTRY_TRACE_PROPAGATION_ENABLED: 'false' })).toBe('off');
+  });
+});
+
+describe('sensitive route replay policy', () => {
+  it('marks authentication and OIDC routes as sensitive', () => {
+    expect(isSensitiveSentryPath('/login?oidc_interaction_id=secret')).toBe(true);
+    expect(isSensitiveSentryPath('/register')).toBe(true);
+    expect(isSensitiveSentryPath('/reset-password')).toBe(true);
+    expect(isSensitiveSentryPath('/oidc/interaction/secret')).toBe(true);
+    expect(isSensitiveSentryPath('/oidc/error/secret')).toBe(true);
+    expect(isSensitiveSentryPath('/map-dgfy/account')).toBe(false);
   });
 });
 
