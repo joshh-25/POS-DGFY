@@ -73,12 +73,37 @@ coexist on every signed request/event; none of them alone is sufficient.
   hosted deployments deliver `DGFY_DGLAUNDRY_CLIENT_SECRET` through SOPS/Compose secrets (or
   `DGFY_DGLAUNDRY_CLIENT_SECRET_FILE`). Credentials in request bodies are rejected.
 - Flow: PAR mandatory → `authorize` → `token` (`authorization_code` grant). `code_challenge_method`
-  must be `S256`; any other value is rejected at `/oidc/par`.
+  must be `S256`; any other value is rejected at `/oidc/par`. The browser `authorize` response
+  uses explicit Accept negotiation: HTML-preferring navigations enter DGFY Storefront account
+  authentication, while missing/wildcard Accept and JSON-preferring clients retain the existing
+  JSON protocol behavior, including unauthenticated 401.
 - Scope requested by DGLaundry: `openid profile email dglaundry.company_context`.
 - ID token: RS256, 300s TTL, carries the custom claim `dglaundry_company_context: { companyId,
   membershipId, role }`.
 - State/nonce/authorization-code storage is Redis-backed and single-use (`GETDEL`); in production,
   an unavailable Redis fails closed rather than falling back to memory.
+- A valid PAR is consumed once, then held in a Redis-backed, browser-bound interaction for at most
+  600 seconds. The DGFY Storefront origin comes from the exact, environment-specific
+  `STOREFRONT_PUBLIC_ORIGIN`; the issuer stays on the configured `DGFY_OIDC_ISSUER` at `api.*`.
+  Issuer-host completion tickets last at most 60 seconds and never extend the interaction; the
+  authorization code remains 120 seconds. No callback, scope, state, nonce, PKCE, or onboarding
+  intent is accepted from the browser after PAR redemption.
+- Storefront displays the signed-in DGFY identity and current accepted DGLaundry memberships. A
+  fixed company selector must match an accepted membership exactly. No eligible membership or an
+  explicit `dglaundry_intent=create_company` request can continue with identity scopes only: the
+  granted scopes omit `dglaundry.company_context`, and the ID token omits the company-context claim.
+  This establishes identity only; DGLaundry still owns company onboarding and no company,
+  membership, location mapping, or operational permission is created by the issuer.
+- Cookie-authenticated preparation uses the existing CSRF token and exact configured Storefront
+  `Origin`. Completion uses an issuer-host-only HttpOnly browser-binding cookie, a same-origin
+  fragment-to-POST bridge, live session/client/membership revalidation, and atomic single-use
+  ticket/interaction redemption. DGFY session tokens remain HttpOnly and are not returned to
+  Storefront or DGLaundry.
+
+For hosted DGLaundry integration, `STOREFRONT_PUBLIC_ORIGIN` must exactly match the integration
+environment: `https://dev.dgfy.ph` for development, `https://stage.dgfy.ph` for staging, or
+`https://dgfy.ph` for production. Missing values, URL paths, and cross-environment origins fail
+production environment validation; do not infer the Storefront origin from request Host headers.
 
 ### 2. Inbound machine (DGLaundry → DGFY) — `client_credentials` + `private_key_jwt`
 
@@ -177,7 +202,9 @@ legitimately call the route; "Auth" is the middleware that actually gates it tod
 | GET | `/oidc/.well-known/openid-configuration` | Anyone | none |
 | GET | `/oidc/jwks` | Anyone | none (returns 503 if signing key unconfigured); publishes active and retiring registry keys |
 | POST | `/oidc/par` | DGLaundry browser client | client registration check |
-| GET | `/oidc/authorize` | DGFY account holder (browser) | `authenticateDgfyAccount` |
+| GET | `/oidc/authorize` | DGLaundry browser client | Explicit HTML negotiation starts an interaction; JSON callers retain `authenticateDgfyAccount` and protocol behavior |
+| GET | `/oidc/complete` | DGFY issuer browser | Minimal no-store, CSP-restricted same-origin completion bridge |
+| POST | `/oidc/complete` | DGFY issuer browser | Exact Origin, CSRF cookie/header, issuer-host binding cookie, one-time ticket |
 | POST | `/oidc/token` | DGLaundry browser or machine client | client credentials / `private_key_jwt` |
 | GET | `/oidc/logout` | Signed-in DGFY account holder and registered browser client | `authenticateDgfyAccount`, signed `id_token_hint` matching that account; revokes its linked opaque token and redirects only to the exact configured post-logout URI |
 | POST | `/oidc/revoke` | Registered browser or machine client | `client_secret_basic` or `private_key_jwt`; revokes only tokens owned by the authenticated client |
@@ -187,6 +214,23 @@ All `/oidc/*` endpoints use the Redis-backed `oidcLimiter`: 20 requests per 5 mi
 production and 100 per 5 minutes in development by default. `OIDC_RATE_LIMIT_MAX_REQUESTS` and
 `OIDC_RATE_LIMIT_WINDOW_MS` override the budget and window. The limiter keys requests by IP,
 client ID, and route; see [RATE_LIMITING.md](RATE_LIMITING.md).
+
+### DGFY Storefront OIDC interaction API — mounted at `/api/v1/dgfy/oidc`
+
+| Method | Path | Caller | Auth |
+|---|---|---|---|
+| POST | `/interactions/{id}/bind` | Storefront browser | One-use PAR handoff fragment, CSRF cookie/header, exact configured Storefront Origin; sets a per-interaction host-only HttpOnly cookie |
+| GET | `/interactions/{id}` | Storefront browser | Requires the per-interaction Storefront cookie; public presentation hints; account/company data only with a valid DGFY session |
+| POST | `/interactions/{id}/complete` | Storefront browser | `authenticateDgfyAccount`, per-interaction Storefront cookie, CSRF cookie/header, exact configured Storefront Origin |
+| GET | `/errors/{id}` | Storefront browser | Public, bounded, server-stored readable error details; restart link only for the active registered DGLaundry browser client |
+
+The issuer redirects to Storefront with a random one-use handoff in the URL fragment. Storefront removes the fragment before requesting `/bind`; the API consumes the handoff and sets a host-only `sku_oidc_storefront_binding_{interactionId}` cookie whose lifetime ends with the interaction. The interaction ID alone is never proof of browser authority. Login and registration requests that include `oidc_interaction_id` also require this cookie, and successful authentication evidence is stored against its binding.
+
+Completion preparation accepts `action=company` plus `company_id`, or `action=create_company`.
+The server rechecks accepted membership and creates a one-minute or shorter opaque ticket. The
+Storefront sends the user to the configured issuer's `/oidc/complete#ticket=...`; it never receives
+the DGFY session token. Cookie-authenticated writes retain the global CSRF control; CORS and
+`SESSION_COOKIE_DOMAIN` policy are unchanged.
 
 ### Partner provider API — mounted at `/api/v1/partners/dglaundry`
 

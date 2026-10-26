@@ -9,7 +9,8 @@ import { hashPartnerClientSecret } from '../domain/credentialSecrets.js';
 
 const ISSUER = process.env.DGFY_OIDC_ISSUER || 'https://api.dgfy.ph/oidc';
 const DEFAULT_SCOPE = 'openid profile email';
-const TTL_SECONDS = 120;
+export const OIDC_AUTHORIZATION_CODE_TTL_SECONDS = 120;
+const TTL_SECONDS = OIDC_AUTHORIZATION_CODE_TTL_SECONDS;
 const memoryTransactions = new Map();
 let legacyClientSource = null;
 let contextAdapters = {};
@@ -32,6 +33,7 @@ export const oidcKey = (clientId, kind, id) => `oidc:${encodeURIComponent(String
 const unavailable = (message = 'Partner identity registry is unavailable.') => Object.assign(new Error(message), { statusCode: 503 });
 const clientUnavailable = () => Object.assign(new Error('OIDC client is not active.'), { statusCode: 401 });
 const resolveClient = (...args) => partnerIdentityUseCases.resolveClient(...args);
+export const resolveOidcClient = (...args) => resolveClient(...args);
 const splitScopes = (scope) => String(scope || '').trim().split(/\s+/).filter(Boolean);
 const scopesAllowed = (client, scope, defaults = []) => {
     const requested = splitScopes(scope || defaults.join(' '));
@@ -360,12 +362,38 @@ export const oidcPar = async (req, res, next) => {
         const adapter = client.context_adapter ? contextAdapters[client.context_adapter] : null;
         if (client.context_adapter && !adapter) throw unavailable('Configured OIDC context adapter is unavailable.');
         const requestedScopes = scopesAllowed(client, input.scope, defaultBrowserScopes(client, adapter));
-        if (input.response_type !== 'code' || input.code_challenge_method !== 'S256' || !input.code_challenge || !exactRegistered(client.redirect_uris, input.redirect_uri) || !requestedScopes?.includes('openid')) {
+        const promptValues = String(input.prompt || '').trim().split(/\s+/).filter(Boolean);
+        const promptIsValid = promptValues.length <= 2
+            && new Set(promptValues).size === promptValues.length
+            && promptValues.every((value) => ['login', 'select_account'].includes(value));
+        const intentIsValid = input.dglaundry_intent === undefined
+            || (client.client_id === legacyDglaundryBrowserClientId
+                && client.context_adapter === 'dglaundry'
+                && input.dglaundry_intent === 'create_company'
+                && input.dglaundry_company_id === undefined);
+        const companySelectorIsValid = input.dglaundry_company_id === undefined
+            || (client.context_adapter === 'dglaundry'
+                && typeof input.dglaundry_company_id === 'string'
+                && input.dglaundry_company_id.length > 0
+                && input.dglaundry_company_id.length <= 128
+                && !/[\r\n]/.test(input.dglaundry_company_id));
+        const screenHintIsValid = input.screen_hint === undefined || input.screen_hint === 'signup';
+        const loginHintIsValid = input.login_hint === undefined
+            || (typeof input.login_hint === 'string' && input.login_hint.length <= 254 && !/[\r\n]/.test(input.login_hint));
+        if (input.response_type !== 'code' || input.code_challenge_method !== 'S256' || !input.code_challenge
+            || !exactRegistered(client.redirect_uris, input.redirect_uri) || !requestedScopes?.includes('openid')
+            || !promptIsValid || !intentIsValid || !companySelectorIsValid || !screenHintIsValid || !loginHintIsValid) {
             return res.status(400).json({ error: 'invalid_request', error_description: 'Authorization Code with PKCE S256 and the registered redirect URI are required.' });
         }
         const requestUri = `urn:ietf:params:oauth:request_uri:${Buffer.from(client.client_id).toString('base64url')}:${crypto.randomUUID()}`;
-        const safeInput = { ...input };
-        delete safeInput.client_secret;
+        const parParameterNames = [
+            'client_id', 'response_type', 'redirect_uri', 'scope', 'state', 'nonce',
+            'code_challenge', 'code_challenge_method', 'dglaundry_company_id',
+            'dglaundry_intent', 'prompt', 'screen_hint', 'login_hint'
+        ];
+        const safeInput = Object.fromEntries(parParameterNames
+            .filter((name) => input[name] !== undefined)
+            .map((name) => [name, input[name]]));
         const stored = await store(oidcKey(client.client_id, 'par', requestUri), {
             ...safeInput,
             scope: requestedScopes.join(' '),
@@ -375,6 +403,51 @@ export const oidcPar = async (req, res, next) => {
         if (!stored) return res.status(503).json({ error: 'temporarily_unavailable', error_description: 'Redis-backed OIDC state is required.' });
         return res.status(201).json({ request_uri: requestUri, expires_in: TTL_SECONDS });
     } catch (error) { return next(error); }
+};
+
+const invalidRequestUri = () => Object.assign(new Error('The authorization request is invalid or expired.'), {
+    statusCode: 400,
+    code: 'invalid_request_uri',
+    oauthError: 'invalid_request_uri'
+});
+
+export const consumePushedAuthorizationRequest = async ({ requestUri, clientId = '' }) => {
+    const match = /^urn:ietf:params:oauth:request_uri:([A-Za-z0-9_-]+):([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.exec(String(requestUri || ''));
+    if (!match) throw invalidRequestUri();
+    let requestClientId;
+    try { requestClientId = Buffer.from(match[1], 'base64url').toString('utf8'); } catch { throw invalidRequestUri(); }
+    if (!requestClientId || (clientId && clientId !== requestClientId)) throw invalidRequestUri();
+    const params = await consume(oidcKey(requestClientId, 'par', requestUri));
+    if (!params || params.client_id !== requestClientId) throw invalidRequestUri();
+    const client = await resolveClient(requestClientId);
+    const adapter = client?.context_adapter ? contextAdapters[client.context_adapter] : null;
+    if (!client || client.client_type !== 'browser' || (client.context_adapter && !adapter)
+        || !exactRegistered(client.redirect_uris, params.redirect_uri) || params.response_type !== 'code'
+        || params.code_challenge_method !== 'S256' || !params.code_challenge
+        || !scopesAllowed(client, params.scope, defaultBrowserScopes(client, adapter))?.includes('openid')) {
+        throw invalidRequestUri();
+    }
+    return { client, params };
+};
+
+export const buildOidcAuthorizationCodeGrant = ({ client, params, account, context = null, scope = null }) => {
+    const code = crypto.randomBytes(32).toString('base64url');
+    return {
+        code,
+        grant: {
+            account_id: account.id,
+            issuer: ISSUER,
+            subject: String(account.id),
+            display_name: `${account.first_name || ''} ${account.last_name || ''}`.trim() || 'DGFY Account',
+            email: account.email,
+            context,
+            scope: scope || params.scope || DEFAULT_SCOPE,
+            nonce: params.nonce,
+            code_challenge: params.code_challenge,
+            client_id: client.client_id,
+            redirect_uri: params.redirect_uri
+        }
+    };
 };
 
 export const buildOidcAuthorizeHandler = ({ chooseCompany } = {}) => async (req, res, next) => {
@@ -477,8 +550,24 @@ export const oidcToken = async (req, res, next) => {
         const sid = crypto.randomUUID();
         const adapter = client.context_adapter ? contextAdapters[client.context_adapter] : null;
         if (client.context_adapter && !adapter) throw unavailable('Configured OIDC context adapter is unavailable.');
-        const adapterClaims = adapter?.buildIdTokenClaims(grant.context) || {};
-        const idToken = jwt.sign({ iss: ISSUER, sub: grant.subject, aud: client.client_id, azp: client.client_id, iat: now, exp: now + 300, nonce: grant.nonce, sid, name: grant.display_name, email: grant.email, ...adapterClaims }, signingKey.privateKeyPem, { algorithm: 'RS256', keyid: signingKey.kid });
+        const grantedScopes = splitScopes(grant.scope);
+        const identityClaims = {
+            iss: ISSUER,
+            sub: grant.subject,
+            aud: client.client_id,
+            azp: client.client_id,
+            iat: now,
+            exp: now + 300,
+            nonce: grant.nonce,
+            sid
+        };
+        if (grantedScopes.includes('profile')) identityClaims.name = grant.display_name;
+        if (grantedScopes.includes('email')) identityClaims.email = grant.email;
+        const contextScope = adapter?.scopes?.find((scope) => !['openid', 'profile', 'email'].includes(scope));
+        const adapterClaims = contextScope && grantedScopes.includes(contextScope)
+            ? (adapter?.buildIdTokenClaims(grant.context) || {})
+            : {};
+        const idToken = jwt.sign({ ...identityClaims, ...adapterClaims }, signingKey.privateKeyPem, { algorithm: 'RS256', keyid: signingKey.kid });
         const accessToken = crypto.randomBytes(32).toString('base64url');
         const issuedAt = Date.now();
         const stored = await store(oidcKey(client.client_id, 'access', accessToken), { ...grant, access_token: accessToken, issued_at: issuedAt, expires_at: issuedAt + 300_000 }, 300);

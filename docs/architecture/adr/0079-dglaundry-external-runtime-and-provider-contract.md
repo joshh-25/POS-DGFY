@@ -74,6 +74,36 @@ review but never proves hosted or production readiness.
 
 ## Amendments
 
+### 2026-10-26 — Browser-bound DGFY Storefront interaction (#2837)
+
+- Clause amended: Decision 3's untagged/default browser authorization interaction, following ADR
+  0039's same-document amendment path. `last_reviewed` is refreshed to 2026-10-26.
+- Change: the OIDC issuer and protocol endpoints remain on the configured `api.*` origin. An
+  explicitly HTML-preferring `/oidc/authorize` navigation claims PAR once, then uses DGFY
+  Storefront (`STOREFRONT_PUBLIC_ORIGIN`) for shared sign-in, registration, password reset, and
+  company selection. The environment-specific Storefront origin is validated; request Host and
+  forwarded-host headers are never redirect sources.
+- Lifetime and binding: the consumed PAR becomes a Redis-backed, absolute 600-second interaction.
+  A one-use fragment handoff binds Storefront to a host-only HttpOnly cookie for that interaction;
+  a separate issuer-host-only HttpOnly browser-binding cookie protects the completion bridge.
+  The at-most-60-second single-use ticket cannot extend interaction expiry, and the authorization
+  code remains 120 seconds. Completion revalidates the session, active client, registered callback,
+  requested scopes, and current accepted company membership before atomically consuming the ticket
+  and interaction. An interaction ID alone is never browser authority.
+- Identity-only onboarding: no eligible accepted membership or explicit
+  `dglaundry_intent=create_company` may produce only the registered client's requested identity
+  scopes. The grant omits `dglaundry.company_context` and its ID-token claim. DGLaundry retains
+  company creation, membership, mapping, and operational authorization; the issuer does not
+  provision them.
+- Authority: browser session cookies remain HttpOnly, unsafe cookie requests retain CSRF and exact
+  Origin protections, and CORS / `SESSION_COOKIE_DOMAIN` policy is unchanged. Non-browser JSON
+  behavior, PKCE, nonce, state, and existing token lifetimes remain in force.
+- Scope: this is the DGFY source slice for #2837. DGLaundry's callback transaction lifetime and
+  `create_company` PAR intent are a separate companion implementation and remain a joint hosted
+  acceptance dependency; no deployment or production enablement is implied.
+- See: #2837, [partner integration contract](../../api/PARTNER_INTEGRATION_CONTRACT.md), and the
+  DGFY OIDC interaction implementation in `apps/dgfy-api/src/modules/partnerIdentity/`.
+
 ### 2026-10-08 — Runtime attestation and qualification probes (#2306)
 
 Issue [#2306](https://github.com/Sieitzz/dgfy-platform/issues/2306) adds an admin-gated signed

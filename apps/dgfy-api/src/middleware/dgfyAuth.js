@@ -47,6 +47,8 @@ const attachDgfyAccountFromToken = async (req, token, decodedToken = null) => {
 
     req.dgfyAccount = account;
     req.dgfyAuthSource = 'dgfy_session';
+    req.dgfySessionToken = token;
+    req.dgfySessionClaims = decoded;
     return account;
 };
 
@@ -56,6 +58,17 @@ export const authenticateDgfyAccount = async (req, res, next) => {
         if (!token) {
             return sendDgfyAuthError(res, 401, 'DGFY account authentication is required.');
         }
+        await attachDgfyAccountFromToken(req, token);
+        return next();
+    } catch (error) {
+        return sendDgfyAuthError(res, error.statusCode || 401, error.message || 'Invalid DGFY account session.');
+    }
+};
+
+export const authenticateDgfyAccountOptional = async (req, res, next) => {
+    try {
+        const token = getDgfyToken(req);
+        if (!token) return next();
         await attachDgfyAccountFromToken(req, token);
         return next();
     } catch (error) {

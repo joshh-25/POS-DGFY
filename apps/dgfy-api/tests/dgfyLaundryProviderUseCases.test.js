@@ -70,6 +70,14 @@ describe('DGLaundry provider foundation use cases', () => {
         await expect(useCases.launch({ dgfyAccount: account, companyId: 'company-a' })).rejects.toMatchObject({ statusCode: 403 });
     });
 
+    it('does not substitute a sole accepted company for an invalid explicit selector', async () => {
+        const repository = makeRepository();
+        repository.listLaundryCompanies.mockResolvedValue([companies[0]]);
+        const useCases = buildDgfyLaundryProviderUseCases({ repository });
+        await expect(useCases.launch({ dgfyAccount: account, companyId: 'not-company-a' }))
+            .rejects.toMatchObject({ statusCode: 403 });
+    });
+
     describe('launch origin comes from configuration (#2513)', () => {
         const savedBaseUrl = process.env.DGLAUNDRY_PARTNER_BASE_URL;
         afterEach(() => {

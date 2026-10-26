@@ -3,6 +3,7 @@ import logger from '../config/logger.js';
 import { isPremiumActiveTenant } from '../utils/tenantPlan.js';
 import { MOBILE_SYNC_LIMIT_PER_DAY } from '../modules/pos/usecases/mobilePosUseCases.js';
 import { getCookie, SESSION_COOKIE_NAMES } from '../utils/browserSessionCookies.js';
+import { sanitizeSensitiveLogPath } from '../services/observabilityUtils.js';
 
 // Get rate limit configuration from environment variables.
 // In development, use more lenient limits to account for React StrictMode double renders.
@@ -362,9 +363,9 @@ const getRetryAfterSeconds = (req, options) => {
 const shouldSkipLocalPosAuthRateLimit = (req) => {
   if (!isDevelopmentLocalPosRequest(req)) return false;
   logger.info('[RateLimiter] Skipping local POS auth throttle in development', {
-    path: req.path,
+    path: sanitizeSensitiveLogPath(req.path || req.originalUrl),
     origin: req.headers.origin || null,
-    referer: req.headers.referer || null,
+    referer: req.headers.referer ? sanitizeSensitiveLogPath(req.headers.referer) : null,
   });
   return true;
 };
@@ -376,7 +377,7 @@ const logRateLimitEvent = (req, scope, retryAfterSeconds, keyType) => {
   logger.warn('Rate limit exceeded', {
     ip: req.ip || req.connection?.remoteAddress,
     forwardedIp: firstForwardedIp(req),
-    path: req.path,
+    path: sanitizeSensitiveLogPath(req.path || req.originalUrl),
     method: req.method,
     scope,
     keyType,
@@ -399,7 +400,7 @@ const logRateLimitEvent = (req, scope, retryAfterSeconds, keyType) => {
       total429: rateLimitCounters.total,
       counters: { ...rateLimitCounters },
       latestScope: scope,
-      latestPath: req.path,
+      latestPath: sanitizeSensitiveLogPath(req.path || req.originalUrl),
     });
   }
 };
@@ -667,7 +668,7 @@ export const oidcLimiter = rateLimit({
     res.set('Retry-After', String(response.retryAfterSeconds));
     res.status(response.status).json(response.body);
   },
-  skip: (req) => process.env.NODE_ENV === 'test'
+  skip: () => process.env.NODE_ENV === 'test'
     || (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true')
 });
 

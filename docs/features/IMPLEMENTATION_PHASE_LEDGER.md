@@ -32845,3 +32845,128 @@ validation passes.
 ### Next phase number
 
 Phase 558. No explicit dependency.
+## Phase 558 - DGFY Storefront OIDC browser interaction (#2837)
+
+### Initiative and release
+
+DGLaundry partner authentication, DGFY source slice for issue #2837; ordinary `develop` delivery.
+
+### Objective and scope
+
+Keep the OIDC issuer on the configured `api.*` origin while moving interactive DGFY authentication,
+registration, password reset, and company choice to Storefront. Add a one-use issuer-to-Storefront
+handoff and per-interaction host-only browser cookie, an issuer browser binding, an absolute
+600-second Redis interaction, a 60-second-or-shorter single-use issuer completion ticket, exact
+environmental Storefront destination validation, forced-login proof, accepted-membership
+revalidation, identity-only onboarding grants, readable failures, and telemetry redaction. Preserve
+JSON authorize behavior, existing code/token lifetimes, CSRF/CORS policy, and DGLaundry ownership
+of company onboarding and operational authority. No schema migration, host mutation, deployment,
+or production activation is in scope.
+
+### Status
+
+`in_progress` — the DGFY source slice and available validation are recorded; PR #2842 is open. Merge and joint hosted acceptance remain outstanding.
+
+### Dependencies
+
+- No earlier ledger phase blocks this DGFY source implementation.
+- The separate DGLaundry companion in #2837 must raise its callback transaction expiry to 900,000 ms
+  and pass `dglaundry_intent=create_company` through PAR. That companion, matching hosted issuer /
+  client / Redis values, and real cross-host cookie behavior block joint hosted acceptance, not this
+  source PR.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0079](../architecture/adr/0079-dglaundry-external-runtime-and-provider-contract.md),
+[DGFY Partner Integration Contract](../api/PARTNER_INTEGRATION_CONTRACT.md),
+[Partner OpenAPI](../api/partner-dglaundry-openapi.yaml), [Testing Rules](../testing/README.md),
+and [Apps Layout Migration](../architecture/apps-layout-migration.md). Classification: cross-boundary;
+ADR 0079's untagged/default browser interaction is amended in this PR. ADR 0026 cookie and CSRF
+authority and ADR 0071 app-source boundaries remain in force. No exception or allowlist is added.
+
+### Implementation targets
+
+API OIDC negotiation, Redis interaction repository/use cases/controllers/routes, DGFY login proof,
+CSRF binding-cookie coverage, strict hosted environment validation, and Sentry redaction; Storefront
+interaction/error routes and continuation through existing account flows; company selector
+hardening; partner contract/OpenAPI, ADR amendment, this ledger entry, and focused regression and
+rendered browser evidence. Changes to `packages/web-core` require builds of every consuming app.
+
+### Acceptance and validation evidence
+
+- [ ] HTML negotiation is explicit and quality-aware; JSON callers retain unauthenticated 401 and
+  existing authenticated protocol outcomes.
+- [ ] PAR claims once, interaction expiry is absolute at ten minutes, binding is host-only, ticket
+  expiry is at most one minute, and code TTL remains 120 seconds.
+- [ ] Account, company, forced login, switch-account, signup, OTP/legal, reset-password, and
+  new-company continuation are bound to the server interaction; fixed and lost memberships fail
+  closed.
+- [ ] Issuer completion enforces Origin, CSRF, host binding, current account/client/company state,
+  atomic ticket/interaction consumption, registered callback, and one code at most.
+- [ ] Identity-only no-company/new-company grants omit company-context scope and claim and do not
+  provision authority.
+- [ ] Error routes, telemetry, and logs do not expose interaction IDs, request URIs, tickets,
+  authorization codes, or session tokens.
+- [ ] Required backend/frontend regression suites, backend matrix, frontend contracts, Storefront
+  and any shared-code consumer builds, app-version/architecture/compliance/docs/environment gates,
+  and `git diff --check` are run and exact outcomes recorded before PR.
+- [ ] Local-only Playwright proof follows `web-performance-qa`: one worker, distinct local hostnames,
+  real cookie behavior, cold login, chooser/onboarding navigation, desktop/mobile, page identity,
+  and console/framework-overlay health.
+- [ ] DGLaundry companion prompt and all joint hosted verification dependencies remain explicit;
+  local DGFY proof is not described as joint or deployed acceptance.
+
+### Validation evidence (2026-10-26)
+
+- Focused API OIDC/provider/cookie/CSRF/environment/telemetry suites — PASS, 10 suites / 156 tests.
+- Storefront suite — PASS, 255 files / 1,435 tests. Storefront OIDC interaction tests — PASS,
+  2 files / 5 tests.
+- Shared analytics and Sentry observability suites — PASS, 2 files / 81 tests; changed-file web-core
+  lint and Storefront lint — PASS. API changed-source lint and `node --check` — PASS.
+- Storefront, IMS, POS, OPIS, and Admin production builds — PASS.
+- Storefront frontend contracts — PASS, 39 files / 220 tests; broader frontend contracts — PASS,
+  132 files / 837 tests.
+- `npm run check:architecture` — PASS (63 modules / 807 code files / 117 controllers);
+  `npm run check:compliance` — PASS; `npm run check:production-env` — PASS with the existing
+  generic-fixture `DEPLOY_ENV_LABEL` warnings; `npm run lint:docs` — PASS (36 governed docs / 106
+  ADRs); `git diff --check` — PASS.
+- `npm run test:backend:matrix` — BLOCKED before test execution by the existing unlisted
+  `tests/staffRoleInvitationPersistence.phase554.db.integration.test.js` inventory entry.
+- `npm run test:frontend` — INCOMPLETE: the IMS portion reported failures in untouched IMS test
+  areas and did not finish after more than five minutes; it was interrupted. The changed shared
+  observability suites were rerun separately and pass as recorded above.
+- Cross-host Playwright proof — DEFERRED: local Redis/MySQL are unavailable and this checkout has
+  no API or Storefront `.env` test configuration. No cold-login, staging, or DGLaundry-hosted flow
+  is claimed as proven. The separate DGLaundry companion and joint staging evidence remain required.
+
+### Risks and non-goals
+
+Completion bridges are security-sensitive; host-only browser binding, server-side proof, fresh
+authority checks, durable state, and atomic redemption are required evidence. The DGLaundry
+companion and hosted configuration are external dependencies. No production mutation, DGLaundry
+repository edit, cross-origin credentialed CORS change, global cookie-domain change, general
+registration redesign, or migration is included.
+
+### Completion date
+
+Not complete. Record only after the source implementation is merged and its scoped implementation
+validation passes; retain hosted verification in the checklist below.
+
+### Post-merge verification
+
+- [ ] **provider** — separate DGLaundry owner implements 15-minute callback transaction persistence
+  and `create_company` PAR intent, then jointly proves cold login, forced account choice, company
+  selection, and new-company continuation on staging. Owner: DGLaundry companion owner / #2837;
+  blocks joint hosted acceptance.
+- [ ] **deployment** — deploy matching API and Storefront source/configuration through the approved
+  release workflow; record both source SHAs, image/config revisions, and rollback references. Owner:
+  release operator; blocks deployed proof.
+- [ ] **operational** — verify browser error recovery and secret-free telemetry on deployed hosts,
+  then record joint evidence under #2837/#2304. Owner: verifier; blocks authentication-hardening
+  closure. Production activation remains separately gated by #2834.
+
+### Next phase number
+
+Phase 559. No explicit dependency.

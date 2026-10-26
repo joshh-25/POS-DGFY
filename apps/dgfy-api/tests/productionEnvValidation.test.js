@@ -23,6 +23,7 @@ const baseEnv = {
   SMS_PHONE_HASH_SECRET: strongSecret('sms-phone-hash'),
   CORS_ORIGIN: 'https://skupervisor.dgfy.ph,https://pos.dgfy.ph',
   SESSION_COOKIE_SECURE: 'true',
+  STOREFRONT_PUBLIC_ORIGIN: 'https://dgfy.ph',
   AUTH_BLACKLIST_FAILURE_MODE: 'fail_closed',
   TEMP_FILE_STORAGE: 'auto',
   REDIS_URL: 'redis://127.0.0.1:6379',
@@ -37,6 +38,7 @@ const completeDglaundryDevelopmentEnv = (overrides = {}) => ({
   ...baseEnv,
   DGLAUNDRY_INTEGRATION_ENABLED: 'true',
   DGLAUNDRY_INTEGRATION_ENVIRONMENT: 'development',
+  STOREFRONT_PUBLIC_ORIGIN: 'https://dev.dgfy.ph',
   DGLAUNDRY_SIGNATURE_PROFILE: 'http-message-signatures-v1',
   DGLAUNDRY_PARTNER_BASE_URL: 'https://laundry.surebizcorp.com',
   DGLAUNDRY_PARTNER_AUDIENCE: 'https://laundry.surebizcorp.com',
@@ -195,6 +197,17 @@ describe('production environment validation', () => {
     const result = validateProductionEnv({ env: completeDglaundryDevelopmentEnv() });
     expect(result.ok).toBe(true);
     expect(result.errors).toEqual([]);
+  });
+
+  it('requires the DGLaundry Storefront origin to match its integration environment', () => {
+    const missing = validateProductionEnv({ env: completeDglaundryDevelopmentEnv({ STOREFRONT_PUBLIC_ORIGIN: '' }) });
+    expect(missing.errors).toContain('Missing required environment value: STOREFRONT_PUBLIC_ORIGIN');
+
+    const crossEnvironment = validateProductionEnv({ env: completeDglaundryDevelopmentEnv({ STOREFRONT_PUBLIC_ORIGIN: 'https://stage.dgfy.ph' }) });
+    expect(crossEnvironment.errors).toContain('STOREFRONT_PUBLIC_ORIGIN must be https://dev.dgfy.ph for development');
+
+    const path = validateProductionEnv({ env: completeDglaundryDevelopmentEnv({ STOREFRONT_PUBLIC_ORIGIN: 'https://dev.dgfy.ph/auth' }) });
+    expect(path.errors).toContain('STOREFRONT_PUBLIC_ORIGIN must be an HTTPS origin without credentials, path, query, or fragment');
   });
 
   it('rejects a staging issuer or callback for the Surebiz development connection', () => {

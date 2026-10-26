@@ -27,7 +27,8 @@ import {
     verifyDgfyEmailUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
-import { blacklistToken } from '../../../services/authService.js';
+import { blacklistToken, verifyToken } from '../../../services/authService.js';
+import { oidcInteractionUseCases } from '../../partnerIdentity/oidcInteractionRuntime.js';
 import { buildLegacyDgfyLinkStatus } from '../../../services/dgfyLegacyAccessPolicy.js';
 import {
     completeLegacyLink,
@@ -38,6 +39,7 @@ import {
     clearTenantSessionCookies,
     clearSessionCookie,
     getCookie,
+    getOidcStorefrontBindingCookieName,
     getTenantRefreshToken,
     isMobileClientRequest,
     SESSION_COOKIE_NAMES,
@@ -55,6 +57,57 @@ const setDgfyCookieFromResult = (res, result) => {
                 ? expiresInSeconds * 1000
                 : undefined
         });
+    }
+};
+
+const validateOidcInteractionTarget = async (req, res) => {
+    if (!Object.prototype.hasOwnProperty.call(req.body || {}, 'oidc_interaction_id')) return '';
+    const id = req.body.oidc_interaction_id;
+    if (typeof id !== 'string' || !id.trim()) {
+        res.status(400).json({ success: false, data: null, error_code: 'OIDC_INTERACTION_INVALID', message: 'This sign-in request is invalid or expired.' });
+        return null;
+    }
+    try {
+        const binding = getCookie(req, getOidcStorefrontBindingCookieName(id));
+        await oidcInteractionUseCases.validateFreshAuthenticationTarget(id, binding);
+        return id;
+    } catch (error) {
+        res.status(error.statusCode || 503).json({
+            success: false,
+            data: null,
+            error_code: error.code || 'OIDC_INTERACTION_UNAVAILABLE',
+            message: error.statusCode === 410
+                ? 'This sign-in request expired. Start again from DGLaundry.'
+                : 'DGFY could not continue this sign-in request.'
+        });
+        return null;
+    }
+};
+
+const recordOidcFreshAuthentication = async ({ id, req, result, res }) => {
+    if (!id || !result?.success) return true;
+    const session = result?.data?.payload?.data || result?.data || {};
+    if (!session.token || !session.account?.id) {
+        res.status(503).json({ success: false, data: null, error_code: 'OIDC_AUTH_PROOF_UNAVAILABLE', message: 'DGFY could not continue this sign-in request.' });
+        return false;
+    }
+    try {
+        const claims = verifyToken(session.token);
+        const recorded = await oidcInteractionUseCases.recordFreshAuthentication({
+            id,
+            accountId: session.account.id,
+            sessionToken: session.token,
+            claims,
+            browserBinding: getCookie(req, getOidcStorefrontBindingCookieName(id))
+        });
+        if (!recorded) {
+            res.status(410).json({ success: false, data: null, error_code: 'OIDC_INTERACTION_EXPIRED', message: 'This sign-in request expired. Start again from DGLaundry.' });
+            return false;
+        }
+        return true;
+    } catch {
+        res.status(503).json({ success: false, data: null, error_code: 'OIDC_AUTH_PROOF_UNAVAILABLE', message: 'DGFY could not continue this sign-in request.' });
+        return false;
     }
 };
 
@@ -114,6 +167,8 @@ export const preflightDgfyAccountRegistration = async (req, res) => {
 };
 
 export const registerDgfyAccount = async (req, res) => {
+    const interactionId = await validateOidcInteractionTarget(req, res);
+    if (interactionId === null) return res;
     const result = await registerDgfyAccountUseCase({
         body: req.body,
         metadata: {
@@ -122,6 +177,7 @@ export const registerDgfyAccount = async (req, res) => {
             user_agent: req.get?.('user-agent') || req.headers['user-agent'] || null
         }
     });
+    if (!(await recordOidcFreshAuthentication({ id: interactionId, req, result, res }))) return res;
     setDgfyCookieFromResult(res, result);
     return sendUseCaseResult(res, result, {
         fallbackErrorMessage: 'DGFY account registration failed'
@@ -129,7 +185,10 @@ export const registerDgfyAccount = async (req, res) => {
 };
 
 export const loginDgfyAccount = async (req, res) => {
+    const interactionId = await validateOidcInteractionTarget(req, res);
+    if (interactionId === null) return res;
     const result = await loginDgfyAccountUseCase({ body: req.body });
+    if (!(await recordOidcFreshAuthentication({ id: interactionId, req, result, res }))) return res;
     setDgfyCookieFromResult(res, result);
     return sendUseCaseResult(res, result, {
         fallbackErrorMessage: 'DGFY login failed'
