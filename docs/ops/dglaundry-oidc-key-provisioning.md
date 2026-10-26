@@ -2,19 +2,20 @@
 status: reference
 authority_level: reference
 owner: dgfy-platform
-date: 2026-10-08
-last_reviewed: 2026-10-08
+date: 2026-10-26
+last_reviewed: 2026-10-26
 review_by: 2027-04-07
 applies_to: dgfy_dglaundry_integration, staging_deployment, production_deployment
 topic: dglaundry_oidc_key_provisioning
 ---
 
-# DGLaundry OIDC signing key delivery
+# DGLaundry OIDC signing key delivery for DEV and STAGE
 
-This runbook describes staging delivery of the DGFY OIDC keypair as part of the DGLaundry
-connection package. The reviewed setup utility generates only DGFY-owned keypairs in the
+This runbook describes DEV and STAGE delivery of DGFY-owned OIDC keys as part of the DGLaundry
+connection package. The reviewed setup utility generates only DGFY-owned keypairs in that
 environment's host-owned configuration directory. Registration, secret-manager delivery, review,
-and hosted verification remain operator actions.
+and hosted verification remain operator actions. DEV connects the independently hosted Surebiz
+application; it does not move that application onto DGFY infrastructure.
 
 Both `dgfyLaundryOidcProvider.js` and `dglaundryPartnerAccessToken.js` use the shared OIDC signing
 key registry. While `oidc_signing_keys` is empty, both retain the legacy `DGFY_OIDC_PRIVATE_KEY`
@@ -23,16 +24,20 @@ the first registry row is added, the registry becomes authoritative: both signer
 row, and JWKS publishes active plus retiring public keys. The registry stores public PEM and the
 private-key environment variable name only; private key bytes stay in the approved secret files.
 
-## Protected staging profile
+## Protected DEV and STAGE profiles
 
 The connection Compose profile mounts the host-owned configuration directory read-only, then the
 root entrypoint copies required files into `/run/dgfy-secrets` on an app-owned tmpfs before
-dropping privileges. The app process never reads the host key directory directly:
+dropping privileges. DEV uses `/etc/dgfy/dglaundry/development`; STAGE uses
+`/etc/dgfy/dglaundry/staging`. The app process never reads the host key directory directly:
 
 | Host source | Container source mount | App-readable ephemeral file |
 |---|---|---|
-| `/etc/dgfy/dglaundry/staging/keys/dgfy-oidc-signing.pem` | `/run/dgfy-connection-source/keys/dgfy-oidc-signing.pem` (read-only) | `/run/dgfy-secrets/dgfy-oidc-private.pem` |
-| `/etc/dgfy/dglaundry/staging/keys/dgfy-oidc-signing.pub.pem` | `/run/dgfy-connection-source/keys/dgfy-oidc-signing.pub.pem` (read-only) | `/run/dgfy-secrets/dgfy-oidc-public.pem` |
+| `<environment-root>/keys/dgfy-oidc-signing.pem` | `/run/dgfy-connection-source/keys/dgfy-oidc-signing.pem` (read-only) | `/run/dgfy-secrets/dgfy-oidc-private.pem` |
+| `<environment-root>/keys/dgfy-oidc-signing.pub.pem` | `/run/dgfy-connection-source/keys/dgfy-oidc-signing.pub.pem` (read-only) | `/run/dgfy-secrets/dgfy-oidc-public.pem` |
+
+Replace `<environment-root>` with the exact DEV or STAGE path above; never share a key directory
+between environments.
 
 The setup utility renders these container paths into the candidate environment file:
 
@@ -57,17 +62,20 @@ and `revoke` to inspect and complete the lifecycle. The `add` and `promote` comm
 sequentially; signing pauses after the first registry row is inserted until an active key exists.
 
 Run `scripts/dglaundry-connection-setup.mjs inspect` and `prepare` with
-`--config-dir /etc/dgfy/dglaundry/staging` and the reviewed manifest. The tool creates missing
+`--environment development --config-dir /etc/dgfy/dglaundry/development` on DEV, or
+`--environment staging --config-dir /etc/dgfy/dglaundry/staging` on STAGE, and the reviewed
+manifest. The tool creates missing
 DGFY-owned key pairs under `keys/` and a candidate env file; it refuses to replace partial pairs.
 Install the browser client secret with the approved secret manager at the configured host path.
 Apply only after the candidate, registration evidence, and public-key fingerprints are reviewed.
 Synchronize generated connection variables into the deploy-owned
-`/opt/dgfy-stage/.env` with `apply --compose-env-file /opt/dgfy-stage/.env`, as documented in
-`docs/integrations/DGLAUNDRY_CONNECTION_SETUP.md`. CI intentionally cannot read the protected,
-root-only `/etc/dgfy/dglaundry/staging/` directory. Compose receives service configuration from
-`.env` and mounts that directory read-only into the API. Create the configuration directory before
-starting the compose profile so Docker does not create it with unexpected ownership. Do not copy a
-private key into the repository or release artifact.
+`/opt/dgfy-dev/.env` or `/opt/dgfy-stage/.env` with the matching
+`apply --compose-env-file <existing-env-file>`, as documented in
+`docs/integrations/DGLAUNDRY_CONNECTION_SETUP.md`. CI intentionally cannot read the protected
+configuration directories. Compose receives service configuration from `.env` and mounts that
+environment's directory read-only into the API. Create the configuration directory before starting
+the compose profile so Docker does not create it with unexpected ownership. Do not copy a private
+key into the repository or release artifact.
 
 ## Production
 
@@ -113,7 +121,9 @@ The production Compose fragment documenting the service environment and secret s
 
 ## Verification boundary
 
-After an operator installs a real, registered staging keypair and deploys it, verify
-`GET https://api.stage.dgfy.ph/oidc/jwks` returns a valid JWKS. Production verification is a
-separate human operation after its approved delivery path is installed. This runbook and the
-implementation do not contact either deployed environment.
+After an operator installs a real, registered DEV keypair and deploys it, verify DEV discovery
+advertises `https://api.dev.dgfy.ph/oidc` and
+`GET https://api.dev.dgfy.ph/oidc/jwks` returns a valid JWKS with the registered DEV key ID. Repeat
+with STAGE's issuer and key before staging qualification. Production verification is a separate
+human operation after its approved delivery path is installed. This runbook and the implementation
+do not contact or mutate either deployed environment.

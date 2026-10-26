@@ -3,7 +3,7 @@ status: authoritative
 authority_level: authoritative
 owner: dgfy-platform
 date: 2026-10-07
-last_reviewed: 2026-10-07
+last_reviewed: 2026-10-26
 review_by: 2027-04-07
 applies_to: dgfy_dglaundry_integration
 topic: partner_integration_contract
@@ -57,9 +57,18 @@ coexist on every signed request/event; none of them alone is sufficient.
 
 ### 1. Browser — Authorization Code + PKCE S256 + PAR
 
-- Client: `client_secret_basic`, registered client id `DGFY_DGLAUNDRY_CLIENT_ID` (default
-  `dglaundry-web`), redirect `DGFY_DGLAUNDRY_REDIRECT_URI` (exactly
-  `https://laundry.surebizcorp.com/api/v1/session/dgfy/callback` for the Surebizcorp deployment).
+- Client: `client_secret_basic`, registered client id `DGFY_DGLAUNDRY_CLIENT_ID`, and exact
+  redirect `DGFY_DGLAUNDRY_REDIRECT_URI` for the selected environment:
+
+  | DGLaundry deployment | DGFY environment | Client ID | Callback |
+  |---|---|---|---|
+  | Surebiz, still hosted independently | DEV | `dglaundry-web-dev` | `https://laundry.surebizcorp.com/api/v1/session/dgfy/callback` |
+  | DGLaundry staging stack | STAGE | `dglaundry-web` | `https://dglaundry.stage.dgfy.ph/api/v1/session/dgfy/callback` |
+  | DGLaundry production stack | PROD | `dglaundry-web` | `https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback` |
+
+  Each environment has independent client registration and keys even where the non-DEV client
+  labels match. Surebiz remains on its current host and connects to DGFY over public HTTPS; this
+  mapping does not move its runtime or data to DGFY infrastructure.
 - Browser client credentials are separate from the retired `DGLAUNDRY_PARTNER_TOKEN` setting;
   hosted deployments deliver `DGFY_DGLAUNDRY_CLIENT_SECRET` through SOPS/Compose secrets (or
   `DGFY_DGLAUNDRY_CLIENT_SECRET_FILE`). Credentials in request bodies are rejected.
@@ -92,10 +101,12 @@ coexist on every signed request/event; none of them alone is sufficient.
 For DGFY-initiated calls (quote, booking preparation, order resolution), DGFY mints a **5-minute
 RS256 JWT** from its OIDC signing key (`dglaundryPartnerAccessToken.js`), not an opaque token:
 
-- `iss` = the exact environment-specific DGFY OIDC issuer (`https://api.stage.dgfy.ph/oidc` in
-  staging; `https://api.dgfy.ph/oidc` in production). `sub` and `client_id` = the registered
+- `iss` = the exact environment-specific DGFY OIDC issuer (`https://api.dev.dgfy.ph/oidc` in DEV,
+  `https://api.stage.dgfy.ph/oidc` in staging, and `https://api.dgfy.ph/oidc` in production).
+  `sub` and `client_id` = the registered
   `DGFY_DGLAUNDRY_SERVICE_CLIENT_ID`, distinct from the inbound machine client above.
-- `aud` = the exact DGLaundry partner API origin.
+- `aud` = the exact DGLaundry partner API origin (`https://laundry.surebizcorp.com` in DEV,
+  `https://dglaundry.stage.dgfy.ph` in staging, and `https://dglaundry.dgfy.ph` in production).
 - `scope` = **exactly one** operation scope — see the table below. DGLaundry's verifier requires
   strict equality, not membership in a list.
 - `dgfy_company_id` / `dgfy_location_id` = the active mapped values for this request.
@@ -147,11 +158,12 @@ Applies to every signed DGLaundry↔DGFY partner-API request (not events).
   duplicate returns `401 DGLAUNDRY_SIGNATURE_REPLAY`; unavailable Redis returns `503
   DGLAUNDRY_EVENT_REPLAY_STORE_UNAVAILABLE` and does not ingest the event.
 
-### Production profile requirements
+### Hosted profile requirements
 
-`DGLAUNDRY_SIGNATURE_PROFILE=http-message-signatures-v1` is enforced in production for both
-directions; the HMAC fallback profile (`hmac-local-v1`) is explicitly blocked outside non-production
-environments at the signature-verification layer.
+Hosted DEV, staging, and production integrations run with `NODE_ENV=production`, so durable Redis
+replay checks and production signature rules stay enabled even when the DGFY deployment label is
+DEV. `DGLAUNDRY_SIGNATURE_PROFILE=http-message-signatures-v1` is required for both directions; the
+HMAC fallback profile (`hmac-local-v1`) is blocked in this hosted runtime.
 
 ## Endpoint matrix
 
@@ -325,8 +337,9 @@ configuration-only, and what does not exist, rather than implying full readiness
 
 | Gap | Status | Tracking |
 |---|---|---|
+| DEV JWKS and discovery require the independent DEV OIDC signing registration/key; the DEV connection is not live until configuration, key delivery, and authenticated qualification complete | ⚠️ registration and hosted verification remain open | #2387, #2304 |
 | Staging/production JWKS returns `503 oidc_keys_not_configured` until a real keypair is installed — shared key resolution, staging bind mounts, and production SOPS-to-Compose-secret delivery are implemented, but no live key installation or deployment has been verified | ⚠️ operator key provisioning and deployment remain | #2303 |
-| Browser/machine/service client IDs (`dglaundry-web`, `dglaundry-machine`, `dglaundry-service`) and app ID (`dglaundry`) are agreed in the shared manifest; environment registrations and live callback verification remain outstanding | ⚠️ contract agreed; host registration and verification remain open | #2304, #519 |
+| DEV uses separate `dglaundry-web-dev` / `dglaundry-machine-dev` / `dglaundry-service-dev` IDs; staging and production retain their existing client labels in independent registrations. Registration and live callback verification remain outstanding | ⚠️ contract agreed; host registration and verification remain open | #2387, #2304, #519 |
 | Signed runtime attestation, signed event specimen generator, and reserved sandbox payment-lifecycle probes | ⚠️ source implementation is present on this candidate; provider validator compatibility, fixture setup, and staging execution remain outstanding | #2306 |
 | OIDC end-session, opaque-token introspection/revocation, DB-backed signing-key overlap rotation, dedicated `/oidc/*` rate limiting, and production Redis fail-closed behavior are implemented on PR #2337; the source is not merged and hosted issuer configuration/verification remain outstanding | ⚠️ source candidate only; staging/production keys, registrations, Redis and real-host behavior remain unverified | #2307, #2337 |
 | Customer-facing laundry ordering: catalog, quote and per-kilo submission are callable from the laundry storefront; fixed/mixed submission uses verified payment finalization but remains dark-disabled while the DGLaundry booking-payment feature flag is off | ⚠️ partially shipped; fixed-price checkout is not available until its payment gate is enabled | #2308 |
