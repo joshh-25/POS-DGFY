@@ -32709,3 +32709,139 @@ validation passes.
 ### Next phase number
 
 Phase 557. No explicit dependency.
+
+## Phase 557 - DGFY outbound email branding (#2830)
+
+### Initiative and release
+
+Outbound email slice of legacy-name retirement issue #2830 under epic #352. Ordinary implementation
+branch targeting `develop`.
+
+### Objective and scope
+
+Use plain `DGFY` in active platform-authored outbound email branding and the generic sender fallback.
+Preserve tenant and store names, configured sender overrides and addresses, legal issuer data,
+destinations, attachments, layouts, and SMTP delivery behavior. Add a complete active-send inventory,
+regression coverage for every active template and email-specific wrapper plus direct send owners,
+and current sender guidance. Keep disabled PayPal template code and historical records unchanged.
+Do not mutate STAGING/PROD configuration, deploy, or send real email in this phase.
+
+### Status
+
+`in_progress` — source, regression coverage, inventory, and this ledger entry are being implemented
+from fresh `origin/develop`. Phase 556 (#2387) had already landed on that base, so this work takes
+the next free number, 557; the following number is 558.
+
+### Dependencies
+
+None. The STAGING/PROD sender-name checks and any required persistent configuration updates are
+post-merge operator verification, not implementation dependencies.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0012](../architecture/adr/0012-dgfy-global-convenience-fee-and-ui-brand-separation.md),
+[ADR 0021](../architecture/adr/0021-email-otp-verification-for-account-email-ownership.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0054](../architecture/adr/0054-outbound-email-delivery-log-and-bounce-capture.md),
+[ADR 0060](../architecture/adr/0060-sops-age-encrypted-secrets-at-rest.md),
+[ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md),
+[Backend Test Matrix Gate](../testing/README.md#backend-test-matrix-gate),
+[Email Inventory](OUTBOUND_EMAIL_INVENTORY.md),
+[Issue #2830](https://github.com/Sieitzz/dgfy-platform/issues/2830). Classification:
+`no-architecture-impact`; existing email transport, ownership, and OTP semantics are unchanged, so no
+ADR amendment, new seam, migration, or allowlist is required.
+
+### Implementation targets
+
+[Email templates](../../apps/dgfy-api/src/templates/emailTemplates.js),
+[email service](../../apps/dgfy-api/src/services/emailService.js),
+[user email fallbacks](../../apps/dgfy-api/src/services/userService.js),
+[delivery verification script](../../apps/dgfy-api/scripts/verify-email-delivery.js),
+[branding contract test](../../apps/dgfy-api/tests/emailBranding.contract.test.js),
+[delivery provider tests](../../apps/dgfy-api/tests/emailService.deliveryProvider.test.js),
+[inline invitation tests](../../apps/dgfy-api/tests/dgfyAuthUseCases.test.js),
+[tracking recovery tests](../../apps/dgfy-api/tests/dgfyCustomerUseCases.test.js),
+[service reminder tests](../../apps/dgfy-api/tests/servicesMode.usecases.test.js),
+[invoice delivery tests](../../apps/dgfy-api/tests/platformInvoiceUseCases.test.js),
+[API environment examples](../../apps/dgfy-api/.env.example),
+[API specification](../api/specification.md),
+[collaborator environment guide](../setup/COLLABORATOR_LOCAL_ENV.md),
+[tenant email guidance](TENANT_MANAGEMENT.md), and this ledger.
+
+### Acceptance and validation evidence
+
+- [x] All active authored legacy platform labels in subjects, headers, footers, HTML/plain-text
+  bodies, and the generic sender fallback now use plain DGFY or neutral copy; explicitly branded
+  OTP, affiliate, and storefront sends stay DGFY.
+- [x] Every active template export and email-specific wrapper is covered by the branding guard; inline
+  business invitations, tracking recovery, service reminders, invoice payloads, and operator
+  verification copy are checked through existing seams or a non-sending diagnostic assertion.
+- [x] Tenant/store values, sender overrides and addresses, links, tokens, invoice attachment/legal
+  issuer/QA notice, and layouts remain intact; affiliate account branches and all OTP purposes are
+  inventoried.
+- [x] Rendered staff invitation, welcome, company approval/rejection, and changed billing samples are
+  reviewed at desktop and narrow widths using synthetic data; no real email is sent.
+- [x] Focused email/template/inline-owner tests pass; the required `npm run test:backend:matrix`
+  outcome is recorded without weakening or reclassifying existing suites.
+- [x] `npm run check:compliance` passes with the human-approved declaration for the changed
+  `userService.js` path.
+- [x] `npm run check:architecture`, `npm run lint:docs`, PR-context
+  `node scripts/check-app-version-bump.js`, changed-file `node --check`, and `git diff --check` pass.
+- [x] Current environment examples and guidance show `EMAIL_FROM_NAME=DGFY`, while STAGING/PROD
+  verification remains an explicit human follow-up.
+
+### Validation evidence (Worker run, 2026-10-26)
+
+- The focused email/template/inline-owner Jest command passed 11 suites and 234 tests. After adding
+  explicit welcome, onboarding, subscription, PayMongo, and plan-change destination assertions, the
+  branding contract suite passed again (6 tests).
+- Rendered all 15 active legacy-branded invitation, welcome, company, billing, plan-change,
+  reactivation, and resubmission templates at 1200px and 390px widths with synthetic fixtures.
+  Reviewed the local screenshots under `.tmp/email-branding-previews/`; all 30 renders had no
+  horizontal overflow, and supplied destinations remained present. No email was sent.
+- `node --check` passed for every changed API JavaScript file; architecture checks passed (63 modules,
+  802 code files, and 116 controller files); `npm run lint:docs` passed (36 governed docs and 106
+  ADRs); the app-version gate passed in PR context with no package-version change required; and
+  `git diff --check` passed.
+- After Pat approved the required major declaration, `npm run check:compliance` passed and checked
+  the `userService.js` surface plus 10 compliance-sensitive documentation/API-contract rules. The
+  declaration records that no live preflight was run and uses the accepted PR-open placeholder.
+- `npm run test:backend:matrix` stopped before execution because the existing
+  `tests/staffRoleInvitationPersistence.phase554.db.integration.test.js` suite is missing from
+  `scripts/backend-db-dependent-tests.js`. No unrelated manifest change was made.
+- `npm run check:compliance` initially reported `apps/dgfy-api/src/services/userService.js` as a
+  sensitive change; after the approved major declaration was added, it passed. No live preflight was
+  performed; the declaration records the PR-open placeholder for the continuous sweep.
+
+### Risks and non-goals
+
+A configured `EMAIL_FROM_NAME` overrides the code fallback, so runtime settings may continue to show
+old branding until an operator corrects the persistent configuration and applies it through normal
+release controls. The read-only PROD evidence recorded for planning found the name wrapped in
+literal quotation marks and `EMAIL_FROM=noreply@dgfy.ph`; STAGING values remain unverified. Preserve
+the public sender address and all historical/environment-specific data outside this issue. This
+phase does not change delivery, retry, logging, OTP/security, billing, checkout, app/UI, provider,
+or fiscal identity behavior. Already delivered messages cannot be recalled.
+
+### Completion date
+
+Not complete. Record only after the scoped implementation is merged to `develop` and implementation
+validation passes.
+
+### Post-merge verification
+
+- [ ] **STAGING configuration** — read the filtered effective `EMAIL_FROM_NAME` and `EMAIL_FROM`
+  values; set the persistent display name to exactly `DGFY` if needed, preserve the current sender
+  address, and record the applied configuration revision. Owner: release operator.
+- [ ] **PROD configuration** — normalize the persistent `EMAIL_FROM_NAME` value to exactly `DGFY`
+  (remove embedded quotation marks if still present), preserve `EMAIL_FROM=noreply@dgfy.ph`, apply
+  through normal release controls, and record the configuration revision. Owner: release operator.
+- [ ] **deployed verification** — after the normal deployment, verify the exact source/image and
+  effective sender configuration in STAGING and PROD; record controlled rendered/send evidence only
+  through the approved operator procedure. Owner: release operator / verifier.
+
+### Next phase number
+
+Phase 558. No explicit dependency.

@@ -313,7 +313,7 @@ Current verified status as of `2026-08-07` (issue #279 superseded the `2026-05-1
 - Production SMTP delivery is via Namecheap Private Email on the `dgfy.ph` domain, not Brevo -- see #135's Decision for why the cutover happened. Confirm the live `SMTP_HOST`/`EMAIL_FROM` values operationally with `npm run verify:email` in that environment; this doc intentionally does not restate secret-adjacent config values.
 - The Brevo HTTPS API fallback path (`sendEmailViaBrevoApi`, `BREVO_API_KEY`, `BREVO_API_URL`, `EMAIL_DELIVERY_FALLBACK_TO_BREVO_API`) was **removed** in #279 -- it exercised zero production traffic and, being unauthenticated for our sending domain, would have failed DMARC the same way. `EMAIL_DELIVERY_PROVIDER` no longer has meaning; `getEmailProviderMode()` now returns only `smtp` or `unconfigured`. A send failure now throws with no fallback attempt.
 - Every outbound send (not just OTPs) is now recorded in `email_delivery_logs`, and failures raise an operational alert -- see the #279 compliance impact declaration and ADR 0054 for the delivery-observability design.
-- OTP emails sent through `sendEmailOtpCode()` still use the sender display name `DGFY`; generic lifecycle emails keep `EMAIL_FROM_NAME` (default `SKUpervisor`).
+- OTP emails sent through `sendEmailOtpCode()` still use the sender display name `DGFY`; generic lifecycle emails keep `EMAIL_FROM_NAME` (default `DGFY`).
 - Before enabling enforced OTP flows in any new environment, run `npm run verify:email` and then `npm run verify:email -- --send-to operator@example.com` from that environment.
 
 <details>

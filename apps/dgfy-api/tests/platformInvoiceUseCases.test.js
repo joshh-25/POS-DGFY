@@ -88,14 +88,20 @@ describe('platform landlord invoice use cases', () => {
     const previousSink = process.env.PLATFORM_INVOICE_QA_MAIL_SINK;
     process.env.PLATFORM_INVOICE_QA_MAIL_SINK = 'qa-mail-sink@example.test';
     const artifact = { id: 'artifact-1', artifact_type: 'issued_pdf', filename: 'DGFY-TEST-00000001.pdf', content_type: 'application/pdf', storage_key: 'invoice-1/test.pdf', sha256: 'a'.repeat(64) };
-    const invoice = { id: 'invoice-1', invoice_status: 'issued', invoice_number: 'TEST-00000001', recipient_email_snapshot: 'owner@example.test', artifacts: [artifact] };
+    const invoice = { id: 'invoice-1', invoice_status: 'issued', invoice_number: 'TEST-00000001', mode: 'qa', recipient_email_snapshot: 'owner@example.test', artifacts: [artifact] };
     const delivery = { recipient_email_snapshot: invoice.recipient_email_snapshot, actual_recipient_email_snapshot: 'qa-mail-sink@example.test', update: jest.fn().mockResolvedValue() };
     const repository = { findInvoice: jest.fn().mockResolvedValue(invoice), findLatestDelivery: jest.fn().mockResolvedValue(null), transaction: async (callback) => callback({}), createDelivery: jest.fn().mockResolvedValue(delivery), updateDelivery: jest.fn().mockResolvedValue(), createEvent: jest.fn().mockResolvedValue() };
     const artifactStore = { read: jest.fn().mockResolvedValue(Buffer.from('%PDF-test')), remove: jest.fn() };
     const emailService = { sendEmail: jest.fn().mockResolvedValue({ provider: 'smtp', messageId: 'smtp-1' }) };
     const result = await buildPlatformInvoiceUseCases({ repository, artifactStore, emailService }).deliverEmail({ invoiceId: invoice.id, actor: { id: 'admin-1' } });
     expect(result.success).toBe(true);
-    expect(emailService.sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'qa-mail-sink@example.test', attachments: [expect.objectContaining({ filename: artifact.filename, content: Buffer.from('%PDF-test') })] }));
+    expect(emailService.sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'qa-mail-sink@example.test',
+      subject: 'DGFY TEST-00000001 invoice',
+      html: expect.stringContaining('TEST DOCUMENT — NOT VALID AS A VAT INVOICE OR FOR INPUT TAX.'),
+      text: expect.stringContaining('TEST DOCUMENT — NOT VALID AS A VAT INVOICE OR FOR INPUT TAX.'),
+      attachments: [expect.objectContaining({ filename: artifact.filename, content: Buffer.from('%PDF-test') })]
+    }));
     expect(repository.updateDelivery).toHaveBeenCalledWith(delivery, expect.objectContaining({ status: 'sent_to_provider', provider: 'smtp' }), expect.anything());
     if (previousSink == null) delete process.env.PLATFORM_INVOICE_QA_MAIL_SINK;
     else process.env.PLATFORM_INVOICE_QA_MAIL_SINK = previousSink;

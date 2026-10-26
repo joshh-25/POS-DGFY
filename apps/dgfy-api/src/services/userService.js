@@ -2257,7 +2257,7 @@ export const createUserInvitation = async (adminUserId, invitationData) => {
 
   // Get tenant name for email
   const store = dbStore.getStore();
-  const tenantName = store?.tenantName || 'SKUpervisor';
+  const tenantName = store?.tenantName || 'DGFY';
   const tenantId = String(store?.tenantId || '').trim() || null;
 
   try {
@@ -2450,7 +2450,7 @@ export const acceptInvitation = async (token, userData) => {
       email: user.email,
       username: user.username,
       role: user.role,
-      tenantName: dbStore.getStore()?.tenantName || 'SKUpervisor'
+      tenantName: dbStore.getStore()?.tenantName || 'DGFY'
     }).catch((error) => logger.warn('[UserService] Failed to send welcome email', {
       user_id: user.user_id,
       error: error.message
@@ -2554,7 +2554,7 @@ export const resendUserInvitation = async (adminUserId, targetUserId) => {
 
   const invitationToken = generateInvitationToken();
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  const tenantName = dbStore.getStore()?.tenantName || 'SKUpervisor';
+  const tenantName = dbStore.getStore()?.tenantName || 'DGFY';
   const tenantId = dbStore.getStore()?.tenantId;
   const previousInvitationState = {
     invitation_token: inviteUser.invitation_token,
