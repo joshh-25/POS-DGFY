@@ -1,17 +1,46 @@
 {
-  "manifestVersion": "1.1.0",
+  "manifestVersion": "1.2.0",
   "contractVersion": "external-runtime-v0.1",
   "laundryModeVersion": "laundry-mode-v1",
-  "staffOrigin": "https://laundry.surebizcorp.com",
-  "callback": "https://laundry.surebizcorp.com/api/v1/session/dgfy/callback",
   "contractHashes": {
-    "dgfyPartnerContractSha256": "ab4d8ac83a70fe00d808fac245f06b832b9fd8313305a6991249e02b6e56e468",
+    "dgfyPartnerContractSha256": "49b6afc83b2e328bf27aa6a27645bd6f03239bf92e1663bd4df43d140e8fa846",
     "dgfyPartnerOpenApiSha256": "0cd1cdc9cdc37fa4c0aff30e951a47531627e25e35fcbb2d415aa9a7c8cef9e2",
     "dglaundryPartnerOpenApiSha256": "8850efb0bd47fb7a002e8e942421dc62ef672c843a07deb456ec333a14942648",
     "dglaundryConnectionFixtureSha256": "30b1bf017d772886ee793ce5439af2c7850c65ea636fb71c441632932da6b8ee",
     "dglaundryIntegrationContractSha256": "8a6a1d535ffc145a8bd60548b33f1c3f1847eff740f7970e0bd5d2698de6b243"
   },
   "environments": {
+    "development": {
+      "issuer": "https://api.dev.dgfy.ph/oidc",
+      "partnerApiOrigin": "https://api.dev.dgfy.ph",
+      "staffOrigin": "https://laundry.surebizcorp.com",
+      "apiOrigin": "https://laundry.surebizcorp.com",
+      "callback": "https://laundry.surebizcorp.com/api/v1/session/dgfy/callback",
+      "storefrontOrigin": "https://dev.dgfy.ph",
+      "dglaundryBrowserClientId": "dglaundry-web-dev",
+      "dglaundryMachineClientId": "dglaundry-machine-dev",
+      "dglaundryServiceClientId": "dglaundry-service-dev",
+      "dglaundryPartnerAppId": "dglaundry",
+      "registrationStatus": "proposed",
+      "registrationEvidence": "",
+      "keyIds": {
+        "dglaundryMachineAssertion": "dglaundry-machine-dev-rs256",
+        "dglaundryRequestSigning": "dglaundry-request-dev-p256",
+        "dglaundryEventSigning": "dglaundry-event-dev-ed25519",
+        "dgfyOidcSigning": "dgfy-oidc-dev-2026-10",
+        "dgfyRequestSigning": "dgfy-request-dev-p256",
+        "dgfyEventSigning": "dgfy-event-dev-ed25519"
+      },
+      "keyFingerprintsSha256": {
+        "dglaundryMachineAssertion": "",
+        "dglaundryRequestSigning": "",
+        "dglaundryEventSigning": "",
+        "dgfyOidcSigning": "",
+        "dgfyRequestSigning": "",
+        "dgfyEventSigning": ""
+      },
+      "paymentMode": "sandbox"
+    },
     "staging": {
       "issuer": "https://api.stage.dgfy.ph/oidc",
       "staffOrigin": "https://dglaundry.stage.dgfy.ph",
@@ -84,5 +113,5 @@
     "dgfyRequestSigning": { "owner": "dgfy", "privateFile": "keys/dgfy-request-signing.pem", "publicFile": "keys/dgfy-request-signing.pub.pem", "algorithm": "P-256 ieee-p1363" }
   },
   "secretPolicy": "Private keys and client secrets remain on their owning host and are never written to this manifest.",
-  "manifestNote": "Client IDs and DGLaundry-owned key IDs are the agreed identity contract. The production entry is registered (DGFY prod compose, 2026-10-26, dgfy-platform#2834) and carries its six public-key fingerprints; the staging entry is still proposed with blank fingerprints until verified against installed keys. Each environment carries its own staffOrigin/callback; the top-level staffOrigin/callback are the default for a manifest that predates them and the DGFY DEV / Surebiz demo target."
+  "manifestNote": "Surebiz remains independently hosted and is paired with DGFY development over HTTPS. Client IDs and DGLaundry-owned key IDs are environment-specific identities, not evidence of host registration. The development entry starts proposed with blank evidence and fingerprints; the staging entry is also proposed with blank fingerprints until verified. The production entry is registered (DGFY prod compose, 2026-10-26, dgfy-platform#2834) and carries its six public-key fingerprints. Private keys and client secrets are never stored here."
 }

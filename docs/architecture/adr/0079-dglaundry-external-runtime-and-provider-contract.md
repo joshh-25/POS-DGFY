@@ -3,7 +3,7 @@ status: amended
 authority_level: architecture
 owner: dgfy-platform
 date: 2026-08-30
-last_reviewed: 2026-10-10
+last_reviewed: 2026-10-26
 review_by: 2027-02-28
 applies_to: dgfy_dglaundry_integration
 topic: dglaundry_external_runtime_and_provider_contract
@@ -38,10 +38,11 @@ or signing private keys.
    fulfillment, and counter payments. DGFY materializes only sanitized public
    projections and remains authoritative for DGFY-origin online payment
    capture, refund, cancellation, and receipt events.
-5. The public staff origin for the Surebizcorp deployment is
+5. The separately hosted Surebizcorp staff origin is
    `https://laundry.surebizcorp.com`; the customer URL is
-   `https://dgfy.ph/tenant-store/<handle>`. DGFY Nginx and the DGLaundry
-   gateway share only the external `dgfy-dglaundry-edge` network.
+   `https://dgfy.ph/tenant-store/<handle>`. Surebiz and DGFY communicate over
+   public HTTPS. They do not share a private network, runtime, database, Redis,
+   or secret store.
 6. Provider events and requests are signed, idempotent, ordered, replay
    protected, traceable, and backed by durable inbox/outbox processing. A
    failed branch readiness or security/payment gate keeps the integration
@@ -151,3 +152,27 @@ a non-binding document.
 - Reason: answer the required generic polarity without rewriting the DGLaundry-specific runtime or
   authorizing another hard-coded workflow mode.
 - See: ADR 0035, ADR 0093, #803, and #2311.
+
+### 2026-10-26 — Connect the independent Surebiz deployment to DGFY DEV (#2387)
+
+- Clause amended: Decision 5 and the untagged provider environment contract (`default`), following
+  ADR 0039's amendment path.
+- Change: Surebiz remains hosted at `https://laundry.surebizcorp.com` and connects to DGFY DEV over
+  public HTTPS. DGFY does not move Surebiz's runtime or database onto its servers. The exact DEV
+  issuer is `https://api.dev.dgfy.ph/oidc`, the browser callback is
+  `https://laundry.surebizcorp.com/api/v1/session/dgfy/callback`, and the DGFY-to-DGLaundry service
+  token audience is `https://laundry.surebizcorp.com`.
+- Isolation: DEV uses independent browser, machine, and service registrations and independent
+  signing keys. Registration starts as proposed until verified. No Docker edge network, private
+  network, shared runtime, shared database, shared Redis, or private-key exchange is introduced.
+- Runtime and payments: hosted DEV still requires `NODE_ENV=production`, Redis-backed replay/state
+  protection, asymmetric signatures, and `PAYMONGO_MODE=test`; `DEPLOY_ENV_LABEL=dev` identifies its
+  deployment role. No development-mode fallback is added for enabled hosted integration.
+- Scope: this source/configuration change prepares DGFY's DEV side only. The DGLaundry owner must
+  update Surebiz's demo profile and configuration, retain its old demo backup, create a fresh
+  connected-DEV database, and provide separate deployment and qualification evidence. No hosted
+  activation, data migration, DNS change, staging/prod retargeting, or production authorization is
+  implied.
+- See: #2387's [DEV mapping](https://github.com/Sieitzz/dgfy-platform/issues/2387#issuecomment-6413023710),
+  [DGFY DEV access/runbook evidence](https://github.com/Sieitzz/dgfy-platform/issues/2387#issuecomment-6413091805),
+  and the [partner contract](../../api/PARTNER_INTEGRATION_CONTRACT.md).

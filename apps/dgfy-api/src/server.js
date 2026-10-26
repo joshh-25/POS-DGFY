@@ -114,7 +114,7 @@ import {
 import { initSentry, sentryErrorHandler, sentryRequestContext } from './config/sentry.js';
 import { resolvePartnerCorsOrigin } from './modules/partnerIdentity/services/partnerOriginResolver.js';
 
-const { formatValidationFailure, validateProductionEnv } = productionEnvValidation;
+const { formatValidationFailure, isTruthy, validateProductionEnv } = productionEnvValidation;
 
 initSentry({ logger });
 
@@ -211,6 +211,7 @@ let billingFunnelAuditState = {
 // This allows Express to correctly extract the REAL client IP from X-Forwarded-For headers.
 // If not trusted, rate-limiters will block the load balancer's IP instead of the hacker's IP.
 const isProduction = process.env.NODE_ENV === 'production';
+const isHostedDglaundryIntegrationEnabled = isTruthy(process.env.DGLAUNDRY_INTEGRATION_ENABLED);
 const trustProxyRequested = process.env.TRUST_PROXY === 'true';
 const enforceHttpsRequested = process.env.ENFORCE_HTTPS === 'true';
 const disableHttpsEnforcement = process.env.ENFORCE_HTTPS === 'false';
@@ -224,8 +225,10 @@ if (isProduction || trustProxyRequested) {
   app.set('trust proxy', false);
 }
 
-// Environment validation for Production
-if (isProduction) {
+// Hosted DGLaundry integrations need production-mode runtime protections even
+// on DGFY DEV. Validate enabled integrations on every environment so a DEV
+// configuration cannot silently use process-memory OIDC/replay state.
+if (isProduction || isHostedDglaundryIntegrationEnabled) {
   const validation = validateProductionEnv({ env: process.env });
   if (validation.shouldFail) {
     logger.error(formatValidationFailure(validation));

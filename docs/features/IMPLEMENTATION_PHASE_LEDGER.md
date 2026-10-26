@@ -32588,3 +32588,124 @@ Not complete. Record only after merge and implementation validation pass.
 ### Next phase number
 
 Phase 556. No explicit dependency.
+
+## Phase 556 - Connect independently hosted Surebiz DGLaundry to DGFY DEV (#2387)
+
+### Initiative and release
+
+DGLaundry provider integration, DEV source/configuration slice for epic #2387. Branch:
+`feat/2387-surebiz-dev-connection`, targeting `develop`.
+
+### Objective and scope
+
+Enable DGFY's source and setup tooling to accept a DEV connection from the existing
+`https://laundry.surebizcorp.com` DGLaundry deployment at
+`https://api.dev.dgfy.ph`. Surebiz stays on its own host and communicates over HTTPS. Add an
+independent DEV registration tuple, exact callback and service-token audience, asymmetric key
+support, production-mode runtime validation, and sandbox-only payment checks. Keep STAGE and PROD
+bound to their own DGLaundry hosts and credentials. This phase does not migrate Surebiz runtime or
+data, configure the Surebiz server, deploy either side, change DNS, or activate PROD.
+
+### Status
+
+`in_progress` — DGFY source, tests, contract, and runbook have passed the available source checks;
+no host mutation or hosted qualification has been recorded.
+
+### Dependencies
+
+No dependency blocks the DGFY source PR. Hosted joint qualification depends on Albert's separate
+DGLaundry profile/installer/configuration update, a retained demo backup, fresh connected-DEV data
+and credentials, verified DGFY registrations/key installation, and approved synthetic mappings.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0060](../architecture/adr/0060-sops-age-encrypted-secrets-at-rest.md),
+[ADR 0079](../architecture/adr/0079-dglaundry-external-runtime-and-provider-contract.md),
+[DGFY Partner Integration Contract](../api/PARTNER_INTEGRATION_CONTRACT.md),
+[Connection Manifest](../integrations/dglaundry-connection-manifest.json),
+[Connection Setup Runbook](../integrations/DGLAUNDRY_CONNECTION_SETUP.md),
+[Issue #2387 latest access/runbook evidence](https://github.com/Sieitzz/dgfy-platform/issues/2387#issuecomment-6413091805).
+Classification: cross-boundary environment/profile contract amendment under ADR 0039's default
+clause path. No exception or allowlist is introduced.
+
+### Implementation targets
+
+[Setup utility](../../scripts/dglaundry-connection-setup.mjs),
+[setup tests](../../scripts/dglaundry-connection-setup.test.mjs),
+[connection manifest](../../docs/integrations/dglaundry-connection-manifest.json),
+[environment validation](../../apps/dgfy-api/src/config/productionEnvValidation.cjs),
+[startup guard](../../apps/dgfy-api/src/server.js),
+[partner service-token issuer](../../apps/dgfy-api/src/modules/dgfyLaundryOrders/services/dglaundryPartnerAccessToken.js),
+[validation tests](../../apps/dgfy-api/tests/productionEnvValidation.test.js),
+[startup-guard tests](../../apps/dgfy-api/tests/productionEnvGuard.test.js),
+[token tests](../../apps/dgfy-api/tests/dglaundryPartnerAccessToken.test.js),
+[DGFY contract](../../docs/api/PARTNER_INTEGRATION_CONTRACT.md),
+[key provisioning runbook](../../docs/ops/dglaundry-oidc-key-provisioning.md).
+
+### Acceptance and validation evidence
+
+- [ ] The v1.2 manifest binds Surebiz only to DGFY DEV, with independent proposed client/key IDs,
+  blank registration proof and fingerprints, exact callback/audience, and sandbox payment mode.
+- [ ] Setup inspect/prepare/apply/verify/rollback support DEV, bind state to the manifest digest,
+  preserve existing unmanaged settings, synchronize the existing host `.env`, and restore managed
+  Compose values safely on rollback; STAGE remains on its own DGLaundry host and PROD mutation
+  remains prohibited.
+- [ ] Enabled hosted DEV cannot start outside `NODE_ENV=production`; the exact DEV issuer,
+  callback, Surebiz audience, Redis-backed replay protections, asymmetric signatures, and test-mode
+  payment requirements are validated.
+- [ ] Focused setup, environment-validation, startup-guard, and service-token tests pass; relevant
+  architecture, compliance, docs, syntax, and diff checks are recorded below.
+- [ ] DGFY source readiness is reported separately from Albert's DGLaundry changes and hosted
+  authentication/tenant-isolation qualification.
+
+### Validation evidence (2026-10-26)
+
+- `npm run test:dglaundry-connection-setup` — PASS, 19/19.
+- `npm run check:production-env` — PASS (existing fixture warnings note empty `DEPLOY_ENV_LABEL`
+  in generic fixtures).
+- `npm run check:architecture` — PASS (63 modules, 802 code files, 116 controllers).
+- `npm run lint:docs` — PASS (36 governed docs, 106 ADRs).
+- `npm run check:compliance` — PASS; no compliance-sensitive declaration was required.
+- `npm run check:app-versions` — PASS; no version bump applies on this `develop`-targeted branch.
+- `node --check` on changed API/setup JavaScript and the manifest-to-contract SHA-256 check — PASS.
+- `git diff --check` and the pre-commit marker scan — PASS.
+- Focused API Jest tests were attempted but could not run: this checkout has no
+  `apps/dgfy-api/node_modules/jest`; no assertions ran.
+
+Hosted DEV discovery/JWKS, Surebiz configuration, secret installation, and authenticated joint
+qualification have not been performed by this phase.
+
+### Risks and non-goals
+
+Changing DEV `NODE_ENV` to `production` affects the whole DGFY DEV API and activates full hosting
+preflight requirements; the host operator must validate the complete effective configuration
+before applying. The setup tool keeps registration proposed until independent evidence and actual
+public-key fingerprints are recorded. No credentials, private keys, DNS changes, host migration,
+staging/prod retargeting, or production activation belong in this phase.
+
+### Completion date
+
+Not complete. Record only after the scoped source implementation is merged and implementation
+validation passes.
+
+### Post-merge verification
+
+- [ ] **deployment** — through the approved DGFY DEV release process, record the exact source SHA,
+  image digest, config revision, production-mode runtime label, sandbox payment setting, and rollback
+  reference. Owner: DGFY release operator.
+- [ ] **provider** — verify DEV discovery advertises only `https://api.dev.dgfy.ph/oidc`, JWKS is
+  HTTP 200 with the registered DEV key ID, and the login/browser session, machine/service
+  authorization, and signed traffic work. Owner: DGFY release operator and DGLaundry owner.
+- [ ] **Surebiz** — Albert supplies the reviewed connected-DEV profile/configuration on Surebiz's
+  existing host, fresh database/credentials, retained demo backup, exact DGLaundry SHA/image and
+  config revision. Owner: Albert / DGLaundry.
+- [ ] **qualification** — with synthetic mappings and sandbox payments, prove replay and
+  wrong-company/location denial, then record both SHAs, key fingerprints, evidence URLs, and rollback
+  target. Owner: DGFY + DGLaundry; blocks connected-DEV acceptance and epic closure.
+
+### Next phase number
+
+Phase 557. No explicit dependency.
