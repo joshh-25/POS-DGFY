@@ -8,12 +8,12 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: NONE
 policy_version: 2026.10.16
-verification_evidence: PENDING
+verification_evidence: WorkflowModeProvider recovery suite (19 tests, 10 red against the original provider, green after), POS orderMethod flip regression test (3), workflow/POS/settings subset (38 files, 394 passed, 13 skipped), POS IMS OPIS admin and storefront production builds, app version check (patch-only), architecture, docs and ADR lint, compliance check, local request-time preflight (no_breach)
 rollback_note: Revert the workflow-mode cache module, the WorkflowModeProvider fallback and recovery changes, the new tests, and the ADR 0014 amendment together; the cached localStorage records are inert once unread and need no data rollback.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-26T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-2026-10-26-WORKFLOW-MODE-LAST-KNOWN-GOOD
+preflight_run_at: 2026-10-26T05:39:54.263Z
+preflight_request_ref: PREFLIGHT-LOCAL-1792993055567-2026-10-26-WORKFLOW-MODE-LAST-KNOWN-GOOD-FALLBACK
 ---
 
 # POS workflow-mode last-known-good fallback and recovery (#2824)
@@ -50,13 +50,26 @@ carve-out from ADR 0014's "settings remain online-only" snapshot clause is recor
 amendment to that ADR in the same change. The re-fetch reads settings only and submits no queued
 record, so the manual-only replay policy is unchanged.
 
-The NOT-EXECUTED-* reference records that request-time preflight was not run when this declaration
-was authored. It is reconciled locally with npm run compliance:reconcile-local before the pull
-request opens, because the base branch is main.
+The request-time preflight was authored as NOT-EXECUTED and then reconciled locally with
+npm run compliance:reconcile-local before the pull request opened, because the base branch is main
+and the continuous develop sweep does not cover it. The run used an ephemeral local MySQL and Redis
+stack and returned no_breach with reason ALLOWED; the declaration now carries the
+PREFLIGHT-LOCAL reference it wrote.
 
 ## Verification Evidence
 
-PENDING
+The WorkflowModeProvider recovery suite has 19 tests; 10 of them fail against the original provider
+and all pass after the change. The POS orderMethod flip regression test has 3 tests and passes on
+the unmodified code, which is why no production change was made for that part of the issue. The
+workflow, settings, and POS checkout subset passed (38 files, 394 passed, 13 skipped). The POS,
+IMS, OPIS, admin, and storefront production builds, the app version check in patch-only mode,
+architecture checks, docs and ADR lint, and the compliance check passed.
+
+Not clean: a full IMS-config run (which includes every web-core test) did not finish and was
+stopped, so the whole suite was not completed. In the broader features/pos run, three unrelated
+tests failed (delivery-run bulk assign picker exclusions, the reports adjustments table columns,
+and the Z-reading reconciliation card). The same three fail identically with the original
+WorkflowModeProvider restored, so this change does not cause them.
 
 ## Residual Risks
 
