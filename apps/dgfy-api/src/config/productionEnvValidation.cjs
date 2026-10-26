@@ -238,6 +238,24 @@ const validatePayPalConfig = (env, errors) => {
   }
 };
 
+const DGLAUNDRY_ENVIRONMENT_TARGETS = {
+  development: {
+    issuer: 'https://api.dev.dgfy.ph/oidc',
+    callback: 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback',
+    partnerOrigin: 'https://laundry.surebizcorp.com'
+  },
+  staging: {
+    issuer: 'https://api.stage.dgfy.ph/oidc',
+    callback: 'https://dglaundry.stage.dgfy.ph/api/v1/session/dgfy/callback',
+    partnerOrigin: 'https://dglaundry.stage.dgfy.ph'
+  },
+  production: {
+    issuer: 'https://api.dgfy.ph/oidc',
+    callback: 'https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback',
+    partnerOrigin: 'https://dglaundry.dgfy.ph'
+  }
+};
+
 const validateDglaundryProviderConfig = (env, errors) => {
   if (!isTruthy(env.DGLAUNDRY_INTEGRATION_ENABLED)) return;
   if (String(env.NODE_ENV || '').trim().toLowerCase() !== 'production') {
@@ -263,23 +281,21 @@ const validateDglaundryProviderConfig = (env, errors) => {
   if (!hasValue(env, 'DGLAUNDRY_PARTNER_SIGNING_KEY_ID')) addMissing(errors, 'DGLAUNDRY_PARTNER_SIGNING_KEY_ID');
   if (!hasValue(env, 'DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY') && !hasValue(env, 'DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY_FILE')) addMissing(errors, 'DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY_FILE (or DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY)');
   const integrationEnvironment = String(env.DGLAUNDRY_INTEGRATION_ENVIRONMENT || '').trim().toLowerCase();
-  if (!['staging', 'production'].includes(integrationEnvironment)) {
-    errors.push('DGLAUNDRY_INTEGRATION_ENVIRONMENT must be explicitly staging or production');
+  const target = DGLAUNDRY_ENVIRONMENT_TARGETS[integrationEnvironment];
+  if (!target) {
+    errors.push('DGLAUNDRY_INTEGRATION_ENVIRONMENT must be explicitly development, staging, or production');
   }
-  if (integrationEnvironment === 'staging' && String(env.PAYMONGO_MODE || 'test').trim().toLowerCase() !== 'test') {
-    errors.push('DGLaundry staging integration requires PAYMONGO_MODE=test; live PayMongo is forbidden in staging');
+  if (['development', 'staging'].includes(integrationEnvironment) && String(env.PAYMONGO_MODE || 'test').trim().toLowerCase() !== 'test') {
+    errors.push(`DGLaundry ${integrationEnvironment} integration requires PAYMONGO_MODE=test; live PayMongo is forbidden in ${integrationEnvironment}`);
   }
   const redirect = String(env.DGFY_DGLAUNDRY_REDIRECT_URI || '').trim();
-  const expectedRedirect = integrationEnvironment === 'staging'
-    ? 'https://dglaundry.stage.dgfy.ph/api/v1/session/dgfy/callback'
-    : 'https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback';
-  if (integrationEnvironment && redirect !== expectedRedirect) {
-    errors.push(`DGFY_DGLAUNDRY_REDIRECT_URI must be ${expectedRedirect} for ${integrationEnvironment}`);
+  if (target && redirect !== target.callback) {
+    errors.push(`DGFY_DGLAUNDRY_REDIRECT_URI must be ${target.callback} for ${integrationEnvironment}`);
   }
   if (!hasValue(env, 'DGFY_OIDC_ISSUER')) errors.push('DGFY_OIDC_ISSUER must be explicit for each hosted environment; do not inherit the production issuer in staging');
-  const expectedIssuer = integrationEnvironment === 'staging' ? 'https://api.stage.dgfy.ph/oidc' : 'https://api.dgfy.ph/oidc';
-  if (integrationEnvironment && String(env.DGFY_OIDC_ISSUER || '').trim() !== expectedIssuer) {
-    errors.push(`DGFY_OIDC_ISSUER must be ${expectedIssuer} for ${integrationEnvironment}`);
+  const issuer = String(env.DGFY_OIDC_ISSUER || '').trim();
+  if (target && issuer !== target.issuer) {
+    errors.push(`DGFY_OIDC_ISSUER must be ${target.issuer} for ${integrationEnvironment}`);
   }
   const partnerBaseUrl = String(env.DGLAUNDRY_PARTNER_BASE_URL || '').trim();
   const partnerAudience = String(env.DGLAUNDRY_PARTNER_AUDIENCE || '').trim();
@@ -292,6 +308,16 @@ const validateDglaundryProviderConfig = (env, errors) => {
     }
   } catch {
     if (partnerBaseUrl) errors.push('DGLAUNDRY_PARTNER_BASE_URL must be a valid HTTPS origin');
+  }
+  if (target && partnerBaseUrl) {
+    let partnerOrigin = '';
+    try { partnerOrigin = new URL(partnerBaseUrl).origin; } catch { /* the HTTPS validator above reports malformed origins */ }
+    if (partnerOrigin !== target.partnerOrigin) {
+      errors.push(`DGLAUNDRY_PARTNER_BASE_URL must be ${target.partnerOrigin} for ${integrationEnvironment}`);
+    }
+    if (partnerAudience && partnerAudience !== target.partnerOrigin) {
+      errors.push(`DGLAUNDRY_PARTNER_AUDIENCE must be ${target.partnerOrigin} for ${integrationEnvironment}`);
+    }
   }
 };
 
@@ -542,6 +568,7 @@ const formatValidationFailure = (result) => {
 
 module.exports = {
   BASE_REQUIRED_KEYS,
+  DGLAUNDRY_ENVIRONMENT_TARGETS,
   PLACEHOLDER_PATTERN,
   detectPaymentProvider,
   formatValidationFailure,
