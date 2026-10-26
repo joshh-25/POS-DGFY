@@ -241,16 +241,19 @@ const validatePayPalConfig = (env, errors) => {
 const DGLAUNDRY_ENVIRONMENT_TARGETS = {
   development: {
     issuer: 'https://api.dev.dgfy.ph/oidc',
+    storefrontOrigin: 'https://dev.dgfy.ph',
     callback: 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback',
     partnerOrigin: 'https://laundry.surebizcorp.com'
   },
   staging: {
     issuer: 'https://api.stage.dgfy.ph/oidc',
+    storefrontOrigin: 'https://stage.dgfy.ph',
     callback: 'https://dglaundry.stage.dgfy.ph/api/v1/session/dgfy/callback',
     partnerOrigin: 'https://dglaundry.stage.dgfy.ph'
   },
   production: {
     issuer: 'https://api.dgfy.ph/oidc',
+    storefrontOrigin: 'https://dgfy.ph',
     callback: 'https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback',
     partnerOrigin: 'https://dglaundry.dgfy.ph'
   }
@@ -296,6 +299,20 @@ const validateDglaundryProviderConfig = (env, errors) => {
   const issuer = String(env.DGFY_OIDC_ISSUER || '').trim();
   if (target && issuer !== target.issuer) {
     errors.push(`DGFY_OIDC_ISSUER must be ${target.issuer} for ${integrationEnvironment}`);
+  }
+  if (!hasValue(env, 'STOREFRONT_PUBLIC_ORIGIN')) addMissing(errors, 'STOREFRONT_PUBLIC_ORIGIN');
+  const storefrontOrigin = String(env.STOREFRONT_PUBLIC_ORIGIN || '').trim();
+  try {
+    const parsedStorefrontOrigin = new URL(storefrontOrigin);
+    if (parsedStorefrontOrigin.protocol !== 'https:' || parsedStorefrontOrigin.username || parsedStorefrontOrigin.password
+      || parsedStorefrontOrigin.pathname !== '/' || parsedStorefrontOrigin.search || parsedStorefrontOrigin.hash) {
+      errors.push('STOREFRONT_PUBLIC_ORIGIN must be an HTTPS origin without credentials, path, query, or fragment');
+    }
+  } catch {
+    if (storefrontOrigin) errors.push('STOREFRONT_PUBLIC_ORIGIN must be a valid HTTPS origin');
+  }
+  if (target && storefrontOrigin !== target.storefrontOrigin) {
+    errors.push(`STOREFRONT_PUBLIC_ORIGIN must be ${target.storefrontOrigin} for ${integrationEnvironment}`);
   }
   const partnerBaseUrl = String(env.DGLAUNDRY_PARTNER_BASE_URL || '').trim();
   const partnerAudience = String(env.DGLAUNDRY_PARTNER_AUDIENCE || '').trim();

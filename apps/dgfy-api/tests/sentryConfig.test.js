@@ -212,6 +212,36 @@ describe('makeTracesSampler', () => {
 });
 
 describe('exception message scrubbing', () => {
+  test('redacts OIDC interaction ids, request URIs, and ticket fragments in URLs and request data', () => {
+    const interactionId = 'a'.repeat(43);
+    const ticket = 'b'.repeat(43);
+    const handoff = 'c'.repeat(43);
+    const event = sanitizeSentryEvent({
+      request: {
+        url: `https://api.dev.dgfy.ph/oidc/token?code=${ticket}#ticket=${ticket}`,
+        query_string: `oidc_interaction_id=${interactionId}&handoff=${handoff}&ticket=${ticket}`,
+        data: { grant_type: 'authorization_code', code: ticket, request_uri: 'urn:secret-request', ticket, handoff }
+      }
+    });
+
+    expect(event.request.url).toBe('https://api.dev.dgfy.ph/oidc/token?code=%5BFiltered%5D');
+    expect(event.request.query_string).not.toContain(interactionId);
+    expect(event.request.query_string).not.toContain(ticket);
+    expect(event.request.query_string).not.toContain(handoff);
+    expect(event.request.data).toEqual({
+      grant_type: 'authorization_code', code: '[Filtered]', request_uri: '[Filtered]', ticket: '[Filtered]', handoff: '[Filtered]'
+    });
+  });
+
+  test('redacts the API interaction id from plural interaction routes', () => {
+    const interactionId = 'd'.repeat(43);
+    const event = sanitizeSentryEvent({
+      request: { url: `https://api.dev.dgfy.ph/api/v1/dgfy/oidc/interactions/${interactionId}?request_uri=secret` }
+    });
+    expect(event.request.url).toBe('https://api.dev.dgfy.ph/api/v1/dgfy/oidc/interactions/:id?request_uri=%5BFiltered%5D');
+    expect(event.request.url).not.toContain(interactionId);
+  });
+
   test('redacts an API key that the provider SDK embedded in its error text', () => {
     const event = sanitizeSentryEvent({
       exception: {
