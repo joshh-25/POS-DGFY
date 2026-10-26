@@ -62,11 +62,13 @@ DGFY_COMPOSE="$DGFY_ROOT/docker-compose.api.yml"
 DGFY_AGE_KEY_FILE="${DGFY_AGE_KEY_FILE:-/etc/dgfy/age/keys.txt}"
 DGL_ROOT="${DGL_ROOT:-/opt/dglaundry}"
 CACHE="$DGL_ROOT/dgfy-secrets-cache/prod-dglaundry-secrets.env"
+DGL_SOPS_BIN_EXPLICIT="${DGL_SOPS_BIN:-}"
 DGL_SOPS_BIN="${DGL_SOPS_BIN:-$DGL_ROOT/bin/sops}"
 SOPS_BIN="${SOPS_BIN:-$(command -v sops || echo /usr/local/bin/sops)}"   # DGFY side
 # Only the staging installer vendors a sops into $DGL_ROOT/bin; on prod that directory is empty
 # (2026-10-26, #2834).  Fall back to the system sops, as deploy-sops.sh does.
-[[ -x "$DGL_SOPS_BIN" ]] || DGL_SOPS_BIN="$SOPS_BIN"
+# An explicit DGL_SOPS_BIN is never replaced: a wrong one fails the preflight instead of silently using another binary.
+[[ -n "$DGL_SOPS_BIN_EXPLICIT" || -x "$DGL_SOPS_BIN" ]] || DGL_SOPS_BIN="$SOPS_BIN"
 DGL_AGE_KEY_FILE="$DGL_ROOT/age/keys.txt"
 AGE_KEYGEN="${AGE_KEYGEN:-$(command -v age-keygen || echo /usr/local/bin/age-keygen)}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
