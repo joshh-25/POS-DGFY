@@ -11,8 +11,8 @@ verification_evidence: focused email Jest command (11 suites and 234 tests passe
 rollback_note: Revert the three userService email tenant-name fallback edits to restore the legacy fallback; no records or authorization behavior are changed.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-26T22:55:42+08:00
-preflight_request_ref: NOT-EXECUTED-2830-OUTBOUND-EMAIL-BRANDING
+preflight_run_at: 2026-10-26T15:44:49.382Z
+preflight_request_ref: PREFLIGHT-40351385023-2026-10-26-DGFY-OUTBOUND-EMAIL-BRANDING
 ---
 
 # DGFY Outbound Email Branding (#2830)
