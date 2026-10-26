@@ -50,8 +50,8 @@
       "dglaundryMachineClientId": "dglaundry-machine",
       "dglaundryServiceClientId": "dglaundry-service",
       "dglaundryPartnerAppId": "dglaundry",
-      "registrationStatus": "proposed",
-      "registrationEvidence": "",
+      "registrationStatus": "registered",
+      "registrationEvidence": "Sieitzz/dgfy-platform#2834: DGFY prod compose defines dglaundry-web/-machine/-service and the three DGLaundry public keys (sops, 2026-10-26); api.dgfy.ph/oidc/jwks 200 with dgfy-oidc-prod-2026-10",
       "keyIds": {
         "dglaundryMachineAssertion": "dglaundry-machine-prod-rs256",
         "dglaundryRequestSigning": "dglaundry-request-prod-p256",
@@ -61,12 +61,12 @@
         "dgfyEventSigning": "dgfy-event-prod-ed25519"
       },
       "keyFingerprintsSha256": {
-        "dglaundryMachineAssertion": "",
-        "dglaundryRequestSigning": "",
-        "dglaundryEventSigning": "",
-        "dgfyOidcSigning": "",
-        "dgfyRequestSigning": "",
-        "dgfyEventSigning": ""
+        "dglaundryMachineAssertion": "006faa023524a229484da8e47d122b01d15acbd62ed019921976f3b37feee4eb",
+        "dglaundryRequestSigning": "299610f01c2c4847f184d042f5a00509371962bdf4b91d87cfaf9fb1cf3a91a0",
+        "dglaundryEventSigning": "a7082c2437fe9ed17792cac7bdabe2ba301f734454413bbd25af52b7c3715de2",
+        "dgfyOidcSigning": "55e7b84f5fdbccfdcf8974f6a0994074b5f64ccd4c2eae10479a225ecedb7104",
+        "dgfyRequestSigning": "3622e0680ad9aa32df97749a2902624b9ef1cf08ec63e6735d349bda1301de8b",
+        "dgfyEventSigning": "a0b83870917e87af0dad61cc038e94924f2280a125f729224fc2f721245264d1"
       },
       "paymentMode": "live-authorized-separately"
     }
