@@ -12,6 +12,15 @@ export const SESSION_COOKIE_NAMES = Object.freeze({
   affiliateAttribution: 'sku_aff_attr'
 });
 
+export const OIDC_BROWSER_BINDING_COOKIE = 'sku_oidc_browser_binding';
+export const OIDC_STOREFRONT_BINDING_COOKIE_PREFIX = 'sku_oidc_storefront_binding_';
+export const getOidcStorefrontBindingCookieName = (interactionId) => {
+  const normalizedId = String(interactionId || '');
+  return /^[A-Za-z0-9_-]{24,128}$/.test(normalizedId)
+    ? `${OIDC_STOREFRONT_BINDING_COOKIE_PREFIX}${normalizedId}`
+    : '';
+};
+
 // OPIS (DGFY Back Office, issue #2052) runs on its own origin (opis.dgfy.ph) with an
 // independent browser session: company switching or logout in OPIS must never disrupt an
 // active POS terminal, even when SESSION_COOKIE_DOMAIN=.dgfy.ph shares legacy sku_*
@@ -98,14 +107,16 @@ const serializeCookie = (name, value, {
   maxAgeMs = DEFAULT_REFRESH_MAX_AGE_MS,
   sameSite = 'Lax',
   path = '/',
+  hostOnly = false,
+  secure = shouldUseSecureCookies(),
   clear = false
 } = {}) => {
   const encodedValue = clear ? '' : encodeURIComponent(String(value || ''));
   const parts = [`${name}=${encodedValue}`, `Path=${path}`, `SameSite=${sameSite}`];
-  const domain = resolveCookieDomain();
+  const domain = hostOnly ? '' : resolveCookieDomain();
   if (domain) parts.push(`Domain=${domain}`);
   if (httpOnly) parts.push('HttpOnly');
-  if (shouldUseSecureCookies()) parts.push('Secure');
+  if (secure) parts.push('Secure');
   if (clear) {
     parts.push('Max-Age=0');
     parts.push('Expires=Thu, 01 Jan 1970 00:00:00 GMT');
@@ -154,6 +165,22 @@ export const setBearerSessionCookie = (res, name, token, { maxAgeMs = DEFAULT_AC
   if (!token) return;
   appendSetCookie(res, serializeCookie(name, token, { maxAgeMs }));
   issueCsrfToken(res, { maxAgeMs }, req);
+};
+
+export const setHostOnlySessionCookie = (res, name, value, {
+  maxAgeMs = DEFAULT_ACCESS_MAX_AGE_MS,
+  httpOnly = true,
+  sameSite = 'Lax',
+  secure = shouldUseSecureCookies()
+} = {}) => {
+  if (!value) return;
+  appendSetCookie(res, serializeCookie(name, value, {
+    maxAgeMs,
+    httpOnly,
+    sameSite,
+    secure,
+    hostOnly: true
+  }));
 };
 
 export const clearSessionCookie = (res, name, { httpOnly = true } = {}) => {

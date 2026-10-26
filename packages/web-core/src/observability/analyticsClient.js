@@ -16,10 +16,15 @@ const CONSENT_STORAGE_KEY = 'dgfy_analytics_consent_v1';
 // PostHog with no proxy in front) or a differently-pathed proxy.
 const DEFAULT_POSTHOG_PROXY_PATH = '/ingest';
 const POSTHOG_UI_HOST = 'https://eu.posthog.com';
+const SENSITIVE_AUTH_URL_IGNORELIST = [
+  /\/(?:oidc\/(?:interaction|error)\/|login(?:[/?#]|$)|register(?:[/?#]|$)|reset-password(?:[/?#]|$))/i
+];
 
 let initialized = false;
 let posthogModule = null;
 let initPromise = null;
+let sessionReplayEnabledForInstance = false;
+let sensitiveAnalyticsRoute = false;
 
 const parseBooleanFlag = (value, fallback = false) => {
   const normalized = String(value ?? '').trim().toLowerCase();
@@ -42,6 +47,33 @@ const resolveSessionReplayFlag = (env, surface) => {
   return parseBooleanFlag(env.VITE_POSTHOG_SESSION_REPLAY, false);
 };
 
+const stripUrlQueryAndHash = (value) => {
+  if (typeof value !== 'string' || !value) return value;
+  try {
+    const absolute = /^[a-z][a-z0-9+.-]*:\/\//i.test(value);
+    const url = new URL(value, typeof window !== 'undefined' ? window.location.origin : 'https://analytics.invalid');
+    url.search = '';
+    url.hash = '';
+    return absolute ? url.toString() : url.pathname;
+  } catch {
+    return value.split(/[?#]/, 1)[0];
+  }
+};
+
+export const sanitizePostHogEventUrls = (event) => {
+  if (!event || typeof event !== 'object' || !event.properties) return event;
+  const properties = { ...event.properties };
+  for (const key of ['$current_url', '$referrer', 'href', 'url']) {
+    if (typeof properties[key] === 'string') properties[key] = stripUrlQueryAndHash(properties[key]);
+  }
+  return { ...event, properties };
+};
+
+export const isSensitiveAnalyticsPath = (pathname) => (
+  /^\/(?:login|register|reset-password)(?:[/?#]|$)/i.test(String(pathname || ''))
+  || /^\/oidc\/(?:interaction|error)(?:\/|$)/i.test(String(pathname || '').split(/[?#]/, 1)[0])
+);
+
 export const resolvePostHogBrowserConfig = (env = import.meta.env, surfaceOverride = '') => {
   const surface = String(surfaceOverride || env.VITE_APP_SURFACE || 'skupervisor').trim().toLowerCase();
   const enabled = parseBooleanFlag(env.VITE_POSTHOG_ENABLED, false);
@@ -62,12 +94,13 @@ export const resolvePostHogBrowserConfig = (env = import.meta.env, surfaceOverri
     surface,
     environment: String(env.VITE_POSTHOG_ENVIRONMENT || env.MODE || 'development').trim(),
     sessionReplayEnabled,
-    autocapture: isPos
-      ? {
+    autocapture: {
+      url_ignorelist: SENSITIVE_AUTH_URL_IGNORELIST,
+      ...(isPos ? {
         element_allowlist: ['button', 'a', 'input', 'select'],
-        css_selector_ignorelist: ['.ph-no-capture', '[data-ph-no-capture]']
-      }
-      : true
+        css_selector_ignorelist: ['.ph-no-capture', '[data-ph-no-capture]', '.ph-no-autocapture', '[data-ph-no-autocapture]']
+      } : {})
+    }
   };
 };
 
@@ -112,8 +145,18 @@ export const initBrowserAnalytics = ({ env = import.meta.env, surface, consent =
     return { active: true, reason: 'already_initialized' };
   }
 
+  sessionReplayEnabledForInstance = config.sessionReplayEnabled;
+  sensitiveAnalyticsRoute = isSensitiveAnalyticsPath(
+    typeof window !== 'undefined' ? window.location?.pathname : ''
+  );
+
   initPromise = import('posthog-js')
     .then(({ default: posthog }) => {
+      // The route may change while the SDK chunk loads. Decide replay privacy
+      // against the live URL immediately before initialization as well.
+      sensitiveAnalyticsRoute = isSensitiveAnalyticsPath(
+        typeof window !== 'undefined' ? window.location?.pathname : ''
+      );
       posthog.init(config.apiKey, {
         api_host: config.apiHost,
         ui_host: config.uiHost,
@@ -125,10 +168,11 @@ export const initBrowserAnalytics = ({ env = import.meta.env, surface, consent =
         capture_pageleave: true,
         person_profiles: 'identified_only',
         autocapture: config.autocapture,
+        before_send: sanitizePostHogEventUrls,
         // Errors are Sentry's job -- keep the two tools' responsibilities
         // separate rather than double-capturing exceptions into PostHog.
         capture_exceptions: false,
-        disable_session_recording: !config.sessionReplayEnabled,
+        disable_session_recording: !config.sessionReplayEnabled || sensitiveAnalyticsRoute,
         session_recording: {
           // Default to fully masked; individual fields opt in to being shown
           // via [data-ph-mask] (mask) / [data-ph-block] (never record at
@@ -166,6 +210,17 @@ const withPostHog = (callback) => {
   if (initPromise) {
     initPromise.then((posthog) => posthog && callback(posthog)).catch(() => {});
   }
+};
+
+export const updateAnalyticsRoutePrivacy = (pathname) => {
+  const nextSensitiveRoute = isSensitiveAnalyticsPath(pathname);
+  if (nextSensitiveRoute === sensitiveAnalyticsRoute) return;
+  sensitiveAnalyticsRoute = nextSensitiveRoute;
+  if (!sessionReplayEnabledForInstance) return;
+  withPostHog((posthog) => {
+    if (nextSensitiveRoute) posthog.stopSessionRecording?.();
+    else posthog.startSessionRecording?.();
+  });
 };
 
 export const trackEvent = (name, properties = {}) => {

@@ -27,7 +27,10 @@ const chooseCompany = async ({ repository, dgfyAccount, companyId }) => {
     if (!companyId && companies.length > 1) {
         return { companies, company: null };
     }
-    const company = companies.find((candidate) => candidate.company_id === toTrimmed(companyId)) || (companies.length === 1 ? companies[0] : null);
+    const suppliedCompanyId = toTrimmed(companyId);
+    const company = suppliedCompanyId
+        ? companies.find((candidate) => candidate.company_id === suppliedCompanyId) || null
+        : (companies.length === 1 ? companies[0] : null);
     if (!company) {
         throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'The selected laundry company is not an active membership of this DGFY account.', { statusCode: 403 });
     }

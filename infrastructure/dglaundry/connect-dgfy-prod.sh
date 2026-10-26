@@ -62,9 +62,14 @@ DGFY_COMPOSE="$DGFY_ROOT/docker-compose.api.yml"
 DGFY_AGE_KEY_FILE="${DGFY_AGE_KEY_FILE:-/etc/dgfy/age/keys.txt}"
 DGL_ROOT="${DGL_ROOT:-/opt/dglaundry}"
 CACHE="$DGL_ROOT/dgfy-secrets-cache/prod-dglaundry-secrets.env"
+DGL_SOPS_BIN_EXPLICIT="${DGL_SOPS_BIN:-}"
 DGL_SOPS_BIN="${DGL_SOPS_BIN:-$DGL_ROOT/bin/sops}"
-DGL_AGE_KEY_FILE="$DGL_ROOT/age/keys.txt"
 SOPS_BIN="${SOPS_BIN:-$(command -v sops || echo /usr/local/bin/sops)}"   # DGFY side
+# Only the staging installer vendors a sops into $DGL_ROOT/bin; on prod that directory is empty
+# (2026-10-26, #2834).  Fall back to the system sops, as deploy-sops.sh does.
+# An explicit DGL_SOPS_BIN is never replaced: a wrong one fails the preflight instead of silently using another binary.
+[[ -n "$DGL_SOPS_BIN_EXPLICIT" || -x "$DGL_SOPS_BIN" ]] || DGL_SOPS_BIN="$SOPS_BIN"
+DGL_AGE_KEY_FILE="$DGL_ROOT/age/keys.txt"
 AGE_KEYGEN="${AGE_KEYGEN:-$(command -v age-keygen || echo /usr/local/bin/age-keygen)}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 
@@ -83,6 +88,9 @@ NEW_KEYS=(DGFY_CLIENT_SECRET DGFY_PARTNER_SIGNING_PRIVATE_KEY DGFY_PARTNER_CLIEN
 echo "=== Preflight ==="
 for f in "$DGFY_COMPOSE" "$DGFY_AGE_KEY_FILE" "$CACHE" "$DGL_SOPS_BIN" "$DGL_AGE_KEY_FILE" "$SOPS_BIN" "$AGE_KEYGEN"; do
   [[ -e "$f" ]] || { echo "Missing: $f" >&2; exit 1; }
+done
+for f in "$DGL_SOPS_BIN" "$SOPS_BIN" "$AGE_KEYGEN"; do
+  [[ -x "$f" ]] || { echo "Not executable: $f" >&2; exit 1; }
 done
 for tool in openssl python3; do
   command -v "$tool" >/dev/null 2>&1 || { echo "Missing tool: $tool" >&2; exit 1; }

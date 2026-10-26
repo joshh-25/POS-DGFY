@@ -35,12 +35,25 @@ export const resolveSurface = (reqOrPath = {}) => {
     return 'web';
 };
 
+export const sanitizeSensitiveLogPath = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return 'unknown';
+    let path = raw;
+    try {
+        if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) path = new URL(raw).pathname;
+    } catch { /* Fall back to stripping the query from the raw path. */ }
+    return path
+        .split(/[?#]/, 1)[0]
+        .replace(/(\/oidc\/(?:interactions?|error)\/)[A-Za-z0-9_-]{20,128}(?=\/|$)/gi, '$1:id')
+        || '/';
+};
+
 export const normalizeRouteForObservability = (req = {}) => {
     if (req.route?.path) {
         const base = req.baseUrl || '';
-        return `${base}${req.route.path}` || req.path || 'unknown';
+        return sanitizeSensitiveLogPath(`${base}${req.route.path}` || req.path || 'unknown');
     }
-    return req.path || req.originalUrl || 'unknown';
+    return sanitizeSensitiveLogPath(req.path || req.originalUrl || 'unknown');
 };
 
 export const hashIp = (ip) => {

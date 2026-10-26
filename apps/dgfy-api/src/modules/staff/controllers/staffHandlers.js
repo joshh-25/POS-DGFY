@@ -12,11 +12,18 @@ import {
   buildAssignStaffRoleToUserUseCase
 } from '../usecases/staffRoleUseCases.js';
 import { invalidateUserCache } from '../../../middleware/auth.js';
+import { syncStaffRoleInvitationCancellations } from '../../../services/landlordService.js';
+import logger from '../../../config/logger.js';
 
 const listRoles = buildListStaffRolesUseCase({ repository: staffRoleRepository });
 const createRole = buildCreateStaffRoleUseCase({ repository: staffRoleRepository });
 const updateRole = buildUpdateStaffRoleUseCase({ repository: staffRoleRepository, invalidateUserCache });
-const setRoleStatus = buildSetStaffRoleStatusUseCase({ repository: staffRoleRepository, invalidateUserCache });
+const setRoleStatus = buildSetStaffRoleStatusUseCase({
+  repository: staffRoleRepository,
+  invalidateUserCache,
+  synchronizeInvitationCancellations: syncStaffRoleInvitationCancellations,
+  logger
+});
 const assignRole = buildAssignStaffRoleToUserUseCase({ repository: staffRoleRepository, invalidateUserCache });
 const capabilities = buildGetEffectiveCapabilitiesUseCase();
 const assignments = buildGetStaffAssignmentsUseCase({ repository: staffRoleRepository });
@@ -33,5 +40,13 @@ export const listStaffRoles = async (req, res, next) => { try { return respond(r
 export const getStaffRole = async (req, res, next) => { try { const role = await staffRoleRepository.findById(req.validatedParams.staffRoleId); if (!role) return res.status(404).json({ success: false, data: null, message: 'Staff role was not found', error_code: 'RESOURCE_NOT_FOUND', timestamp: new Date().toISOString() }); return res.status(200).json({ success: true, data: { role: plain(role) }, message: 'Staff role retrieved successfully', timestamp: new Date().toISOString() }); } catch (error) { return next(error); } };
 export const createStaffRole = async (req, res, next) => { try { return respond(req, res, await createRole({ payload: req.validatedData, actorUserId: req.user.user_id }), 'Staff role created successfully', 201); } catch (error) { return next(error); } };
 export const updateStaffRole = async (req, res, next) => { try { return respond(req, res, await updateRole({ staffRoleId: req.validatedParams.staffRoleId, payload: req.validatedData, actorUserId: req.user.user_id }), 'Staff role updated successfully'); } catch (error) { return next(error); } };
-export const setStaffRoleStatus = async (req, res, next) => { try { return respond(req, res, await setRoleStatus({ staffRoleId: req.validatedParams.staffRoleId, isActive: req.validatedData.is_active, actorUserId: req.user.user_id }), 'Staff role status updated successfully'); } catch (error) { return next(error); } };
+export const setStaffRoleStatus = async (req, res, next) => {
+  try {
+    const result = await setRoleStatus({ staffRoleId: req.validatedParams.staffRoleId, isActive: req.validatedData.is_active, actorUserId: req.user.user_id });
+    const message = result.data?.invitation_sync_status === 'retry_required'
+      ? result.data.invitation_sync_message
+      : 'Staff role status updated successfully';
+    return respond(req, res, result, message);
+  } catch (error) { return next(error); }
+};
 export const assignStaffRole = async (req, res, next) => { try { return respond(req, res, await assignRole({ userId: req.validatedParams.userId, staffRoleId: req.validatedData.staff_role_id, actorUserId: req.user.user_id }), 'Staff role assignment updated successfully'); } catch (error) { return next(error); } };

@@ -245,6 +245,56 @@ describe('platform partner OIDC provider', () => {
     expect(inactiveError.statusCode).toBe(401);
   });
 
+  test('stores explicit DGLaundry create-company intent in PAR and rejects browser overrides', async () => {
+    const dglaundryClient = registryClient({
+      clientId: 'dglaundry-web',
+      type: 'browser',
+      secret: 'dglaundry-browser-secret',
+      redirect: 'https://laundry.example.test/auth/dgfy/callback',
+      scopes: ['openid', 'profile', 'email', 'dglaundry.company_context']
+    });
+    dglaundryClient.context_adapter = 'dglaundry';
+    const originalFindClient = registry.findClientByClientId;
+    registry.findClientByClientId = async (candidate) => candidate === dglaundryClient.client_id
+      ? dglaundryClient
+      : originalFindClient(candidate);
+    configurePartnerIdentityProvider({
+      registryRepository: registry,
+      dglaundryBrowserClientId: dglaundryClient.client_id,
+      dglaundryMachineClientId: 'dglaundry-machine',
+      contextAdapters: { dglaundry: { scopes: ['openid', 'profile', 'email', 'dglaundry.company_context'] } }
+    });
+
+    const common = {
+      client_id: dglaundryClient.client_id,
+      response_type: 'code',
+      redirect_uri: dglaundryClient.redirect_uris[0],
+      code_challenge: 'dglaundry-pkce-challenge',
+      code_challenge_method: 'S256',
+      scope: 'openid profile email dglaundry.company_context'
+    };
+    const accepted = response();
+    await provider.oidcPar(browser(dglaundryClient.client_id, 'dglaundry-browser-secret', {
+      ...common, prompt: 'login select_account', screen_hint: 'signup', login_hint: 'ada@example.test', dglaundry_intent: 'create_company'
+    }), accepted, requestError((error) => { throw error; }));
+
+    expect(accepted.statusCode).toBe(201);
+    const stored = JSON.parse(redisValues.get(provider.oidcKey(dglaundryClient.client_id, 'par', accepted.body.request_uri)));
+    expect(stored).toMatchObject({
+      dglaundry_intent: 'create_company',
+      prompt: 'login select_account',
+      screen_hint: 'signup',
+      login_hint: 'ada@example.test'
+    });
+
+    const rejected = response();
+    await provider.oidcPar(browser(dglaundryClient.client_id, 'dglaundry-browser-secret', {
+      ...common, dglaundry_intent: 'create_company', dglaundry_company_id: 'company-1'
+    }), rejected, requestError((error) => { throw error; }));
+    expect(rejected.statusCode).toBe(400);
+    registry.findClientByClientId = originalFindClient;
+  });
+
   test('hashed client secrets are verified without plaintext registry fields', () => {
     const digest = hashClientSecret('correct horse battery staple', 'stable-salt');
     expect(digest).not.toContain('correct horse battery staple');

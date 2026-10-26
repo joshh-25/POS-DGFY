@@ -15,6 +15,13 @@ export const DISCOVERY_DISTANCE_FILTER_OPTIONS = Object.freeze([
 
 export const DISCOVERY_DISTANCE_LABEL_BY_VALUE = Object.fromEntries(DISCOVERY_DISTANCE_FILTER_OPTIONS);
 
+export const DISCOVERY_PARTNER_CATEGORY_OPTIONS = Object.freeze([
+  ['hotel', 'Hotel'],
+  ['real estate', 'Real Estate'],
+  ['taxi', 'Taxi'],
+  ['job', 'Job']
+]);
+
 export const POPULAR_DISCOVERY_CATEGORIES = Object.freeze([
   { label: 'Food', query: 'Food' },
   { label: 'Grocery', query: 'Grocery' },
@@ -38,7 +45,8 @@ export const DISCOVERY_CATEGORY_FILTER_OPTIONS = Object.freeze([
   ['clothing', 'Clothing'],
   ['drinks', 'Drinks'],
   ['food stall', 'Food Stall'],
-  ['frozen', 'Frozen']
+  ['frozen', 'Frozen'],
+  ...DISCOVERY_PARTNER_CATEGORY_OPTIONS
 ]);
 
 export const DISCOVERY_CATEGORY_MATCHERS = Object.freeze({
@@ -54,7 +62,11 @@ export const DISCOVERY_CATEGORY_MATCHERS = Object.freeze({
   clothing: ['clothing', 'fashion', 'apparel'],
   drinks: ['drinks', 'beverage', 'juice', 'milk tea'],
   'food stall': ['food stall', 'stall'],
-  frozen: ['frozen', 'ice cream']
+  frozen: ['frozen', 'ice cream'],
+  hotel: ['hotel', 'hospitality'],
+  'real estate': ['real estate', 'property'],
+  taxi: ['taxi', 'transport'],
+  job: ['job', 'employment']
 });
 
 const formatDiscoveryModeLabel = (modeKey, labels = {}) => (
@@ -65,10 +77,19 @@ const formatDiscoveryModeLabel = (modeKey, labels = {}) => (
 export const buildDiscoveryBusinessModeOptions = ({
   workflowModeLabels = {},
   workflowModeSelectValues = []
-} = {}) => ([
-  ['all', 'Category: All'],
-  ...workflowModeSelectValues.map((modeKey) => [
-    modeKey,
-    formatDiscoveryModeLabel(modeKey, workflowModeLabels)
-  ])
-]);
+} = {}) => {
+  const partnerOptions = DISCOVERY_PARTNER_CATEGORY_OPTIONS;
+  const partnerValues = new Set(partnerOptions.map(([value]) => value));
+  const nativeModeOptions = workflowModeSelectValues
+    .filter((modeKey) => !partnerValues.has(String(modeKey || '').trim().toLowerCase()))
+    .map((modeKey) => [
+      modeKey,
+      formatDiscoveryModeLabel(modeKey, workflowModeLabels)
+    ]);
+
+  return [
+    ['all', 'Category: All'],
+    ...nativeModeOptions,
+    ...partnerOptions
+  ];
+};

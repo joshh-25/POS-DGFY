@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,13 +20,13 @@ const LEGACY_ROLE_DESCRIPTIONS = {
 };
 
 const LEGACY_ROLE_OPTIONS = [
-    { key: 'staff', label: 'Staff', role: 'staff', location_scope: 'assigned', description: LEGACY_ROLE_DESCRIPTIONS.staff },
-    { key: 'cashier', label: 'Cashier', role: 'cashier', location_scope: 'assigned', description: LEGACY_ROLE_DESCRIPTIONS.cashier },
-    { key: 'po', label: 'PO Officer', role: 'po', location_scope: 'assigned', description: LEGACY_ROLE_DESCRIPTIONS.po },
-    { key: 'do', label: 'DO Officer', role: 'do', location_scope: 'assigned', description: LEGACY_ROLE_DESCRIPTIONS.do },
-    { key: 'jo', label: 'JO Officer', role: 'jo', location_scope: 'assigned', description: LEGACY_ROLE_DESCRIPTIONS.jo },
-    { key: 'manager', label: 'Manager', role: 'manager', location_scope: 'tenant', description: LEGACY_ROLE_DESCRIPTIONS.manager },
-    { key: 'admin', label: 'Admin', role: 'admin', location_scope: 'tenant', description: LEGACY_ROLE_DESCRIPTIONS.admin }
+    { key: 'legacy:staff', label: 'Staff', role: 'staff', location_scope: 'assigned', description: LEGACY_ROLE_DESCRIPTIONS.staff },
+    { key: 'legacy:cashier', label: 'Cashier', role: 'cashier', location_scope: 'assigned', description: LEGACY_ROLE_DESCRIPTIONS.cashier },
+    { key: 'legacy:po', label: 'PO Officer', role: 'po', location_scope: 'assigned', description: LEGACY_ROLE_DESCRIPTIONS.po },
+    { key: 'legacy:do', label: 'DO Officer', role: 'do', location_scope: 'assigned', description: LEGACY_ROLE_DESCRIPTIONS.do },
+    { key: 'legacy:jo', label: 'JO Officer', role: 'jo', location_scope: 'assigned', description: LEGACY_ROLE_DESCRIPTIONS.jo },
+    { key: 'legacy:manager', label: 'Manager', role: 'manager', location_scope: 'tenant', description: LEGACY_ROLE_DESCRIPTIONS.manager },
+    { key: 'legacy:admin', label: 'Admin', role: 'admin', location_scope: 'tenant', description: LEGACY_ROLE_DESCRIPTIONS.admin }
 ];
 
 const getSearchErrorMessage = (error) => {
@@ -50,6 +50,7 @@ export default function UserInvitationModal({
     title = 'Invite DGFY Account',
     submitLabel = 'Send DGFY Invitation',
     locationOptions = null,
+    canManageCustomStaffRoles = false,
     overlayClassName
 }) {
     const [accountQuery, setAccountQuery] = useState('');
@@ -57,16 +58,21 @@ export default function UserInvitationModal({
     const [accountSearchLoading, setAccountSearchLoading] = useState(false);
     const [accountSearchError, setAccountSearchError] = useState('');
     const [selectedDgfyAccount, setSelectedDgfyAccount] = useState(null);
-    const [role, setRole] = useState('staff');
+    const [role, setRole] = useState('');
     const [loading, setLoading] = useState(false);
     const [locations, setLocations] = useState([]);
+    const [locationsLoaded, setLocationsLoaded] = useState(false);
     const [selectedLocationIds, setSelectedLocationIds] = useState([]);
+    const [customRoles, setCustomRoles] = useState([]);
+    const [customRolesLoading, setCustomRolesLoading] = useState(false);
+    const [customRolesError, setCustomRolesError] = useState('');
     const lastSearchQueryRef = useRef('');
+    const locationSelectionInitializedRef = useRef(false);
 
-    const roleOptions = useMemo(() => {
+    const standardRoleOptions = useMemo(() => {
         const presets = Array.isArray(roleCatalog?.presets) ? roleCatalog.presets : [];
         const options = presets.length === 0 ? LEGACY_ROLE_OPTIONS : presets.map((preset) => ({
-            key: preset.key,
+            key: `preset:${preset.key}`,
             label: preset.label,
             role: preset.role,
             location_scope: preset.location_scope,
@@ -78,9 +84,38 @@ export default function UserInvitationModal({
             ? options.filter((option) => option.role === normalizedFixedRole)
             : options;
     }, [fixedRole, roleCatalog]);
-    const selectedRoleOption = roleOptions.find((option) => option.key === role) || roleOptions[0] || LEGACY_ROLE_OPTIONS[0];
+    const customRoleOptions = useMemo(() => {
+        if (!canManageCustomStaffRoles || fixedRole) return [];
+        return customRoles
+            .filter((staffRole) => staffRole?.is_active !== false && Number.isInteger(Number(staffRole?.staff_role_id)) && Number(staffRole.staff_role_id) > 0)
+            .map((staffRole) => ({
+                key: `custom:${staffRole.staff_role_id}`,
+                label: staffRole.name,
+                role: 'staff',
+                location_scope: 'assigned',
+                description: `${staffRole.name} uses this store's custom staff-role capabilities.`,
+                staffRoleId: Number(staffRole.staff_role_id)
+            }));
+    }, [canManageCustomStaffRoles, customRoles, fixedRole]);
+    const roleOptions = useMemo(() => [...standardRoleOptions, ...customRoleOptions], [standardRoleOptions, customRoleOptions]);
+    const selectedRoleOption = roleOptions.find((option) => option.key === role) || null;
     const requiresAssignedLocation = selectedRoleOption?.location_scope === 'assigned';
     const activeLocations = useMemo(() => locations.filter((location) => location.is_active !== false), [locations]);
+
+    const loadCustomRoles = useCallback(async () => {
+        if (!canManageCustomStaffRoles || fixedRole) return;
+        setCustomRolesLoading(true);
+        setCustomRolesError('');
+        try {
+            const rows = await userService.listActiveStaffRoles();
+            setCustomRoles(Array.isArray(rows) ? rows.filter((staffRole) => staffRole?.is_active !== false) : []);
+        } catch (error) {
+            setCustomRoles([]);
+            setCustomRolesError(error?.response?.data?.message || 'Unable to load this store\'s custom staff roles.');
+        } finally {
+            setCustomRolesLoading(false);
+        }
+    }, [canManageCustomStaffRoles, fixedRole]);
 
     useEffect(() => {
         if (!open) return;
@@ -88,31 +123,53 @@ export default function UserInvitationModal({
         setAccountResults([]);
         setAccountSearchError('');
         setSelectedDgfyAccount(null);
-        const normalizedFixedRole = String(fixedRole || '').trim().toLowerCase();
-        const firstAssignableRole = normalizedFixedRole
-            ? roleOptions.find((option) => option.role === normalizedFixedRole)
-            : (roleOptions.find((option) => option.role !== 'admin') || roleOptions[0]);
-        if (firstAssignableRole && !roleOptions.some((option) => option.key === role)) {
-            setRole(firstAssignableRole.key);
-        }
+        setRole('');
+        setSelectedLocationIds([]);
+        setCustomRoles([]);
+        setCustomRolesError('');
+        locationSelectionInitializedRef.current = false;
+    }, [open]);
+
+    useEffect(() => {
+        if (!open) return;
         if (Array.isArray(locationOptions)) {
-            const normalized = locationOptions;
-            setLocations(normalized);
-            if (normalized.length === 1) {
-                setSelectedLocationIds([Number(normalized[0].location_id)]);
-            }
+            setLocations(locationOptions);
+            setLocationsLoaded(true);
             return;
         }
+        setLocationsLoaded(false);
         listTenantLocations({ include_inactive: false })
             .then((rows) => {
                 const normalized = Array.isArray(rows) ? rows : [];
                 setLocations(normalized);
-                if (normalized.length === 1) {
-                    setSelectedLocationIds([Number(normalized[0].location_id)]);
-                }
             })
-            .catch(() => setLocations([]));
-    }, [fixedRole, locationOptions, open, roleOptions, role]);
+            .catch(() => setLocations([]))
+            .finally(() => setLocationsLoaded(true));
+    }, [locationOptions, open]);
+
+    useEffect(() => {
+        if (!open || !canManageCustomStaffRoles || fixedRole) return;
+        loadCustomRoles();
+    }, [canManageCustomStaffRoles, fixedRole, loadCustomRoles, open]);
+
+    useEffect(() => {
+        if (!open || !roleOptions.length || roleOptions.some((option) => option.key === role)) return;
+        if (String(role || '').startsWith('custom:')) return;
+        const normalizedFixedRole = String(fixedRole || '').trim().toLowerCase();
+        const firstAssignableRole = normalizedFixedRole
+            ? standardRoleOptions.find((option) => option.role === normalizedFixedRole)
+            : (standardRoleOptions.find((option) => option.role !== 'admin') || standardRoleOptions[0]);
+        if (firstAssignableRole) setRole(firstAssignableRole.key);
+    }, [fixedRole, open, role, roleOptions, standardRoleOptions]);
+
+    useEffect(() => {
+        if (!open || !locationsLoaded || !selectedRoleOption || locationSelectionInitializedRef.current) return;
+        const defaults = requiresAssignedLocation
+            ? (activeLocations.length === 1 ? [Number(activeLocations[0].location_id)] : [])
+            : activeLocations.map((location) => Number(location.location_id));
+        setSelectedLocationIds(defaults);
+        locationSelectionInitializedRef.current = true;
+    }, [activeLocations, locationsLoaded, open, requiresAssignedLocation, selectedRoleOption]);
 
     useEffect(() => {
         if (!open) return undefined;
@@ -155,15 +212,22 @@ export default function UserInvitationModal({
         };
     }, [open, accountQuery]);
 
-    useEffect(() => {
-        if (activeLocations.length === 1) {
-            setSelectedLocationIds([Number(activeLocations[0].location_id)]);
-        } else if (selectedRoleOption?.location_scope === 'tenant') {
-            setSelectedLocationIds(activeLocations.map((location) => Number(location.location_id)));
-        } else {
-            setSelectedLocationIds([]);
+    const handleRoleChange = (nextRoleKey) => {
+        const nextOption = roleOptions.find((option) => option.key === nextRoleKey);
+        const previousOption = selectedRoleOption;
+        setRole(nextRoleKey);
+        if (!nextOption) return;
+
+        if (previousOption?.location_scope === 'assigned' && nextOption.location_scope === 'assigned') {
+            locationSelectionInitializedRef.current = true;
+            return;
         }
-    }, [selectedRoleOption, activeLocations]);
+        const nextLocationIds = nextOption.location_scope === 'assigned'
+            ? (activeLocations.length === 1 ? [Number(activeLocations[0].location_id)] : [])
+            : activeLocations.map((location) => Number(location.location_id));
+        setSelectedLocationIds(nextLocationIds);
+        locationSelectionInitializedRef.current = true;
+    };
 
     const toggleLocation = (locationId) => {
         setSelectedLocationIds((previous) => (
@@ -181,6 +245,16 @@ export default function UserInvitationModal({
             return;
         }
 
+        if (!selectedRoleOption) {
+            toast.error('The selected role is no longer available. Choose an active role.');
+            return;
+        }
+
+        if (requiresAssignedLocation && activeLocations.length === 0) {
+            toast.error('At least one active store location is required for this role');
+            return;
+        }
+
         if (requiresAssignedLocation && selectedLocationIds.length === 0) {
             toast.error('Select at least one location for this role');
             return;
@@ -188,12 +262,14 @@ export default function UserInvitationModal({
 
         setLoading(true);
         try {
-            const result = await userService.inviteDgfyAccountToCompany({
+            const invitationPayload = {
                 dgfyAccountId: selectedDgfyAccount.dgfy_account_id,
                 role: selectedRoleOption.role,
                 rolePresetKey: selectedRoleOption.rolePresetKey || null,
                 locationIds: selectedLocationIds
-            });
+            };
+            if (selectedRoleOption.staffRoleId) invitationPayload.staffRoleId = selectedRoleOption.staffRoleId;
+            const result = await userService.inviteDgfyAccountToCompany(invitationPayload);
 
             if (result.email_sent) {
                 toast.success(`Invitation sent by email to ${selectedDgfyAccount.email} and visible in DGFY My Account > Business.`);
@@ -206,7 +282,7 @@ export default function UserInvitationModal({
             setAccountQuery('');
             setAccountResults([]);
             setSelectedDgfyAccount(null);
-            setRole((roleOptions[0] || LEGACY_ROLE_OPTIONS[0]).key);
+            setRole((standardRoleOptions.find((option) => option.role !== 'admin') || standardRoleOptions[0] || LEGACY_ROLE_OPTIONS[0]).key);
             setSelectedLocationIds(activeLocations.length === 1 ? [Number(activeLocations[0].location_id)] : []);
 
             // Refresh parent list
@@ -310,23 +386,52 @@ export default function UserInvitationModal({
 
                     <div className="grid gap-2">
                         <Label htmlFor="role" className="text-[12px] font-bold text-[#334155]">Role</Label>
-                        <Select value={role} onValueChange={setRole}>
+                        <Select value={role} onValueChange={handleRoleChange}>
                             <SelectTrigger id="role" className="text-[16px] sm:text-[14px]">
                                 <SelectValue placeholder="Select a role" />
                             </SelectTrigger>
                             <SelectContent>
-                                {roleOptions.map((option) => (
+                                <div className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Standard roles</div>
+                                {standardRoleOptions.map((option) => (
                                     <SelectItem key={option.key} value={option.key}>
                                         {option.label}
                                     </SelectItem>
                                 ))}
+                                {customRoleOptions.length > 0 && (
+                                    <>
+                                        <div className="px-3 pb-1 pt-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">Custom roles</div>
+                                        {customRoleOptions.map((option) => (
+                                            <SelectItem key={option.key} value={option.key}>
+                                                {option.label}
+                                            </SelectItem>
+                                        ))}
+                                    </>
+                                )}
                             </SelectContent>
                         </Select>
                         <p className="text-xs text-slate-500">
                             {selectedRoleOption?.description}
                         </p>
+                        {role && !selectedRoleOption && (
+                            <p role="alert" className="text-xs text-red-700">The selected role is no longer available. Choose an active role before sending the invitation.</p>
+                        )}
+                        {canManageCustomStaffRoles && !fixedRole && customRolesLoading && (
+                            <p role="status" className="text-xs text-slate-500">Loading this store's active custom roles…</p>
+                        )}
+                        {canManageCustomStaffRoles && !fixedRole && customRolesError && (
+                            <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900" role="alert">
+                                <span>{customRolesError}</span>
+                                <Button type="button" variant="outline" className="min-h-8 px-2 text-xs" onClick={loadCustomRoles} disabled={customRolesLoading}>Retry</Button>
+                            </div>
+                        )}
+                        {canManageCustomStaffRoles && !fixedRole && !customRolesLoading && !customRolesError && customRoleOptions.length === 0 && (
+                            <p className="text-xs text-slate-500">No active custom staff roles are available for this store.</p>
+                        )}
                     </div>
 
+                    {requiresAssignedLocation && activeLocations.length === 0 && (
+                        <p role="alert" className="text-xs text-red-700">At least one active store location is required for this role.</p>
+                    )}
                     {activeLocations.length > 0 && (
                         <div className="grid gap-2">
                             <Label className="text-[12px] font-bold text-[#334155]">Location Scope</Label>

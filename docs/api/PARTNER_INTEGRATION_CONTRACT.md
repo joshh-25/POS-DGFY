@@ -3,7 +3,7 @@ status: authoritative
 authority_level: authoritative
 owner: dgfy-platform
 date: 2026-10-07
-last_reviewed: 2026-10-07
+last_reviewed: 2026-10-26
 review_by: 2027-04-07
 applies_to: dgfy_dglaundry_integration
 topic: partner_integration_contract
@@ -57,19 +57,53 @@ coexist on every signed request/event; none of them alone is sufficient.
 
 ### 1. Browser — Authorization Code + PKCE S256 + PAR
 
-- Client: `client_secret_basic`, registered client id `DGFY_DGLAUNDRY_CLIENT_ID` (default
-  `dglaundry-web`), redirect `DGFY_DGLAUNDRY_REDIRECT_URI` (exactly
-  `https://laundry.surebizcorp.com/api/v1/session/dgfy/callback` for the Surebizcorp deployment).
+- Client: `client_secret_basic`, registered client id `DGFY_DGLAUNDRY_CLIENT_ID`, and exact
+  redirect `DGFY_DGLAUNDRY_REDIRECT_URI` for the selected environment:
+
+  | DGLaundry deployment | DGFY environment | Client ID | Callback |
+  |---|---|---|---|
+  | Surebiz, still hosted independently | DEV | `dglaundry-web-dev` | `https://laundry.surebizcorp.com/api/v1/session/dgfy/callback` |
+  | DGLaundry staging stack | STAGE | `dglaundry-web` | `https://dglaundry.stage.dgfy.ph/api/v1/session/dgfy/callback` |
+  | DGLaundry production stack | PROD | `dglaundry-web` | `https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback` |
+
+  Each environment has independent client registration and keys even where the non-DEV client
+  labels match. Surebiz remains on its current host and connects to DGFY over public HTTPS; this
+  mapping does not move its runtime or data to DGFY infrastructure.
 - Browser client credentials are separate from the retired `DGLAUNDRY_PARTNER_TOKEN` setting;
   hosted deployments deliver `DGFY_DGLAUNDRY_CLIENT_SECRET` through SOPS/Compose secrets (or
   `DGFY_DGLAUNDRY_CLIENT_SECRET_FILE`). Credentials in request bodies are rejected.
 - Flow: PAR mandatory → `authorize` → `token` (`authorization_code` grant). `code_challenge_method`
-  must be `S256`; any other value is rejected at `/oidc/par`.
+  must be `S256`; any other value is rejected at `/oidc/par`. The browser `authorize` response
+  uses explicit Accept negotiation: HTML-preferring navigations enter DGFY Storefront account
+  authentication, while missing/wildcard Accept and JSON-preferring clients retain the existing
+  JSON protocol behavior, including unauthenticated 401.
 - Scope requested by DGLaundry: `openid profile email dglaundry.company_context`.
 - ID token: RS256, 300s TTL, carries the custom claim `dglaundry_company_context: { companyId,
   membershipId, role }`.
 - State/nonce/authorization-code storage is Redis-backed and single-use (`GETDEL`); in production,
   an unavailable Redis fails closed rather than falling back to memory.
+- A valid PAR is consumed once, then held in a Redis-backed, browser-bound interaction for at most
+  600 seconds. The DGFY Storefront origin comes from the exact, environment-specific
+  `STOREFRONT_PUBLIC_ORIGIN`; the issuer stays on the configured `DGFY_OIDC_ISSUER` at `api.*`.
+  Issuer-host completion tickets last at most 60 seconds and never extend the interaction; the
+  authorization code remains 120 seconds. No callback, scope, state, nonce, PKCE, or onboarding
+  intent is accepted from the browser after PAR redemption.
+- Storefront displays the signed-in DGFY identity and current accepted DGLaundry memberships. A
+  fixed company selector must match an accepted membership exactly. No eligible membership or an
+  explicit `dglaundry_intent=create_company` request can continue with identity scopes only: the
+  granted scopes omit `dglaundry.company_context`, and the ID token omits the company-context claim.
+  This establishes identity only; DGLaundry still owns company onboarding and no company,
+  membership, location mapping, or operational permission is created by the issuer.
+- Cookie-authenticated preparation uses the existing CSRF token and exact configured Storefront
+  `Origin`. Completion uses an issuer-host-only HttpOnly browser-binding cookie, a same-origin
+  fragment-to-POST bridge, live session/client/membership revalidation, and atomic single-use
+  ticket/interaction redemption. DGFY session tokens remain HttpOnly and are not returned to
+  Storefront or DGLaundry.
+
+For hosted DGLaundry integration, `STOREFRONT_PUBLIC_ORIGIN` must exactly match the integration
+environment: `https://dev.dgfy.ph` for development, `https://stage.dgfy.ph` for staging, or
+`https://dgfy.ph` for production. Missing values, URL paths, and cross-environment origins fail
+production environment validation; do not infer the Storefront origin from request Host headers.
 
 ### 2. Inbound machine (DGLaundry → DGFY) — `client_credentials` + `private_key_jwt`
 
@@ -92,10 +126,12 @@ coexist on every signed request/event; none of them alone is sufficient.
 For DGFY-initiated calls (quote, booking preparation, order resolution), DGFY mints a **5-minute
 RS256 JWT** from its OIDC signing key (`dglaundryPartnerAccessToken.js`), not an opaque token:
 
-- `iss` = the exact environment-specific DGFY OIDC issuer (`https://api.stage.dgfy.ph/oidc` in
-  staging; `https://api.dgfy.ph/oidc` in production). `sub` and `client_id` = the registered
+- `iss` = the exact environment-specific DGFY OIDC issuer (`https://api.dev.dgfy.ph/oidc` in DEV,
+  `https://api.stage.dgfy.ph/oidc` in staging, and `https://api.dgfy.ph/oidc` in production).
+  `sub` and `client_id` = the registered
   `DGFY_DGLAUNDRY_SERVICE_CLIENT_ID`, distinct from the inbound machine client above.
-- `aud` = the exact DGLaundry partner API origin.
+- `aud` = the exact DGLaundry partner API origin (`https://laundry.surebizcorp.com` in DEV,
+  `https://dglaundry.stage.dgfy.ph` in staging, and `https://dglaundry.dgfy.ph` in production).
 - `scope` = **exactly one** operation scope — see the table below. DGLaundry's verifier requires
   strict equality, not membership in a list.
 - `dgfy_company_id` / `dgfy_location_id` = the active mapped values for this request.
@@ -147,11 +183,12 @@ Applies to every signed DGLaundry↔DGFY partner-API request (not events).
   duplicate returns `401 DGLAUNDRY_SIGNATURE_REPLAY`; unavailable Redis returns `503
   DGLAUNDRY_EVENT_REPLAY_STORE_UNAVAILABLE` and does not ingest the event.
 
-### Production profile requirements
+### Hosted profile requirements
 
-`DGLAUNDRY_SIGNATURE_PROFILE=http-message-signatures-v1` is enforced in production for both
-directions; the HMAC fallback profile (`hmac-local-v1`) is explicitly blocked outside non-production
-environments at the signature-verification layer.
+Hosted DEV, staging, and production integrations run with `NODE_ENV=production`, so durable Redis
+replay checks and production signature rules stay enabled even when the DGFY deployment label is
+DEV. `DGLAUNDRY_SIGNATURE_PROFILE=http-message-signatures-v1` is required for both directions; the
+HMAC fallback profile (`hmac-local-v1`) is blocked in this hosted runtime.
 
 ## Endpoint matrix
 
@@ -165,7 +202,9 @@ legitimately call the route; "Auth" is the middleware that actually gates it tod
 | GET | `/oidc/.well-known/openid-configuration` | Anyone | none |
 | GET | `/oidc/jwks` | Anyone | none (returns 503 if signing key unconfigured); publishes active and retiring registry keys |
 | POST | `/oidc/par` | DGLaundry browser client | client registration check |
-| GET | `/oidc/authorize` | DGFY account holder (browser) | `authenticateDgfyAccount` |
+| GET | `/oidc/authorize` | DGLaundry browser client | Explicit HTML negotiation starts an interaction; JSON callers retain `authenticateDgfyAccount` and protocol behavior |
+| GET | `/oidc/complete` | DGFY issuer browser | Minimal no-store, CSP-restricted same-origin completion bridge |
+| POST | `/oidc/complete` | DGFY issuer browser | Exact Origin, CSRF cookie/header, issuer-host binding cookie, one-time ticket |
 | POST | `/oidc/token` | DGLaundry browser or machine client | client credentials / `private_key_jwt` |
 | GET | `/oidc/logout` | Signed-in DGFY account holder and registered browser client | `authenticateDgfyAccount`, signed `id_token_hint` matching that account; revokes its linked opaque token and redirects only to the exact configured post-logout URI |
 | POST | `/oidc/revoke` | Registered browser or machine client | `client_secret_basic` or `private_key_jwt`; revokes only tokens owned by the authenticated client |
@@ -175,6 +214,23 @@ All `/oidc/*` endpoints use the Redis-backed `oidcLimiter`: 20 requests per 5 mi
 production and 100 per 5 minutes in development by default. `OIDC_RATE_LIMIT_MAX_REQUESTS` and
 `OIDC_RATE_LIMIT_WINDOW_MS` override the budget and window. The limiter keys requests by IP,
 client ID, and route; see [RATE_LIMITING.md](RATE_LIMITING.md).
+
+### DGFY Storefront OIDC interaction API — mounted at `/api/v1/dgfy/oidc`
+
+| Method | Path | Caller | Auth |
+|---|---|---|---|
+| POST | `/interactions/{id}/bind` | Storefront browser | One-use PAR handoff fragment, CSRF cookie/header, exact configured Storefront Origin; sets a per-interaction host-only HttpOnly cookie |
+| GET | `/interactions/{id}` | Storefront browser | Requires the per-interaction Storefront cookie; public presentation hints; account/company data only with a valid DGFY session |
+| POST | `/interactions/{id}/complete` | Storefront browser | `authenticateDgfyAccount`, per-interaction Storefront cookie, CSRF cookie/header, exact configured Storefront Origin |
+| GET | `/errors/{id}` | Storefront browser | Public, bounded, server-stored readable error details; restart link only for the active registered DGLaundry browser client |
+
+The issuer redirects to Storefront with a random one-use handoff in the URL fragment. Storefront removes the fragment before requesting `/bind`; the API consumes the handoff and sets a host-only `sku_oidc_storefront_binding_{interactionId}` cookie whose lifetime ends with the interaction. The interaction ID alone is never proof of browser authority. Login and registration requests that include `oidc_interaction_id` also require this cookie, and successful authentication evidence is stored against its binding.
+
+Completion preparation accepts `action=company` plus `company_id`, or `action=create_company`.
+The server rechecks accepted membership and creates a one-minute or shorter opaque ticket. The
+Storefront sends the user to the configured issuer's `/oidc/complete#ticket=...`; it never receives
+the DGFY session token. Cookie-authenticated writes retain the global CSRF control; CORS and
+`SESSION_COOKIE_DOMAIN` policy are unchanged.
 
 ### Partner provider API — mounted at `/api/v1/partners/dglaundry`
 
@@ -325,8 +381,9 @@ configuration-only, and what does not exist, rather than implying full readiness
 
 | Gap | Status | Tracking |
 |---|---|---|
+| DEV JWKS and discovery require the independent DEV OIDC signing registration/key; the DEV connection is not live until configuration, key delivery, and authenticated qualification complete | ⚠️ registration and hosted verification remain open | #2387, #2304 |
 | Staging/production JWKS returns `503 oidc_keys_not_configured` until a real keypair is installed — shared key resolution, staging bind mounts, and production SOPS-to-Compose-secret delivery are implemented, but no live key installation or deployment has been verified | ⚠️ operator key provisioning and deployment remain | #2303 |
-| Browser/machine/service client IDs (`dglaundry-web`, `dglaundry-machine`, `dglaundry-service`) and app ID (`dglaundry`) are agreed in the shared manifest; environment registrations and live callback verification remain outstanding | ⚠️ contract agreed; host registration and verification remain open | #2304, #519 |
+| DEV uses separate `dglaundry-web-dev` / `dglaundry-machine-dev` / `dglaundry-service-dev` IDs; staging and production retain their existing client labels in independent registrations. Registration and live callback verification remain outstanding | ⚠️ contract agreed; host registration and verification remain open | #2387, #2304, #519 |
 | Signed runtime attestation, signed event specimen generator, and reserved sandbox payment-lifecycle probes | ⚠️ source implementation is present on this candidate; provider validator compatibility, fixture setup, and staging execution remain outstanding | #2306 |
 | OIDC end-session, opaque-token introspection/revocation, DB-backed signing-key overlap rotation, dedicated `/oidc/*` rate limiting, and production Redis fail-closed behavior are implemented on PR #2337; the source is not merged and hosted issuer configuration/verification remain outstanding | ⚠️ source candidate only; staging/production keys, registrations, Redis and real-host behavior remain unverified | #2307, #2337 |
 | Customer-facing laundry ordering: catalog, quote and per-kilo submission are callable from the laundry storefront; fixed/mixed submission uses verified payment finalization but remains dark-disabled while the DGLaundry booking-payment feature flag is off | ⚠️ partially shipped; fixed-price checkout is not available until its payment gate is enabled | #2308 |

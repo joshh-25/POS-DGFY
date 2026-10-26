@@ -1,5 +1,6 @@
 import logger from '../config/logger.js';
 import { mapDomainErrorToHttp } from '../modules/shared/contracts/domainErrorMapper.js';
+import { sanitizeSensitiveLogPath } from '../services/observabilityUtils.js';
 
 export const shouldLogStackToConsole = () => {
   const configured = String(process.env.ERROR_LOG_STACKS || '').trim().toLowerCase();
@@ -64,7 +65,7 @@ export const errorHandler = (err, req, res, _next) => {
     stack: statusCode >= 500 && stackLoggingEnabled ? err.stack : undefined,
     statusCode,
     method: req.method,
-    path: req.path,
+    path: sanitizeSensitiveLogPath(req.path || req.originalUrl),
     user_id: req.user?.user_id || null,
     ip: req.ip || req.connection.remoteAddress,
     request_id: requestId,

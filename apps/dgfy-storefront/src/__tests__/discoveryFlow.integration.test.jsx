@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import maplibregl from 'maplibre-gl';
 import { App } from '../main.jsx';
@@ -159,6 +159,7 @@ const injectWorkflowMode = (obj) => {
   const newObj = { ...obj };
   if (Array.isArray(newObj.stores)) {
     newObj.stores = newObj.stores.map(store => ({
+      entity_type: Object.hasOwn(store || {}, 'entity_type') ? store.entity_type : 'dgfy_native',
       workflow_mode: 'services',
       ...store
     }));
@@ -249,10 +250,63 @@ const getDiscoveryPinFeatures = () => {
   return source?.data?.features || [];
 };
 
+const getDiscoveryPinMarkerKeys = () => getDiscoveryPinFeatures()
+  .map((feature) => String(feature?.properties?.markerKey || ''));
+
+const openDiscoveryResultsPanel = async (user) => {
+  const viewResultsButton = screen.queryByRole('button', { name: /View Results/ });
+  if (viewResultsButton) await user.click(viewResultsButton);
+};
+
+const getDiscoveryResultsPanel = () => screen.getByText('Best Shops Today').closest('aside');
+
 const getDiscoveryUserFeatures = () => {
   const source = getLatestMapApi()?.getSource?.('dgfy-discovery-user-location');
   return source?.data?.features || [];
 };
+
+const mixedDiscoveryStores = [
+  {
+    tenant_id: 'tenant-food', tenant_name: 'Native Food Shop', slug: 'native-food',
+    entity_type: 'dgfy_native', storefront_categories: ['Food'], workflow_mode: 'food',
+    storefront_open: true, latitude: 10.72, longitude: 122.56, catalog_count: 2
+  },
+  {
+    tenant_id: 'tenant-hotel', tenant_name: 'Native Hospitality Store', slug: 'native-hospitality',
+    entity_type: 'dgfy_native', storefront_categories: ['Hotel'], workflow_mode: 'hospitality',
+    storefront_open: true, latitude: 10.82, longitude: 122.66, catalog_count: 2
+  },
+  {
+    tenant_name: 'Synqcore Stay', slug: 'partner-hotel', entity_type: 'external_listing',
+    external_provider: 'synqcore', storefront_categories: ['Resort'], workflow_mode: 'services',
+    storefront_open: true, latitude: 10.73, longitude: 122.57, storefront_url: '/e/partner-hotel'
+  },
+  {
+    tenant_name: 'Mapviu Home', slug: 'partner-property', entity_type: 'external_listing',
+    external_provider: 'mapviu', storefront_categories: ['Hotel'], workflow_mode: 'hospitality',
+    latitude: 10.74, longitude: 122.58, storefront_url: '/e/partner-property'
+  },
+  {
+    tenant_name: 'Eytitu Taxi', slug: 'partner-taxi', entity_type: 'external_listing',
+    external_provider: 'eytitu', workflow_mode: 'hospitality',
+    latitude: 10.75, longitude: 122.59, storefront_url: '/e/partner-taxi'
+  },
+  {
+    tenant_name: 'Proventous Employer', slug: 'partner-job', entity_type: 'external_listing',
+    external_provider: 'proventus', storefront_categories: ['Food'], workflow_mode: 'food',
+    latitude: 10.76, longitude: 122.60, storefront_url: '/e/partner-job'
+  },
+  {
+    tenant_name: 'Unknown Hotel', slug: 'unknown-hotel', entity_type: 'external_listing',
+    external_provider: 'unknown', storefront_categories: ['Hotel'], workflow_mode: 'hospitality',
+    latitude: 10.77, longitude: 122.61, storefront_url: '/e/unknown-hotel'
+  },
+  {
+    tenant_name: 'Unclassified Hotel', slug: 'unclassified-hotel', entity_type: null,
+    external_provider: 'synqcore', storefront_categories: ['Hotel'], workflow_mode: 'hospitality',
+    latitude: 10.78, longitude: 122.62, storefront_url: '/e/unclassified-hotel'
+  }
+];
 
 const waitForDiscoveryPinFeatures = async (count) => {
   await waitFor(() => expect(getDiscoveryPinFeatures().length).toBe(count));
@@ -341,6 +395,29 @@ describe('storefront discovery integration flow', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
   });
+
+  const installMixedDiscoveryResponses = (stores = mixedDiscoveryStores) => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores,
+          pagination: { page: 1, limit: 100, total: stores.length, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({ locations: [], primary_location_id: null });
+      }
+      if (isStoreCatalogRequest(normalized)) return makeJsonResponse({ items: [] });
+      return makeJsonResponse({});
+    });
+  };
 
   afterEach(() => {
     cleanup();
@@ -836,6 +913,110 @@ describe('storefront discovery integration flow', () => {
       expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(2);
     });
     expect(screen.getByPlaceholderText('Search products, services or stores nearby...').value).toBe('Hotel');
+  });
+
+  it('keeps default and free-text results native-only, then opts into providers through the category dropdown', async () => {
+    const user = userEvent.setup();
+    installMixedDiscoveryResponses();
+    render(<BrowserRouter><App /></BrowserRouter>);
+
+    await waitFor(() => {
+      expect(getDiscoveryPinMarkerKeys()).toEqual(expect.arrayContaining([
+        expect.stringContaining('native-food'),
+        expect.stringContaining('native-hospitality')
+      ]));
+      expect(getDiscoveryPinMarkerKeys()).toHaveLength(2);
+    });
+    expect(screen.queryByText('Synqcore Stay')).toBeNull();
+    expect(getDiscoveryPinMarkerKeys().every((markerKey) => !markerKey.includes('partner-'))).toBe(true);
+
+    await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'hotel');
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+    await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBe(2));
+    await waitFor(() => expect(getDiscoveryPinMarkerKeys().every((markerKey) => !markerKey.includes('partner-'))).toBe(true));
+    expect(screen.queryByText(/External listing ·/)).toBeNull();
+
+    await openDiscoveryResultsPanel(user);
+    await user.click(screen.getByRole('button', { name: 'Category: All' }));
+    await user.click(screen.getByRole('button', { name: 'Job' }));
+    await waitFor(() => expect(getDiscoveryPinMarkerKeys()).toEqual([expect.stringContaining('partner-job')]));
+    expect(screen.getByText('External listing · Proventous')).toBeTruthy();
+    expect(within(getDiscoveryResultsPanel()).queryByText('Native Food Shop')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Job' }));
+    await user.click(screen.getByRole('button', { name: 'Category: All' }));
+    await waitFor(() => {
+      const markerKeys = getDiscoveryPinMarkerKeys();
+      expect(markerKeys).toEqual(expect.arrayContaining([
+        expect.stringContaining('native-food'),
+        expect.stringContaining('native-hospitality')
+      ]));
+      expect(markerKeys).toHaveLength(2);
+    });
+    expect(screen.queryByText(/External listing ·/)).toBeNull();
+  });
+
+  it.each([
+    ['Hotel', 'partner-hotel', 'Synqcore'],
+    ['Real Estate', 'partner-property', 'Mapviu'],
+    ['Taxi', 'partner-taxi', 'Eytitu'],
+    ['Job', 'partner-job', 'Proventous']
+  ])('shows only the matching provider after the %s category chip is selected', async (category, expectedSlug, providerLabel) => {
+    const user = userEvent.setup();
+    installMixedDiscoveryResponses();
+    render(<BrowserRouter><App /></BrowserRouter>);
+
+    await waitFor(() => expect(getDiscoveryPinFeatures().length).toBe(2));
+    await user.click(screen.getByRole('button', { name: 'More' }));
+    await user.click(screen.getByRole('button', { name: category }));
+    await openDiscoveryResultsPanel(user);
+
+    await waitFor(() => expect(getDiscoveryPinMarkerKeys()).toEqual([expect.stringContaining(expectedSlug)]));
+    expect(screen.getByText(`External listing · ${providerLabel}`)).toBeTruthy();
+    expect(within(getDiscoveryResultsPanel()).queryByText('Native Food Shop')).toBeNull();
+  });
+
+  it('removes stale partner cluster cards when the selected category changes', async () => {
+    const user = userEvent.setup();
+    installMixedDiscoveryResponses([
+      {
+        tenant_name: 'Synqcore Hotel One', slug: 'synqcore-hotel-one', entity_type: 'external_listing',
+        external_provider: 'synqcore', latitude: 10.72, longitude: 122.56, storefront_url: '/e/synqcore-hotel-one'
+      },
+      {
+        tenant_name: 'Synqcore Hotel Two', slug: 'synqcore-hotel-two', entity_type: 'external_listing',
+        external_provider: 'synqcore', latitude: 10.72, longitude: 122.56, storefront_url: '/e/synqcore-hotel-two'
+      },
+      {
+        tenant_name: 'Proventous Job', slug: 'proventous-job', entity_type: 'external_listing',
+        external_provider: 'proventus', latitude: 10.72, longitude: 122.56, storefront_url: '/e/proventous-job'
+      }
+    ]);
+    render(<BrowserRouter><App /></BrowserRouter>);
+
+    await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBeGreaterThan(0));
+    await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'hotel');
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+    await waitFor(() => expect(getDiscoveryPinFeatures().length).toBe(0));
+
+    await openDiscoveryResultsPanel(user);
+    await user.click(screen.getByRole('button', { name: 'Category: All' }));
+    await user.click(screen.getByRole('button', { name: 'Hotel' }));
+    const [hotelCluster] = await waitForDiscoveryPinFeatures(1);
+    expect(hotelCluster.properties).toMatchObject({ type: 'cluster', count: 2 });
+
+    emitDiscoveryPinClick(hotelCluster);
+    await waitFor(() => expect(screen.getByText('Stores At This Pin')).toBeTruthy());
+    expect(screen.getByText('Synqcore Hotel One')).toBeTruthy();
+    expect(screen.getByText('Synqcore Hotel Two')).toBeTruthy();
+
+    await openDiscoveryResultsPanel(user);
+    await user.click(screen.getByRole('button', { name: 'Hotel' }));
+    await user.click(screen.getByRole('button', { name: 'Job' }));
+    await waitFor(() => expect(getDiscoveryPinMarkerKeys()).toEqual([expect.stringContaining('proventous-job')]));
+    expect(screen.getByText('Proventous Job')).toBeTruthy();
+    expect(screen.queryByText('Synqcore Hotel One')).toBeNull();
+    expect(screen.queryByText('Synqcore Hotel Two')).toBeNull();
   });
 
   it('keeps mobile discovery search results rendered after submit', async () => {

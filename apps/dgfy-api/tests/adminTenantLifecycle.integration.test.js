@@ -50,6 +50,7 @@ jest.unstable_mockModule('../src/services/emailService.js', () => ({
     isEmailConfigured: jest.fn().mockReturnValue(false),
     verifyConnection: jest.fn().mockResolvedValue({ success: true, provider: 'smtp' }),
     sendEmail: jest.fn(),
+    sendStorefrontOrderConfirmationEmail: jest.fn(),
     sendAffiliateInviteEmail: jest.fn(),
     sendCompanyApprovedEmail: jest.fn(),
     sendCompanyOnboardingEmail: jest.fn(),

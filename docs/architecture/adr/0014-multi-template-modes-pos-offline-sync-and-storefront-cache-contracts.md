@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-04-27
-last_reviewed: 2026-10-10
+last_reviewed: 2026-10-26
 review_by: 2026-10-27
 applies_to: architecture_decision
 topic: multi_template_modes_pos_offline_sync_and_storefront_cache_contracts
@@ -296,3 +296,37 @@ approval. The governed platform contract is
 [`POS_OFFLINE_SYNC_CONTRACT.md`](../../features/POS_OFFLINE_SYNC_CONTRACT.md). This reference does
 not change ADR 0014's existing web replay policy, per-operation CP/AP classifications, or the
 separate #999 implementation scope.
+
+### 2026-10-26 — Last-known-good workflow settings for POS fallback (#2824)
+
+- Clause amended: Offline Checkout Experience Addendum (2026-07-10), second bullet — "The local
+  snapshot is limited to catalog and receipt identity data. Reports, settings, item maintenance,
+  account credentials, and remote payment operations remain online-only." (`default`).
+- Change: The offline POS snapshot itself is unchanged and still excludes settings. Separately, a
+  web client may keep a last-known-good copy of the tenant's own workflow settings — the values of
+  `ops_workflow_mode`, `ops_enabled_capabilities`, `ops_disabled_capabilities`, and
+  `ops_store_profile` only — in browser `localStorage` under the versioned key
+  `dgfy.workflow-mode.last-known-good.v1:<tenant key>`. It is written only after a successful
+  `GET /settings`, read only when a later fetch fails, and never written from a fallback or default
+  value. It is scoped to the tenant: `<tenant key>` is a non-reversible hash of the session's
+  company token (the raw token appears in neither the key nor the value), a record is applied only
+  when its stored tenant key matches the current session's, and with no tenant identity it is
+  neither read nor written. It carries no user, terminal, location, or transaction data, so it does
+  not take the four-part snapshot scope. It is not part of the catalog snapshot, the manual-sync
+  allowance, or the operation queue, and holds only the tenant's own persisted values (ADR 0056
+  Decision 2; no template is dereferenced). The cached subset is passed through the same
+  derivation and persisted-profile-versus-rebuild guard as a fresh response.
+
+  While the cached copy is in use the client treats the workflow as resolved but stale, keeps the
+  failure observable, and re-fetches settings on the browser `online` event and with bounded
+  exponential backoff (5 seconds doubling to a 60-second cap) until a fresh response replaces it.
+  That re-fetch reads settings only; it submits no queued record and triggers no replay, so the
+  manual-only replay policy and the existing prohibition on reconnect-triggered submission are
+  unchanged. A workflow-mode change made on the server while a terminal is offline is not shown
+  until the next successful fetch; the cache drives terminal affordances only, and the API remains
+  the authority that accepts or rejects each operation. Reports, item maintenance, account
+  credentials, remote payment operations, and every other setting remain online-only.
+- Reason: A failed settings load previously reset an F&B terminal to the Counter workflow
+  (Walk-in/Pickup/Delivery, no Dine In) with no recovery short of an app restart, and live dine-in
+  sales were recorded as `walk_in`.
+- PR: this PR (Refs #2824).

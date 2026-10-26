@@ -65,6 +65,20 @@ describe('csrfProtection', () => {
     }));
   });
 
+  it('requires a matching CSRF pair for the first Storefront OIDC browser binding', () => {
+    const interactionId = 'a'.repeat(24);
+    const { res, next } = runMiddleware({
+      originalUrl: `/api/v1/dgfy/oidc/interactions/${interactionId}/bind`,
+      headers: {
+        cookie: `sku_csrf_token=csrf-cookie; sku_oidc_storefront_binding_${interactionId}=browser-binding`
+      }
+    });
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error_code: 'CSRF_TOKEN_REQUIRED' }));
+  });
+
   it('preserves browser session cookies when the readable CSRF cookie is missing', () => {
     const { res, next } = runMiddleware({
       headers: {

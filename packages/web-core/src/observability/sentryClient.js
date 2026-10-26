@@ -6,6 +6,8 @@ const FALSE_VALUES = new Set(['0', 'false', 'no', 'off']);
 let initialized = false;
 let sentryModule = null;
 let initPromise = null;
+let replayConfiguredForInstance = false;
+let sensitiveSentryRoute = false;
 
 export const parseBooleanFlag = (value, fallback = false) => {
   const normalized = String(value ?? '').trim().toLowerCase();
@@ -146,6 +148,11 @@ export const resolveSentryBrowserConfig = (env = import.meta.env, surfaceOverrid
   };
 };
 
+export const isSensitiveSentryPath = (pathname) => (
+  /^\/(?:login|register|reset-password)(?:[/?#]|$)/i.test(String(pathname || ''))
+  || /^\/oidc\/(?:interaction|error)(?:\/|$)/i.test(String(pathname || '').split(/[?#]/, 1)[0])
+);
+
 // Deliberately duplicated from backend/src/config/sentry.js rather than
 // shared: there is no build seam between frontend/src and backend/src, and
 // this copy has to tree-shake into the lazily-imported Sentry chunk.
@@ -167,7 +174,8 @@ const SECRET_PATTERNS = [
   [
     /((?:api[_-]?key|apikey|access[_-]?token|client[_-]?secret|password|secret)\s*[=:]\s*)(["']?)[^\s"',;)]{8,}\2/gi,
     '$1[redacted]'
-  ]
+  ],
+  [/(\b(?:request_uri|oidc_interaction_id|interaction_id|ticket|handoff|code_verifier|authorization_code)\s*[=:]\s*)(["']?)[^\s"',;)]{8,}\2/gi, '$1[redacted]']
 ];
 
 const MAX_SCRUBBED_TEXT_LENGTH = 50_000;
@@ -226,6 +234,27 @@ export const scrubEventText = (event) => {
   return scrubbed;
 };
 
+const sanitizeSensitiveUrl = (value) => {
+  if (typeof value !== 'string' || !value) return value;
+  try {
+    const absolute = /^[a-z][a-z0-9+.-]*:\/\//i.test(value);
+    const url = new URL(value, 'https://sentry.invalid');
+    url.pathname = url.pathname.replace(/(\/oidc\/(?:interactions?|error)\/)[A-Za-z0-9_-]{20,128}(?=\/|$)/gi, '$1:id');
+    for (const key of [...url.searchParams.keys()]) {
+      if (/^(ticket|request_uri|oidc_interaction_id|interaction_id|authorization_code|code|state|code_verifier|handoff|oidc_handoff)$/i.test(key)) {
+        url.searchParams.set(key, '[Filtered]');
+      }
+    }
+    url.hash = '';
+    return absolute ? url.toString() : `${url.pathname}${url.search}`;
+  } catch {
+    return value
+      .replace(/(\/oidc\/(?:interactions?|error)\/)[A-Za-z0-9_-]{20,128}(?=\/|[?#]|$)/gi, '$1:id')
+      .replace(/([?#])(?:ticket|request_uri|oidc_interaction_id|interaction_id|authorization_code|code|state|code_verifier|handoff|oidc_handoff)=[^&#]*/gi, '$1[Filtered]')
+      .replace(/#.*/, '');
+  }
+};
+
 export const sanitizeSentryEvent = (rawEvent) => {
   if (!rawEvent || typeof rawEvent !== 'object') return rawEvent;
   const event = scrubEventText(rawEvent);
@@ -244,7 +273,11 @@ export const sanitizeSentryEvent = (rawEvent) => {
         ...event.request,
         cookies: undefined,
         headers: undefined,
-        data: undefined
+        data: undefined,
+        url: sanitizeSensitiveUrl(event.request.url),
+        query_string: typeof event.request.query_string === 'string'
+          ? sanitizeSensitiveUrl(`/?${event.request.query_string}`).replace(/^\//, '')
+          : event.request.query_string
       }
       : event.request
   };
@@ -303,8 +336,18 @@ export const initBrowserSentry = ({
     return { active: true, reason: 'already_initialized' };
   }
 
+  replayConfiguredForInstance = config.replaysSessionSampleRate > 0 || config.replaysOnErrorSampleRate > 0;
+  sensitiveSentryRoute = isSensitiveSentryPath(
+    typeof window !== 'undefined' ? window.location?.pathname : ''
+  );
+
   initPromise = import('@sentry/react')
     .then((Sentry) => {
+      // The SDK chunk may finish loading after React has navigated. Avoid
+      // sampling any authentication or OIDC page that is current at init time.
+      sensitiveSentryRoute = isSensitiveSentryPath(
+        typeof window !== 'undefined' ? window.location?.pathname : ''
+      );
       // Sentry.init's own default integrations
       // (InboundFilters/BrowserApiErrors/GlobalHandlers/etc, see
       // Sentry.getDefaultIntegrations()) do NOT include tracing or replay --
@@ -375,8 +418,8 @@ export const initBrowserSentry = ({
         dsn: config.dsn,
         environment: config.environment,
         release: config.release || undefined,
-        replaysSessionSampleRate: config.replaysSessionSampleRate,
-        replaysOnErrorSampleRate: config.replaysOnErrorSampleRate,
+        replaysSessionSampleRate: sensitiveSentryRoute ? 0 : config.replaysSessionSampleRate,
+        replaysOnErrorSampleRate: sensitiveSentryRoute ? 0 : config.replaysOnErrorSampleRate,
         debug: config.debug,
         integrations,
         tracePropagationTargets: config.tracePropagationTargets,
@@ -524,6 +567,15 @@ export const resetSentryIdentity = () => {
  */
 export const setSentryRoute = (pathname) => {
   if (!pathname) return;
+  const nextSensitiveRoute = isSensitiveSentryPath(pathname);
+  if (nextSensitiveRoute && !sensitiveSentryRoute && replayConfiguredForInstance) {
+    withSentry((Sentry) => {
+      const replay = Sentry.getReplay?.();
+      const stopped = replay?.stop?.({ flush: false });
+      stopped?.catch?.(() => {});
+    });
+  }
+  sensitiveSentryRoute = nextSensitiveRoute;
   withSentry((Sentry) => {
     Sentry.setTag('route', pathname);
     Sentry.addBreadcrumb({
@@ -546,8 +598,11 @@ export const normalizeRequestUrl = (url) => String(url || '')
   .split('?')[0]
   .split('#')[0]
   .split('/')
-  .map((segment) => (
-    NUMERIC_SEGMENT.test(segment) || UUID_SEGMENT.test(segment) || MONGO_ID_SEGMENT.test(segment)
+  .map((segment, index, segments) => (
+    ((segments[index - 1] === 'interaction' || segments[index - 1] === 'interactions' || segments[index - 1] === 'error')
+      && segments[index - 2] === 'oidc'
+      && /^[A-Za-z0-9_-]{20,128}$/.test(segment))
+      || NUMERIC_SEGMENT.test(segment) || UUID_SEGMENT.test(segment) || MONGO_ID_SEGMENT.test(segment)
       ? ':id'
       : segment
   ))

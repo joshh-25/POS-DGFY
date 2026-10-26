@@ -7,6 +7,7 @@ import {
   buildHeroDiscoveryMapPins,
   buildStoresWithNearestBranch,
   filterDiscoveryStores,
+  filterDiscoveryStoresByCategory,
   getHighlightedStore,
   getNearestDistanceKm,
   groupDiscoveryPinsBySlug,
@@ -46,7 +47,7 @@ export function useDiscoveryResultsData({
   void debouncedDiscoverySearch;
   void getDiscoveryEmptyStateMessage;
 
-  const storesWithNearestBranch = useMemo(() => buildStoresWithNearestBranch({
+  const allStoresWithNearestBranch = useMemo(() => buildStoresWithNearestBranch({
     DEFAULT_CENTER,
     discoveryCoords,
     discoveryLocationMap,
@@ -55,6 +56,34 @@ export function useDiscoveryResultsData({
     toNumberOrNull,
     toSlug
   }), [DEFAULT_CENTER, discoveryCoords, discoveryLocationMap, haversineDistanceKm, stores, toNumberOrNull, toSlug]);
+
+  const storesWithNearestBranch = useMemo(() => filterDiscoveryStoresByCategory({
+    DISCOVERY_CATEGORY_MATCHERS,
+    discoveryCategoryFilter,
+    discoveryResultStores: allStoresWithNearestBranch,
+    normalizeDiscoveryCategoryKey,
+    normalizeStorefrontCategories
+  }), [
+    DISCOVERY_CATEGORY_MATCHERS,
+    allStoresWithNearestBranch,
+    discoveryCategoryFilter,
+    normalizeDiscoveryCategoryKey,
+    normalizeStorefrontCategories
+  ]);
+
+  const eligibleRememberedDiscoveryMapPins = useMemo(() => filterDiscoveryStoresByCategory({
+    DISCOVERY_CATEGORY_MATCHERS,
+    discoveryCategoryFilter,
+    discoveryResultStores: activeDiscoveryMapPinsFallback,
+    normalizeDiscoveryCategoryKey,
+    normalizeStorefrontCategories
+  }), [
+    DISCOVERY_CATEGORY_MATCHERS,
+    activeDiscoveryMapPinsFallback,
+    discoveryCategoryFilter,
+    normalizeDiscoveryCategoryKey,
+    normalizeStorefrontCategories
+  ]);
 
   const discoveryResultStores = useMemo(() => sortDiscoveryResultStores({
     discoveryCoords,
@@ -132,11 +161,9 @@ export function useDiscoveryResultsData({
   }), [discoveryCoords, discoveryLocationMap, haversineDistanceKm, storesWithNearestBranch, toNumberOrNull, toSlug]);
   const stableHeroDiscoveryMapPins = heroDiscoveryMapPins.length > 0
     ? heroDiscoveryMapPins
-    : activeDiscoveryMapPinsFallback;
+    : eligibleRememberedDiscoveryMapPins;
   const activeDiscoveryMapPins = discoveryMapPins.length > 0 ? discoveryMapPins : fallbackDiscoveryMapPins;
-  const rememberedDiscoveryMapPins = Array.isArray(activeDiscoveryMapPinsFallback)
-    ? activeDiscoveryMapPinsFallback
-    : [];
+  const rememberedDiscoveryMapPins = eligibleRememberedDiscoveryMapPins;
   const persistentDiscoveryMapPins = hasDiscoverySearch
     && !loadingStores
     && !storesError

@@ -4,7 +4,7 @@
 # remains accurate after this file is added. It covers exactly the routes mounted at /oidc and
 # /api/v1/partners/dglaundry, plus the inbound event receiver and the customer-facing laundry
 # routes, as they exist in apps/dgfy-api/src/routes/{dgfyLaundry,dgfyLaundryOidc,dgfyLaundryOrders}.js
-# as of 2026-10-08. See docs/api/PARTNER_INTEGRATION_CONTRACT.md for the prose contract and the
+# as of 2026-10-26. See docs/api/PARTNER_INTEGRATION_CONTRACT.md for the prose contract and the
 # "Known gaps" table -- some routes declared by DGLaundry's own proposal
 # (docs/integrations/dgfy/partner-openapi.yaml in the dglaundry repo) were absent from the original
 # DGFY source and have since been added; the prose contract records the remaining gaps.
@@ -17,6 +17,8 @@ info:
     dgfy-api specification. Authoritative prose contract:
     docs/api/PARTNER_INTEGRATION_CONTRACT.md.
 servers:
+  - url: https://api.dev.dgfy.ph
+    description: DGFY DEV
   - url: https://api.dgfy.ph
     description: Production
   - url: https://api.stage.dgfy.ph
@@ -263,6 +265,11 @@ paths:
                     The dglaundry:* operation scopes are for DGFY-to-DGLaundry service tokens.
                 state: { type: string }
                 nonce: { type: string }
+                prompt: { type: string, description: "Optional login or select_account prompt values." }
+                screen_hint: { type: string, enum: [signup] }
+                login_hint: { type: string, maxLength: 254 }
+                dglaundry_company_id: { type: string }
+                dglaundry_intent: { type: string, enum: [create_company] }
       responses:
         "201":
           description: Pushed request accepted
@@ -274,10 +281,215 @@ paths:
   /oidc/authorize:
     get:
       tags: [oidc]
-      summary: Authorization endpoint (requires an authenticated DGFY account session)
+      summary: Authorization endpoint with browser interaction negotiation
+      description: >
+        Explicit HTML-preferring browser navigations enter the DGFY Storefront interaction flow.
+        Missing/wildcard Accept and JSON-preferring requests preserve the existing JSON behavior;
+        unauthenticated JSON calls still receive 401. PAR-owned callback, scopes, state, nonce, PKCE,
+        and onboarding intent cannot be overridden on this request.
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          schema: { type: string }
       responses:
         "302":
-          description: Redirect to redirect_uri with code, or to DGFY login/company-selection
+          description: Redirect to the registered callback or the configured DGFY Storefront interaction/error page
+        "400":
+          description: Invalid or expired PAR request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OAuthError" }
+        "401":
+          description: JSON caller lacks an authenticated DGFY account session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /oidc/complete:
+    get:
+      tags: [oidc]
+      summary: Minimal issuer-origin authorization completion bridge
+      description: >
+        Returns a no-store, CSP-restricted bridge. A one-time opaque ticket is accepted only from
+        the URL fragment and posted by same-origin script; no DGFY credential UI is rendered.
+      responses:
+        "200":
+          description: Bridge HTML
+          content:
+            text/html:
+              schema: { type: string }
+    post:
+      tags: [oidc]
+      summary: Redeem a one-time browser-bound completion ticket
+      parameters:
+        - name: Origin
+          in: header
+          required: true
+          schema: { type: string, format: uri }
+        - name: x-csrf-token
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ticket]
+              properties:
+                ticket: { type: string, minLength: 43, maxLength: 43 }
+      responses:
+        "200":
+          description: API-host DGFY session cookie set; response includes only the registered callback URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, const: true }
+                  data:
+                    type: object
+                    required: [redirect_uri]
+                    properties:
+                      redirect_uri: { type: string, format: uri }
+        "403":
+          description: Origin, CSRF, or browser binding check failed
+        "410":
+          description: Ticket or interaction expired or was already consumed
+  /api/v1/dgfy/oidc/interactions/{id}/bind:
+    post:
+      tags: [oidc]
+      summary: Bind the Storefront browser to a one-use issuer handoff
+      description: >
+        Storefront removes the handoff from the authorize redirect fragment before posting it.
+        A successful response sets a host-only HttpOnly cookie scoped to this interaction; later
+        metadata, fresh-authentication, and completion requests require that cookie. The handoff
+        cannot be replayed into another browser.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, minLength: 24, maxLength: 128 }
+        - name: Origin
+          in: header
+          required: true
+          schema: { type: string, format: uri }
+        - name: x-csrf-token
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [handoff]
+              properties:
+                handoff: { type: string, minLength: 43, maxLength: 43 }
+      responses:
+        "200":
+          description: Browser binding accepted and host-only interaction cookie set
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: HttpOnly, SameSite=Lax, host-only, and expires with the interaction
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, const: true }
+                  data:
+                    type: object
+                    required: [expires_at]
+                    properties:
+                      expires_at: { type: integer, format: int64 }
+        "403":
+          description: Handoff, Origin, CSRF, or browser binding is invalid
+        "410":
+          description: Interaction expired
+  /api/v1/dgfy/oidc/interactions/{id}:
+    get:
+      tags: [oidc]
+      summary: Read bounded OIDC interaction presentation metadata
+      description: Requires the host-only Storefront interaction cookie. Account and accepted-company data are included only when the browser has a valid DGFY session.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, minLength: 24, maxLength: 128 }
+      responses:
+        "200":
+          description: Public presentation hints and optional authenticated DGFY identity/company data
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OIDCInteractionMetadataResponse" }
+        "410":
+          description: Interaction expired
+  /api/v1/dgfy/oidc/interactions/{id}/complete:
+    post:
+      tags: [oidc]
+      summary: Prepare an authenticated company or identity-only completion
+      security: [{ dgfyAccountBearer: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, minLength: 24, maxLength: 128 }
+        - name: Origin
+          in: header
+          required: true
+          schema: { type: string, format: uri }
+        - name: x-csrf-token
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  required: [action, company_id]
+                  properties:
+                    action: { type: string, const: company }
+                    company_id: { type: string }
+                - type: object
+                  required: [action]
+                  properties:
+                    action: { type: string, const: create_company }
+      responses:
+        "200":
+          description: Opaque ticket prepared; ticket appears only in the completion URL fragment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OIDCCompletionPreparationResponse" }
+        "401":
+          description: DGFY account authentication required
+        "403":
+          description: Selected company is not a current accepted membership
+        "410":
+          description: Interaction expired
+  /api/v1/dgfy/oidc/errors/{id}:
+    get:
+      tags: [oidc]
+      summary: Read bounded, server-stored browser error details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Readable error and optional trusted DGLaundry restart origin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OIDCInteractionErrorResponse" }
+        "404":
+          description: Error details expired
   /oidc/token:
     post:
       tags: [oidc]
@@ -748,6 +960,73 @@ components:
       type: object
       properties:
         error: { type: string }
+    OIDCInteractionMetadataResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, const: true }
+        data:
+          type: object
+          required: [client, expires_at, authenticated, companies, prompt_login, prompt_select_account, new_company_intent]
+          properties:
+            client:
+              type: object
+              properties:
+                name: { type: string }
+                app_slug: { type: string, const: dglaundry }
+            expires_at: { type: integer, description: Unix timestamp in milliseconds }
+            authenticated: { type: boolean }
+            account:
+              oneOf:
+                - type: object
+                  properties:
+                    first_name: { type: string }
+                    last_name: { type: string }
+                    email: { type: string, format: email }
+                - type: "null"
+            companies:
+              type: array
+              items:
+                type: object
+                required: [id, name]
+                properties:
+                  id: { type: string }
+                  name: { type: string }
+                  role: { type: string }
+            prompt_login: { type: boolean }
+            prompt_select_account: { type: boolean }
+            screen_hint: { type: [string, "null"], enum: [signup, null] }
+            login_hint: { type: string }
+            fixed_company_selection: { type: boolean }
+            new_company_intent: { type: boolean }
+            fresh_auth_verified: { type: boolean }
+    OIDCCompletionPreparationResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, const: true }
+        data:
+          type: object
+          required: [completion_url, expires_at]
+          properties:
+            completion_url: { type: string, format: uri, description: Issuer bridge URL with the opaque ticket in its fragment }
+            expires_at: { type: integer, description: Unix timestamp in milliseconds }
+    OIDCInteractionErrorResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, const: true }
+        data:
+          type: object
+          required: [code, message, restart_url]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            restart_url:
+              oneOf:
+                - type: string
+                  format: uri
+                - type: "null"
     EventEnvelope:
       type: object
       required: [specversion, id, type, source, data]

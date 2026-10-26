@@ -4086,7 +4086,7 @@ Response:
 
 ### External discovery links and Platform Admin configuration
 
-Newly managed `external_listing` rows return `storefront_url: "/e/{slug}"` from discovery and map-pins reads. `external_provider` identifies Proventus, Eytitu, Mapviu, or Synqcore; `external_reference_id` and `external_record_origin` are internal and are not returned to public callers. Previously curated external rows with an `external_storefront_url` keep their existing direct URL.
+Newly managed `external_listing` rows return `storefront_url: "/e/{slug}"` from discovery and map-pins reads. `external_provider` identifies Proventous, Eytitu, Mapviu, or Synqcore; the stable provider key remains `proventus`. `external_reference_id` and `external_record_origin` are internal and are not returned to public callers. Previously curated external rows with an `external_storefront_url` keep their existing direct URL.
 
 `GET /storefront/discovery/external/redirect/:slug` is public and uncached. It responds with HTTP 302 to the configured partner URL. A client sending `Accept: application/json` receives `{ "success": true, "data": { "destination": "https://..." } }` instead. Missing/hidden records, disabled sites, or invalid destinations return 404. The Storefront `/e/:slug` page navigates directly to this endpoint, so cross-origin API deployments do not require a new CORS allowance. No client-provided destination URL is accepted.
 
@@ -7338,13 +7338,13 @@ SMTP_SECURE=false
 SMTP_USER=your-email@gmail.com
 SMTP_PASS=your-app-password
 EMAIL_FROM=your-email@gmail.com
-EMAIL_FROM_NAME=SKUpervisor
+EMAIL_FROM_NAME=DGFY
 APP_URL=https://your-domain.com
 ```
 
 Run `npm run verify:email` from the repo root before enabling OTP enforcement in a new environment. Use `npm run verify:email -- --send-to operator@example.com` for an end-to-end provider send test. The check fails when placeholder SMTP credentials are still present.
 
-OTP email sends use `sendEmailOtpCode()` and explicitly set the sender display name to `DGFY`. Generic lifecycle email sends keep the configured `EMAIL_FROM_NAME` value, defaulting to `SKUpervisor`.
+OTP email sends use `sendEmailOtpCode()` and explicitly set the sender display name to `DGFY`. Generic lifecycle email sends keep the configured `EMAIL_FROM_NAME` value, defaulting to `DGFY`.
 
 <details>
 <summary>Superseded `2026-05-17` entry (Brevo relay, pre-#135 cutover, pre-#279 removal)</summary>

@@ -60,10 +60,11 @@ export default function StaffRolesPanel({ canManage, onSaved }) {
     const run = async (action, successMessage) => {
         setBusy(true); setError(''); setNotice('');
         try {
-            await action();
+            const result = await action();
             await refresh();
-            setNotice(successMessage);
+            setNotice(typeof successMessage === 'function' ? successMessage(result) : successMessage);
             onSaved?.();
+            return result;
         } catch (failure) { setError(getBusinessAdminErrorMessage(failure)); }
         finally { setBusy(false); }
     };
@@ -106,7 +107,18 @@ export default function StaffRolesPanel({ canManage, onSaved }) {
             {roles.map((role) => <li key={role.staff_role_id} className="flex items-center gap-3 rounded border p-2 text-sm">
                 <span className="flex-1">{role.name} · {role.is_active ? 'Active' : 'Inactive'} · {role.capabilities?.length || 0} capabilities</span>
                 {canManage && <><button type="button" onClick={() => { setEditingId(role.staff_role_id); setDraft(copyDraft(role)); }}>Edit</button>
-                    <button type="button" disabled={busy} onClick={() => run(() => businessAdminApi.setStaffRoleStatus(role.staff_role_id, !role.is_active), 'Role status updated.')}>{role.is_active ? 'Deactivate' : 'Activate'}</button></>}
+                    <button type="button" disabled={busy} onClick={() => run(
+                        () => businessAdminApi.setStaffRoleStatus(role.staff_role_id, !role.is_active),
+                        (result) => {
+                            const count = Number(result?.cancelled_invitation_count) || 0;
+                            if (role.is_active && result?.invitation_sync_status === 'retry_required') {
+                                return `${result.invitation_sync_message} ${count} pending invitation${count === 1 ? '' : 's'} cancelled.`;
+                            }
+                            return role.is_active && count > 0
+                                ? `Role deactivated. ${count} pending invitation${count === 1 ? '' : 's'} cancelled.`
+                                : 'Role status updated.';
+                        }
+                    )}>{role.is_active ? 'Deactivate' : 'Activate'}</button></>}
             </li>)}
         </ul>
         {canManage && <div className="space-y-3 rounded border p-3">

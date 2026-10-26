@@ -81,6 +81,15 @@ const parsePositiveInt = (value) => {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
+const parseStaffRoleId = (value) => {
+    if (typeof value === 'number') {
+        return Number.isSafeInteger(value) && value > 0 ? value : null;
+    }
+    if (typeof value !== 'string' || !/^\d+$/.test(value.trim())) return null;
+    const parsed = Number(value.trim());
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
 const hasBodyKey = (body, key) => Object.prototype.hasOwnProperty.call(body || {}, key);
 const pickBodyValue = (body, snakeKey, camelKey, fallback) => {
     if (hasBodyKey(body, snakeKey)) return body[snakeKey];
@@ -1073,9 +1082,12 @@ export const buildCreateDgfyInvitationUseCase = ({
     const dgfyAccountId = String(body?.dgfy_account_id || body?.dgfyAccountId || '').trim();
     const requestedRole = String(body?.role || '').trim().toLowerCase();
     const rolePresetKey = String(body?.role_preset_key || body?.rolePresetKey || '').trim() || null;
+    const hasStaffRoleId = Object.prototype.hasOwnProperty.call(body, 'staff_role_id');
+    const rawStaffRoleId = body?.staff_role_id;
+    const staffRoleId = hasStaffRoleId ? parseStaffRoleId(rawStaffRoleId) : null;
     let role = requestedRole || 'staff';
     let permissions = role === 'cashier' ? [] : (Array.isArray(body?.permissions) ? body.permissions : []);
-    const locationIds = Array.isArray(body?.location_ids) ? body.location_ids : (Array.isArray(body?.locationIds) ? body.locationIds : []);
+    let locationIds = Array.isArray(body?.location_ids) ? body.location_ids : (Array.isArray(body?.locationIds) ? body.locationIds : []);
     const allowedRoles = new Set(['staff', 'cashier', 'po', 'do', 'jo', 'manager', 'admin']);
 
     if (!dgfyAccountId) {
@@ -1083,6 +1095,27 @@ export const buildCreateDgfyInvitationUseCase = ({
     }
     if (!tenant?.id || !tenant?.company_token) {
         return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Tenant context is required.', { statusCode: 400 }));
+    }
+    if (hasStaffRoleId && staffRoleId === null) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'staff_role_id must be a positive integer.', { statusCode: 422 }));
+    }
+    if (staffRoleId !== null) {
+        if (rolePresetKey || (requestedRole && requestedRole !== 'staff')) {
+            return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'A custom staff role cannot be combined with a role preset or a conflicting base role.', { statusCode: 422 }));
+        }
+        if (body?.permissions !== undefined && (!Array.isArray(body.permissions) || body.permissions.length > 0)) {
+            return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Custom staff-role invitations cannot include permission overrides.', { statusCode: 422 }));
+        }
+        if (adminUser?.is_master_admin !== true && String(adminUser?.role || '').trim().toLowerCase() !== 'admin') {
+            return fail(new DomainError(DomainErrorCode.FORBIDDEN, 'Only the company owner or an admin can invite a custom staff role.', { statusCode: 403 }));
+        }
+        const parsedLocationIds = locationIds.map((value) => Number(value));
+        if (parsedLocationIds.length === 0 || parsedLocationIds.some((value) => !Number.isInteger(value) || value <= 0)) {
+            return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Custom staff-role invitations require at least one valid active store location.', { statusCode: 422 }));
+        }
+        locationIds = [...new Set(parsedLocationIds)];
+        role = 'staff';
+        permissions = [];
     }
     if (rolePresetKey) {
         try {
@@ -1131,6 +1164,7 @@ export const buildCreateDgfyInvitationUseCase = ({
             adminUser,
             role,
             rolePresetKey,
+            staffRoleId,
             permissions,
             locationIds
         });
@@ -1163,6 +1197,7 @@ export const buildCreateDgfyInvitationUseCase = ({
                 target_dgfy_account_id: result.account?.id || dgfyAccountId,
                 selected_role: role,
                 selected_role_preset_key: rolePresetKey,
+                selected_staff_role_id: staffRoleId,
                 location_ids: locationIds,
                 permissions,
                 email_sent: emailSent,
@@ -1367,7 +1402,8 @@ export const buildRecordDgfyCompanySwitchOutcomeUseCase = ({
 };
 
 export const buildAcceptDgfyInvitationUseCase = ({
-    repository
+    repository,
+    invalidateUserCache = null
 }) => async ({ account, membershipId, metadata = {} }) => {
     const id = parsePositiveInt(membershipId);
     if (!id) {
@@ -1410,7 +1446,11 @@ export const buildAcceptDgfyInvitationUseCase = ({
             throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Only pending DGFY invitations can be accepted.', { statusCode: 409 });
         }
 
-        const acceptedMembership = await repository.acceptInvitationMembership({ membership, account });
+        const acceptance = await repository.acceptInvitationMembership({ membership, account });
+        const acceptedMembership = acceptance?.membership || acceptance;
+        if (acceptance?.staffRoleAssigned && typeof invalidateUserCache === 'function') {
+            invalidateUserCache(membership.tenant_id, acceptedMembership.tenant_user_id);
+        }
         await repository.createBusinessAuditLog?.(buildBusinessAuditPayload({
             account,
             membership: acceptedMembership,

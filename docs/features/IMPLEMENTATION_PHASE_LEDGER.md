@@ -32367,3 +32367,710 @@ Not complete. Record after merge and implementation validation.
 ### Next phase number
 
 Phase 554. No explicit dependency.
+
+## Phase 554 - Custom staff-role invitations for Warehouse and Delivery (#2812)
+
+### Initiative and release
+
+OPIS back-office team access and DGFY company membership. Feature branch: `feat/2812-custom-staff-role-invites`.
+
+### Objective and scope
+
+Allow an OPIS owner or legacy admin to invite an already registered DGFY account into an active
+tenant custom staff role. Persist the tenant role assignment and active location grants, accept the
+invitation only after revalidating the tenant user, role, membership, and locations, and immediately
+cancel pending invitations when a role is deactivated. Preserve the role name and cancellation
+reason in the landlord invitation registry for display and reconciliation. Show active custom roles
+in the shared invitation UI only through the OPIS surface, and report cancellation counts and
+registry-sync retries.
+
+Email-first account registration remains deferred to #2805. The shared modal preserves selected
+account and assigned-location choices across role changes; #2810 still owns the remaining compatible
+standard-role catalog behavior and must land before final integrated validation and merge.
+
+### Status
+
+`in_progress` — implementation and validation are underway; no commit or PR has been created.
+
+### Dependencies
+
+No dependency on Phase 553 is recorded. #2810 is required before final integrated validation/merge;
+its compatible standard-role changes remain separate. #2805's email-first flow is explicitly
+deferred and is not a dependency for existing-account invitations.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0015](../architecture/adr/0015-tenant-user-invitation-registry.md),
+[ADR 0020](../architecture/adr/0020-mode-aware-rbac-and-role-presets.md),
+[ADR 0028](../architecture/adr/0028-dgfy-account-company-switching.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[POS Manual Delivery Workflow](POS_MANUAL_DELIVERY_WORKFLOW.md),
+[Issue #2812](https://github.com/Sieitzz/dgfy-platform/issues/2812). Classification:
+within-existing-boundary; tenant roles and grants remain authoritative, landlord metadata is a
+non-authoritative lifecycle descriptor, and invitation behavior is exposed from OPIS.
+
+### Implementation targets
+
+[dgfyAuthUseCases.js](../../apps/dgfy-api/src/modules/dgfy/usecases/dgfyAuthUseCases.js),
+[dgfyAccountRepository.js](../../apps/dgfy-api/src/modules/dgfy/repositories/dgfyAccountRepository.js),
+[staffRoleUseCases.js](../../apps/dgfy-api/src/modules/staff/usecases/staffRoleUseCases.js),
+[staffRoleRepository.js](../../apps/dgfy-api/src/modules/staff/repositories/staffRoleRepository.js),
+[transaction-aware assignment helper](../../apps/dgfy-api/src/modules/staff/repositories/staffRoleRepository.js),
+[landlordService.js](../../apps/dgfy-api/src/services/landlordService.js),
+[userService.js](../../apps/dgfy-api/src/services/userService.js),
+[UserInvitation.js](../../apps/dgfy-api/src/models/Landlord/UserInvitation.js),
+[migration](../../apps/dgfy-migration-runner/migrations/20261026000001-add-custom-staff-role-invitation-metadata.cjs),
+[UserInvitationModal.jsx](../../packages/web-core/Components/users/UserInvitationModal.jsx),
+[UserManagementModal.jsx](../../packages/web-core/Components/users/UserManagementModal.jsx),
+[StaffRolesPanel.jsx](../../apps/dgfy-opis/src/features/businessAdmin/StaffRolesPanel.jsx),
+[DGFY invitation role tests](../../apps/dgfy-api/tests/dgfyInvitationCompanyRole.test.js),
+[staff-role tests](../../apps/dgfy-api/tests/staffRoleFoundation.usecase.test.js),
+[disposable database integration test](../../apps/dgfy-api/tests/staffRoleInvitationPersistence.phase554.db.integration.test.js),
+and [invitation modal tests](../../packages/web-core/Components/users/__tests__/UserInvitationModal.dgfy.test.jsx).
+
+### Acceptance and validation evidence
+
+- [ ] Owner/admin authorization, strict role ID validation, active role/location validation, and
+  conflicting preset/permission rejection pass before durable writes.
+- [ ] Custom invitations persist `role='staff'`, the selected tenant role, empty permissions,
+  inherited permission mode, inactive pending state, active location grants, and a landlord name
+  snapshot; accepted users receive only current role capabilities and invited active grants.
+- [ ] Acceptance rejects wrong account, expired/cancelled invitation, unavailable/mismatched role,
+  and inactive/missing grants; accepted replay does not reassign the user.
+- [ ] Deactivation cancels only pending invitations in the active tenant, syncs registry and invite
+  membership state, preserves accepted memberships, and retries partial landlord synchronization.
+- [ ] Reinvitation resets cancellation metadata, while role reactivation does not revive old
+  invitations. Reused tenant rows and landlord registry/membership writes are compensated on
+  creation failure.
+- [ ] The shared modal shows active custom roles to OPIS owners/admins, keeps account/location
+  choices across assigned-role switches, blocks missing locations, and retains fixed-cashier
+  behavior. Invitation lists show the role snapshot and cancellation reason.
+- [ ] Focused API and UI tests, migration idempotence/rollback evidence, architecture/schema/compliance
+  checks, affected OPIS/POS/IMS builds, and rendered OPIS desktop/mobile checks are recorded below
+  before the implementation checkpoint.
+
+### Validation evidence (2026-10-26)
+
+- Focused API Jest tests: 3 suites / 22 tests passed (`dgfyInvitationCompanyRole`,
+  `staffRoleFoundation.usecase`, `dgfyAccountRepository.invitationSchema`).
+- Disposable MySQL integration: 1 suite / 4 tests passed against a uniquely named migrated `test_*`
+  database, dropped during teardown. It verifies assignment/audit rollback and commit, pending-only
+  invitation cancellation with accepted users preserved, actual InnoDB role-row lock blocking,
+  and migration repeated-up/down behavior that leaves the pre-feature invitation columns intact
+  and removes the newly added index on rollback.
+  This does not prove cross-database landlord synchronization or full DGFY acceptance end to end.
+- OPIS invitation contract: 1 suite / 4 tests passed. Shared invitation modal: 1 suite / 9 tests
+  passed through the IMS runner. A local Playwright preview with isolated API fixtures rendered at
+  1440×900 and 390×844, submitted `staff_role_id=17` with role `staff` and location `[11]`, and
+  reported no browser console errors. Screenshots: [desktop](../../apps/dgfy-opis/.tmp/2812-opis-invitation-desktop.png),
+  [mobile](../../apps/dgfy-opis/.tmp/2812-opis-invitation-mobile.png).
+- OPIS, POS, and Skupervisor builds passed. OPIS lint passed with one existing max-lines warning in
+  `BusinessAdminPage.jsx`. `check:architecture`, `lint:docs`, `check:compliance`, `check:app-versions`,
+  `check:tenant-schema-coverage`, JavaScript syntax checks, and `git diff --check` passed. The tenant
+  schema coverage command reported that no tenant migration files changed; the landlord migration
+  was exercised by the disposable database integration test.
+- Compliance declaration is present as a draft with `NOT-EXECUTED` reference; no live compliance
+  preflight was run. #2810 remains an open prerequisite for final integrated validation/merge; #2805
+  email-first registration remains deferred. The phase remains `in_progress`, and no commit or PR
+  has been created pending human review of the migration and declaration.
+
+### Completion date
+
+Not complete. Record only after merge and implementation validation pass.
+
+### Post-merge verification
+
+- [ ] **migration** — apply the additive landlord migration on an existing tenant registry and a
+  fresh registry; verify nullable metadata and the role/status index, and confirm old invitations
+  remain readable. Owner: release operator; blocks deployed acceptance.
+- [ ] **deployment** — verify one new custom-role invitation and one immediate role-deactivation
+  cancellation in a deployed tenant; confirm registry name/reason and the pending DGFY membership
+  state. Owner: operator/release verifier; blocks deployed acceptance.
+- [ ] **end-to-end** — accept an active custom-role invitation and confirm current role capabilities
+  and location grants; confirm a cancelled/deactivated invitation cannot be accepted. Owner: verifier;
+  blocks deployed acceptance.
+
+### Next phase number
+
+Phase 555. No explicit dependency.
+
+## Phase 555 - Repair storefront-mode integration test email mock (#2767)
+
+### Initiative and release
+
+API integration-test reliability / STAGING Promotion Quality Gate triage.
+
+### Objective and scope
+
+Expose the existing `sendStorefrontOrderConfirmationEmail` production export from the
+`emailService.js` mock used by `adminTenantLifecycle.integration.test.js`, allowing the API server
+to load before the test assertions run. Preserve existing assertions, mocks, fixtures, setup, and
+cleanup. This phase does not change production email behavior, schema, migrations, quality-gate
+policy, or the independent POS, evidence-storage, fast-tier, and dependency findings tracked under
+#2767 and their existing owners.
+
+### Status
+
+`in_progress` — the mock and ledger entry are on a fresh `origin/develop` branch; implementation
+validation and merge remain pending.
+
+### Dependencies
+
+None. Phase 554's custom staff-role invitation work is independent. The production export already
+exists; this test-only repair makes the mock match its consumer.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0054](../architecture/adr/0054-outbound-email-delivery-log-and-bounce-capture.md),
+[Backend Test Matrix Gate](../testing/README.md#backend-test-matrix-gate),
+[Issue #2767](https://github.com/Sieitzz/dgfy-platform/issues/2767), and
+[Issue #2577](https://github.com/Sieitzz/dgfy-platform/issues/2577). Classification:
+`no-architecture-impact`; production email delivery and its existing test seam are unchanged.
+
+### Implementation targets
+
+[adminTenantLifecycle.integration.test.js](../../apps/dgfy-api/tests/adminTenantLifecycle.integration.test.js),
+[emailService.js](../../apps/dgfy-api/src/services/emailService.js), and
+[dgfyOrderConfirmationEmail.js](../../apps/dgfy-api/src/modules/dgfy/services/dgfyOrderConfirmationEmail.js).
+
+### Acceptance and validation evidence
+
+- [x] The ESM test mock exposes `sendStorefrontOrderConfirmationEmail` before the server's dynamic
+  import, without changing existing test assertions or setup/cleanup.
+- [ ] `tenant_storefront_modes` DB group passes, including `adminTenantLifecycle.integration.test.js`.
+  Not established: the matrix runner stops during its inventory preflight on the unrelated,
+  unlisted Phase 554 test `tests/staffRoleInvitationPersistence.phase554.db.integration.test.js`;
+  a direct Jest attempt then could not connect to the local test MySQL service.
+- [x] `npm run test:backend:matrix` outcome is recorded with unrelated failures kept separate; it
+  exits before running suites for the same Phase 554 manifest gap.
+- [x] Changed-file syntax, architecture, docs lint, app-version floor, and `git diff --check` pass.
+
+### Validation evidence (2026-10-26)
+
+- `node --check apps/dgfy-api/tests/adminTenantLifecycle.integration.test.js` passed.
+- `npm run check:architecture` passed (63 modules / 802 code files; 116 controller files).
+- `npm run lint:docs` passed (36 governed docs / 106 ADRs).
+- `node scripts/check-app-version-bump.js` reported no requirement because no app or fan-out
+  package changed. `git diff --check` passed.
+- `npm run test:backend:db -- --group tenant_storefront_modes` and
+  `npm run test:backend:matrix` both exited before test execution because
+  `tests/staffRoleInvitationPersistence.phase554.db.integration.test.js` is not listed in
+  `scripts/backend-db-dependent-tests.js`. The disposable testing-agent run on code commit
+  `59fd9fe9cc207ec1adf5f2f7f122bf6dc7797f67` reported a failed backend matrix gate (focused
+  advisory run: 1 failed / 16 skipped; MySQL 8 and Redis 7 test containers healthy). The direct
+  matrix invocation above reports the missing manifest entry.
+- A direct Jest run with `DB_HOST=127.0.0.1` and `DB_NAME_TEST=sku_test` passed the module/server
+  import stage, so the missing named-export error is gone, then failed in the shared `beforeAll`
+  hook and cleanup with `ECONNREFUSED 127.0.0.1:3306`; no test assertions ran. No local MySQL
+  service was available.
+
+### Risks and non-goals
+
+The DB group and full backend matrix require the repository's configured disposable MySQL test
+environment. Any environment limitation or unrelated matrix failure must be reported without
+weakening assertions or changing the test selection. No production email delivery or real mailbox
+is involved.
+
+### Completion date
+
+Not complete. Record only after merge and implementation validation pass.
+
+### Post-merge verification
+
+- [ ] **operational** — confirm the backend DB-matrix CI result for the merged `develop` SHA includes
+  and passes `tenant_storefront_modes`, including this integration suite. Owner: Worker / PR CI;
+  blocks closure of this scoped repair under #2767.
+
+### Next phase number
+
+Phase 556. No explicit dependency.
+
+## Phase 556 - Connect independently hosted Surebiz DGLaundry to DGFY DEV (#2387)
+
+### Initiative and release
+
+DGLaundry provider integration, DEV source/configuration slice for epic #2387. Branch:
+`feat/2387-surebiz-dev-connection`, targeting `develop`.
+
+### Objective and scope
+
+Enable DGFY's source and setup tooling to accept a DEV connection from the existing
+`https://laundry.surebizcorp.com` DGLaundry deployment at
+`https://api.dev.dgfy.ph`. Surebiz stays on its own host and communicates over HTTPS. Add an
+independent DEV registration tuple, exact callback and service-token audience, asymmetric key
+support, production-mode runtime validation, and sandbox-only payment checks. Keep STAGE and PROD
+bound to their own DGLaundry hosts and credentials. This phase does not migrate Surebiz runtime or
+data, configure the Surebiz server, deploy either side, change DNS, or activate PROD.
+
+### Status
+
+`in_progress` — DGFY source, tests, contract, and runbook have passed the available source checks;
+no host mutation or hosted qualification has been recorded.
+
+### Dependencies
+
+No dependency blocks the DGFY source PR. Hosted joint qualification depends on Albert's separate
+DGLaundry profile/installer/configuration update, a retained demo backup, fresh connected-DEV data
+and credentials, verified DGFY registrations/key installation, and approved synthetic mappings.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0060](../architecture/adr/0060-sops-age-encrypted-secrets-at-rest.md),
+[ADR 0079](../architecture/adr/0079-dglaundry-external-runtime-and-provider-contract.md),
+[DGFY Partner Integration Contract](../api/PARTNER_INTEGRATION_CONTRACT.md),
+[Connection Manifest](../integrations/dglaundry-connection-manifest.json),
+[Connection Setup Runbook](../integrations/DGLAUNDRY_CONNECTION_SETUP.md),
+[Issue #2387 latest access/runbook evidence](https://github.com/Sieitzz/dgfy-platform/issues/2387#issuecomment-6413091805).
+Classification: cross-boundary environment/profile contract amendment under ADR 0039's default
+clause path. No exception or allowlist is introduced.
+
+### Implementation targets
+
+[Setup utility](../../scripts/dglaundry-connection-setup.mjs),
+[setup tests](../../scripts/dglaundry-connection-setup.test.mjs),
+[connection manifest](../../docs/integrations/dglaundry-connection-manifest.json),
+[environment validation](../../apps/dgfy-api/src/config/productionEnvValidation.cjs),
+[startup guard](../../apps/dgfy-api/src/server.js),
+[partner service-token issuer](../../apps/dgfy-api/src/modules/dgfyLaundryOrders/services/dglaundryPartnerAccessToken.js),
+[validation tests](../../apps/dgfy-api/tests/productionEnvValidation.test.js),
+[startup-guard tests](../../apps/dgfy-api/tests/productionEnvGuard.test.js),
+[token tests](../../apps/dgfy-api/tests/dglaundryPartnerAccessToken.test.js),
+[DGFY contract](../../docs/api/PARTNER_INTEGRATION_CONTRACT.md),
+[key provisioning runbook](../../docs/ops/dglaundry-oidc-key-provisioning.md).
+
+### Acceptance and validation evidence
+
+- [ ] The v1.2 manifest binds Surebiz only to DGFY DEV, with independent proposed client/key IDs,
+  blank registration proof and fingerprints, exact callback/audience, and sandbox payment mode.
+- [ ] Setup inspect/prepare/apply/verify/rollback support DEV, bind state to the manifest digest,
+  preserve existing unmanaged settings, synchronize the existing host `.env`, and restore managed
+  Compose values safely on rollback; STAGE remains on its own DGLaundry host and PROD mutation
+  remains prohibited.
+- [ ] Enabled hosted DEV cannot start outside `NODE_ENV=production`; the exact DEV issuer,
+  callback, Surebiz audience, Redis-backed replay protections, asymmetric signatures, and test-mode
+  payment requirements are validated.
+- [ ] Focused setup, environment-validation, startup-guard, and service-token tests pass; relevant
+  architecture, compliance, docs, syntax, and diff checks are recorded below.
+- [ ] DGFY source readiness is reported separately from Albert's DGLaundry changes and hosted
+  authentication/tenant-isolation qualification.
+
+### Validation evidence (2026-10-26)
+
+- `npm run test:dglaundry-connection-setup` — PASS, 19/19.
+- `npm run check:production-env` — PASS (existing fixture warnings note empty `DEPLOY_ENV_LABEL`
+  in generic fixtures).
+- `npm run check:architecture` — PASS (63 modules, 802 code files, 116 controllers).
+- `npm run lint:docs` — PASS (36 governed docs, 106 ADRs).
+- `npm run check:compliance` — PASS; no compliance-sensitive declaration was required.
+- `npm run check:app-versions` — PASS; no version bump applies on this `develop`-targeted branch.
+- `node --check` on changed API/setup JavaScript and the manifest-to-contract SHA-256 check — PASS.
+- `git diff --check` and the pre-commit marker scan — PASS.
+- Focused API Jest tests were attempted but could not run: this checkout has no
+  `apps/dgfy-api/node_modules/jest`; no assertions ran.
+
+Hosted DEV discovery/JWKS, Surebiz configuration, secret installation, and authenticated joint
+qualification have not been performed by this phase.
+
+### Risks and non-goals
+
+Changing DEV `NODE_ENV` to `production` affects the whole DGFY DEV API and activates full hosting
+preflight requirements; the host operator must validate the complete effective configuration
+before applying. The setup tool keeps registration proposed until independent evidence and actual
+public-key fingerprints are recorded. No credentials, private keys, DNS changes, host migration,
+staging/prod retargeting, or production activation belong in this phase.
+
+### Completion date
+
+Not complete. Record only after the scoped source implementation is merged and implementation
+validation passes.
+
+### Post-merge verification
+
+- [ ] **deployment** — through the approved DGFY DEV release process, record the exact source SHA,
+  image digest, config revision, production-mode runtime label, sandbox payment setting, and rollback
+  reference. Owner: DGFY release operator.
+- [ ] **provider** — verify DEV discovery advertises only `https://api.dev.dgfy.ph/oidc`, JWKS is
+  HTTP 200 with the registered DEV key ID, and the login/browser session, machine/service
+  authorization, and signed traffic work. Owner: DGFY release operator and DGLaundry owner.
+- [ ] **Surebiz** — Albert supplies the reviewed connected-DEV profile/configuration on Surebiz's
+  existing host, fresh database/credentials, retained demo backup, exact DGLaundry SHA/image and
+  config revision. Owner: Albert / DGLaundry.
+- [ ] **qualification** — with synthetic mappings and sandbox payments, prove replay and
+  wrong-company/location denial, then record both SHAs, key fingerprints, evidence URLs, and rollback
+  target. Owner: DGFY + DGLaundry; blocks connected-DEV acceptance and epic closure.
+
+### Next phase number
+
+Phase 557. No explicit dependency.
+
+## Phase 557 - DGFY outbound email branding (#2830)
+
+### Initiative and release
+
+Outbound email slice of legacy-name retirement issue #2830 under epic #352. Ordinary implementation
+branch targeting `develop`.
+
+### Objective and scope
+
+Use plain `DGFY` in active platform-authored outbound email branding and the generic sender fallback.
+Preserve tenant and store names, configured sender overrides and addresses, legal issuer data,
+destinations, attachments, layouts, and SMTP delivery behavior. Add a complete active-send inventory,
+regression coverage for every active template and email-specific wrapper plus direct send owners,
+and current sender guidance. Keep disabled PayPal template code and historical records unchanged.
+Do not mutate STAGING/PROD configuration, deploy, or send real email in this phase.
+
+### Status
+
+`in_progress` — source, regression coverage, inventory, and this ledger entry are being implemented
+from fresh `origin/develop`. Phase 556 (#2387) had already landed on that base, so this work takes
+the next free number, 557; the following number is 558.
+
+### Dependencies
+
+None. The STAGING/PROD sender-name checks and any required persistent configuration updates are
+post-merge operator verification, not implementation dependencies.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0012](../architecture/adr/0012-dgfy-global-convenience-fee-and-ui-brand-separation.md),
+[ADR 0021](../architecture/adr/0021-email-otp-verification-for-account-email-ownership.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0054](../architecture/adr/0054-outbound-email-delivery-log-and-bounce-capture.md),
+[ADR 0060](../architecture/adr/0060-sops-age-encrypted-secrets-at-rest.md),
+[ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md),
+[Backend Test Matrix Gate](../testing/README.md#backend-test-matrix-gate),
+[Email Inventory](OUTBOUND_EMAIL_INVENTORY.md),
+[Issue #2830](https://github.com/Sieitzz/dgfy-platform/issues/2830). Classification:
+`no-architecture-impact`; existing email transport, ownership, and OTP semantics are unchanged, so no
+ADR amendment, new seam, migration, or allowlist is required.
+
+### Implementation targets
+
+[Email templates](../../apps/dgfy-api/src/templates/emailTemplates.js),
+[email service](../../apps/dgfy-api/src/services/emailService.js),
+[user email fallbacks](../../apps/dgfy-api/src/services/userService.js),
+[delivery verification script](../../apps/dgfy-api/scripts/verify-email-delivery.js),
+[branding contract test](../../apps/dgfy-api/tests/emailBranding.contract.test.js),
+[delivery provider tests](../../apps/dgfy-api/tests/emailService.deliveryProvider.test.js),
+[inline invitation tests](../../apps/dgfy-api/tests/dgfyAuthUseCases.test.js),
+[tracking recovery tests](../../apps/dgfy-api/tests/dgfyCustomerUseCases.test.js),
+[service reminder tests](../../apps/dgfy-api/tests/servicesMode.usecases.test.js),
+[invoice delivery tests](../../apps/dgfy-api/tests/platformInvoiceUseCases.test.js),
+[API environment examples](../../apps/dgfy-api/.env.example),
+[API specification](../api/specification.md),
+[collaborator environment guide](../setup/COLLABORATOR_LOCAL_ENV.md),
+[tenant email guidance](TENANT_MANAGEMENT.md), and this ledger.
+
+### Acceptance and validation evidence
+
+- [x] All active authored legacy platform labels in subjects, headers, footers, HTML/plain-text
+  bodies, and the generic sender fallback now use plain DGFY or neutral copy; explicitly branded
+  OTP, affiliate, and storefront sends stay DGFY.
+- [x] Every active template export and email-specific wrapper is covered by the branding guard; inline
+  business invitations, tracking recovery, service reminders, invoice payloads, and operator
+  verification copy are checked through existing seams or a non-sending diagnostic assertion.
+- [x] Tenant/store values, sender overrides and addresses, links, tokens, invoice attachment/legal
+  issuer/QA notice, and layouts remain intact; affiliate account branches and all OTP purposes are
+  inventoried.
+- [x] Rendered staff invitation, welcome, company approval/rejection, and changed billing samples are
+  reviewed at desktop and narrow widths using synthetic data; no real email is sent.
+- [x] Focused email/template/inline-owner tests pass; the required `npm run test:backend:matrix`
+  outcome is recorded without weakening or reclassifying existing suites.
+- [x] `npm run check:compliance` passes with the human-approved declaration for the changed
+  `userService.js` path.
+- [x] `npm run check:architecture`, `npm run lint:docs`, PR-context
+  `node scripts/check-app-version-bump.js`, changed-file `node --check`, and `git diff --check` pass.
+- [x] Current environment examples and guidance show `EMAIL_FROM_NAME=DGFY`, while STAGING/PROD
+  verification remains an explicit human follow-up.
+
+### Validation evidence (Worker run, 2026-10-26)
+
+- The focused email/template/inline-owner Jest command passed 11 suites and 234 tests. After adding
+  explicit welcome, onboarding, subscription, PayMongo, and plan-change destination assertions, the
+  branding contract suite passed again (6 tests).
+- Rendered all 15 active legacy-branded invitation, welcome, company, billing, plan-change,
+  reactivation, and resubmission templates at 1200px and 390px widths with synthetic fixtures.
+  Reviewed the local screenshots under `.tmp/email-branding-previews/`; all 30 renders had no
+  horizontal overflow, and supplied destinations remained present. No email was sent.
+- `node --check` passed for every changed API JavaScript file; architecture checks passed (63 modules,
+  802 code files, and 116 controller files); `npm run lint:docs` passed (36 governed docs and 106
+  ADRs); the app-version gate passed in PR context with no package-version change required; and
+  `git diff --check` passed.
+- After Pat approved the required major declaration, `npm run check:compliance` passed and checked
+  the `userService.js` surface plus 10 compliance-sensitive documentation/API-contract rules. The
+  declaration records that no live preflight was run and uses the accepted PR-open placeholder.
+- `npm run test:backend:matrix` stopped before execution because the existing
+  `tests/staffRoleInvitationPersistence.phase554.db.integration.test.js` suite is missing from
+  `scripts/backend-db-dependent-tests.js`. No unrelated manifest change was made.
+- `npm run check:compliance` initially reported `apps/dgfy-api/src/services/userService.js` as a
+  sensitive change; after the approved major declaration was added, it passed. No live preflight was
+  performed; the declaration records the PR-open placeholder for the continuous sweep.
+
+### Risks and non-goals
+
+A configured `EMAIL_FROM_NAME` overrides the code fallback, so runtime settings may continue to show
+old branding until an operator corrects the persistent configuration and applies it through normal
+release controls. The read-only PROD evidence recorded for planning found the name wrapped in
+literal quotation marks and `EMAIL_FROM=noreply@dgfy.ph`; STAGING values remain unverified. Preserve
+the public sender address and all historical/environment-specific data outside this issue. This
+phase does not change delivery, retry, logging, OTP/security, billing, checkout, app/UI, provider,
+or fiscal identity behavior. Already delivered messages cannot be recalled.
+
+### Completion date
+
+Not complete. Record only after the scoped implementation is merged to `develop` and implementation
+validation passes.
+
+### Post-merge verification
+
+- [ ] **STAGING configuration** — read the filtered effective `EMAIL_FROM_NAME` and `EMAIL_FROM`
+  values; set the persistent display name to exactly `DGFY` if needed, preserve the current sender
+  address, and record the applied configuration revision. Owner: release operator.
+- [ ] **PROD configuration** — normalize the persistent `EMAIL_FROM_NAME` value to exactly `DGFY`
+  (remove embedded quotation marks if still present), preserve `EMAIL_FROM=noreply@dgfy.ph`, apply
+  through normal release controls, and record the configuration revision. Owner: release operator.
+- [ ] **deployed verification** — after the normal deployment, verify the exact source/image and
+  effective sender configuration in STAGING and PROD; record controlled rendered/send evidence only
+  through the approved operator procedure. Owner: release operator / verifier.
+
+### Next phase number
+
+Phase 558. No explicit dependency.
+## Phase 558 - DGFY Storefront OIDC browser interaction (#2837)
+
+### Initiative and release
+
+DGLaundry partner authentication, DGFY source slice for issue #2837; ordinary `develop` delivery.
+
+### Objective and scope
+
+Keep the OIDC issuer on the configured `api.*` origin while moving interactive DGFY authentication,
+registration, password reset, and company choice to Storefront. Add a one-use issuer-to-Storefront
+handoff and per-interaction host-only browser cookie, an issuer browser binding, an absolute
+600-second Redis interaction, a 60-second-or-shorter single-use issuer completion ticket, exact
+environmental Storefront destination validation, forced-login proof, accepted-membership
+revalidation, identity-only onboarding grants, readable failures, and telemetry redaction. Preserve
+JSON authorize behavior, existing code/token lifetimes, CSRF/CORS policy, and DGLaundry ownership
+of company onboarding and operational authority. No schema migration, host mutation, deployment,
+or production activation is in scope.
+
+### Status
+
+`in_progress` — the DGFY source slice and available validation are recorded; PR #2842 is open. Merge and joint hosted acceptance remain outstanding.
+
+### Dependencies
+
+- No earlier ledger phase blocks this DGFY source implementation.
+- The separate DGLaundry companion in #2837 must raise its callback transaction expiry to 900,000 ms
+  and pass `dglaundry_intent=create_company` through PAR. That companion, matching hosted issuer /
+  client / Redis values, and real cross-host cookie behavior block joint hosted acceptance, not this
+  source PR.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0079](../architecture/adr/0079-dglaundry-external-runtime-and-provider-contract.md),
+[DGFY Partner Integration Contract](../api/PARTNER_INTEGRATION_CONTRACT.md),
+[Partner OpenAPI](../api/partner-dglaundry-openapi.yaml), [Testing Rules](../testing/README.md),
+and [Apps Layout Migration](../architecture/apps-layout-migration.md). Classification: cross-boundary;
+ADR 0079's untagged/default browser interaction is amended in this PR. ADR 0026 cookie and CSRF
+authority and ADR 0071 app-source boundaries remain in force. No exception or allowlist is added.
+
+### Implementation targets
+
+API OIDC negotiation, Redis interaction repository/use cases/controllers/routes, DGFY login proof,
+CSRF binding-cookie coverage, strict hosted environment validation, and Sentry redaction; Storefront
+interaction/error routes and continuation through existing account flows; company selector
+hardening; partner contract/OpenAPI, ADR amendment, this ledger entry, and focused regression and
+rendered browser evidence. Changes to `packages/web-core` require builds of every consuming app.
+
+### Acceptance and validation evidence
+
+- [ ] HTML negotiation is explicit and quality-aware; JSON callers retain unauthenticated 401 and
+  existing authenticated protocol outcomes.
+- [ ] PAR claims once, interaction expiry is absolute at ten minutes, binding is host-only, ticket
+  expiry is at most one minute, and code TTL remains 120 seconds.
+- [ ] Account, company, forced login, switch-account, signup, OTP/legal, reset-password, and
+  new-company continuation are bound to the server interaction; fixed and lost memberships fail
+  closed.
+- [ ] Issuer completion enforces Origin, CSRF, host binding, current account/client/company state,
+  atomic ticket/interaction consumption, registered callback, and one code at most.
+- [ ] Identity-only no-company/new-company grants omit company-context scope and claim and do not
+  provision authority.
+- [ ] Error routes, telemetry, and logs do not expose interaction IDs, request URIs, tickets,
+  authorization codes, or session tokens.
+- [ ] Required backend/frontend regression suites, backend matrix, frontend contracts, Storefront
+  and any shared-code consumer builds, app-version/architecture/compliance/docs/environment gates,
+  and `git diff --check` are run and exact outcomes recorded before PR.
+- [ ] Local-only Playwright proof follows `web-performance-qa`: one worker, distinct local hostnames,
+  real cookie behavior, cold login, chooser/onboarding navigation, desktop/mobile, page identity,
+  and console/framework-overlay health.
+- [ ] DGLaundry companion prompt and all joint hosted verification dependencies remain explicit;
+  local DGFY proof is not described as joint or deployed acceptance.
+
+### Validation evidence (2026-10-26)
+
+- Focused API OIDC/provider/cookie/CSRF/environment/telemetry suites — PASS, 10 suites / 156 tests.
+- Storefront suite — PASS, 255 files / 1,435 tests. Storefront OIDC interaction tests — PASS,
+  2 files / 5 tests.
+- Shared analytics and Sentry observability suites — PASS, 2 files / 81 tests; changed-file web-core
+  lint and Storefront lint — PASS. API changed-source lint and `node --check` — PASS.
+- Storefront, IMS, POS, OPIS, and Admin production builds — PASS.
+- Storefront frontend contracts — PASS, 39 files / 220 tests; broader frontend contracts — PASS,
+  132 files / 837 tests.
+- `npm run check:architecture` — PASS (63 modules / 807 code files / 117 controllers);
+  `npm run check:compliance` — PASS; `npm run check:production-env` — PASS with the existing
+  generic-fixture `DEPLOY_ENV_LABEL` warnings; `npm run lint:docs` — PASS (36 governed docs / 106
+  ADRs); `git diff --check` — PASS.
+- `npm run test:backend:matrix` — BLOCKED before test execution by the existing unlisted
+  `tests/staffRoleInvitationPersistence.phase554.db.integration.test.js` inventory entry.
+- `npm run test:frontend` — INCOMPLETE: the IMS portion reported failures in untouched IMS test
+  areas and did not finish after more than five minutes; it was interrupted. The changed shared
+  observability suites were rerun separately and pass as recorded above.
+- Cross-host Playwright proof — DEFERRED: local Redis/MySQL are unavailable and this checkout has
+  no API or Storefront `.env` test configuration. No cold-login, staging, or DGLaundry-hosted flow
+  is claimed as proven. The separate DGLaundry companion and joint staging evidence remain required.
+
+### Risks and non-goals
+
+Completion bridges are security-sensitive; host-only browser binding, server-side proof, fresh
+authority checks, durable state, and atomic redemption are required evidence. The DGLaundry
+companion and hosted configuration are external dependencies. No production mutation, DGLaundry
+repository edit, cross-origin credentialed CORS change, global cookie-domain change, general
+registration redesign, or migration is included.
+
+### Completion date
+
+Not complete. Record only after the source implementation is merged and its scoped implementation
+validation passes; retain hosted verification in the checklist below.
+
+### Post-merge verification
+
+- [ ] **provider** — separate DGLaundry owner implements 15-minute callback transaction persistence
+  and `create_company` PAR intent, then jointly proves cold login, forced account choice, company
+  selection, and new-company continuation on staging. Owner: DGLaundry companion owner / #2837;
+  blocks joint hosted acceptance.
+- [ ] **deployment** — deploy matching API and Storefront source/configuration through the approved
+  release workflow; record both source SHAs, image/config revisions, and rollback references. Owner:
+  release operator; blocks deployed proof.
+- [ ] **operational** — verify browser error recovery and secret-free telemetry on deployed hosts,
+  then record joint evidence under #2837/#2304. Owner: verifier; blocks authentication-hardening
+  closure. Production activation remains separately gated by #2834.
+
+### Next phase number
+
+Phase 559. No explicit dependency.
+
+## Phase 559 - Make external partner listings opt-in in Storefront discovery (#2833)
+
+### Initiative and release
+
+Storefront external discovery defaults, issue #2833. Planner handoff: [`.tmp/plan-2833.md`](../../.tmp/plan-2833.md).
+Branch: `feat/2833-discovery-native-only-defaults`, targeting `develop`.
+
+### Objective and scope
+
+Keep customer discovery focused on DGFY native listings by default while preserving explicit
+category-based access to supported partner listings. **All** and native categories include only
+`entity_type = dgfy_native`; Hotel maps exclusively to Synqcore, Real Estate to MapViu, Taxi to
+Eytitu, and Job to Proventous (`external_provider = proventus`). Provider identity and entity type
+determine eligibility; category text, workflow mode, free-text searches, missing entity type, and
+unknown providers do not opt a listing in. Apply the eligibility rule to result cards, map pins,
+hero/fallback pins, remembered pins, cluster counts, and selected cluster content. Correct the
+customer-facing Proventous label while preserving the stable `proventus` identifier and public
+links.
+
+No schema, migration, dependency, or API-shape change is in scope. No deployment or merge is part
+of this phase.
+
+### Status
+
+`in_progress` — implementation and local feature validation are complete on the `develop`-based
+worker branch; PR review and merge remain outstanding. App versions stay unchanged on this
+`develop` PR per Pat's explicit direction in #2048; the conflicting ADR wording is recorded below.
+
+### Dependencies
+
+No blocking dependencies. This phase uses the existing external listing entity/provider fields and
+the existing Storefront discovery filter and map surfaces.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0010](../architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md),
+[ADR 0071](../architecture/adr/0071-independently-deployable-frontend-apps.md),
+[ADR 0089](../architecture/adr/0089-dedicated-back-office-application.md),
+[External Discovery Redirect Foundation](EXTERNAL_DISCOVERY_REDIRECT_FOUNDATION.md),
+[API specification](../api/specification.md), and [testing guide](../testing/README.md).
+Classification: snapshot implementation within the existing discovery and external-listing
+contracts; no cross-boundary architecture change or exception/allowlist is introduced.
+
+### Implementation targets
+
+Storefront discovery eligibility, category options, result/pin/cluster state, and focused tests under
+`apps/dgfy-storefront/src/discovery/` and `apps/dgfy-storefront/src/__tests__/`; Proventous display
+labels and focused tests in `apps/dgfy-api/`, `apps/dgfy-admin/`, and Storefront; current feature/API
+prose and this phase ledger.
+
+### Acceptance and validation evidence
+
+- [x] All and native categories show only native listings. Free-text search does not expose partner
+  listings. Selecting each partner category shows only rows whose entity type and provider match
+  its explicit mapping; unknown or unclassified rows stay hidden.
+- [x] Map pins, result cards, hero/fallback and remembered pins, cluster counts/cards, and selected
+  content follow the same eligibility rule when filters change.
+- [x] Proventous is the customer-facing name across Storefront, API-backed Admin responses, and
+  current feature/API prose; stable `proventus` keys and links are unchanged.
+- [x] No schema, migration, dependency, or public API-shape change is introduced.
+- [x] Focused Storefront, Admin, and API tests; Storefront/Admin builds; API syntax; architecture,
+  docs, compliance, version-policy, and diff checks are recorded below.
+- [x] Local rendered desktop and mobile discovery QA is recorded; no cloud or deployment action is
+  performed.
+
+### Validation evidence (2026-10-26)
+
+- Storefront: `npm --prefix apps/dgfy-storefront test -- src/__tests__/discoveryStoreResultsModel.test.js src/__tests__/discoveryFlow.integration.test.jsx src/__tests__/discoveryCategoryStage.test.jsx src/__tests__/externalDiscoveryPresentation.test.js src/__tests__/discoveryMapLayers.test.js src/__tests__/discoveryFilterState.test.js` — **PASS, 85/85 across 6 files**.
+- Admin: `npm --prefix apps/dgfy-admin test -- src/pages/__tests__/ExternalDiscoveryManager.visibility.integration.test.jsx` — **PASS, 3/3**.
+- API: `npm --prefix apps/dgfy-api test -- --runTestsByPath tests/externalRedirectFoundation.test.js tests/externalEventSeedMapping.test.js` — **PASS, 27/27**. `node --check` passed for both modified API domain files.
+- Builds: `npm run build:store` and `npm run build:admin` — **PASS**. Storefront emitted the existing large-chunk advisory.
+- Changed-source lint — **PASS, 0 errors**. Storefront full lint exits 0 with 140 warnings; Admin full lint exits 0 with 2 warnings. API full lint has 3 errors in untouched `dgfyAccountRepository.js` and `staffRoleUseCases.js`; the changed API source files lint cleanly.
+- Governance: `npm run check:architecture` **PASS** (63 modules / 802 code files; 116 controller files); `npm run lint:docs` **PASS** (36 governed docs / 106 ADRs); `npm run check:compliance` **PASS** (no compliance-sensitive changes); `git diff --check` **PASS**.
+- Version policy: no app package or lockfile versions change in this PR. Pat's 2026-09-27 direction in [#2048](https://github.com/Sieitzz/dgfy-platform/issues/2048#issuecomment-5855120969) says develop work does not bump versions and promotion handles the bump. After restoring the original app floors, `GITHUB_BASE_REF=develop GITHUB_HEAD_REF=feat/2833-discovery-native-only-defaults npm run check:app-versions` **PASSes** for API `1.51.0`, Storefront `1.44.0`, and Admin `1.15.1` under the checker's `unchanged` mode. ADR 0081 Decision 6 still says ordinary `develop` PRs require any increase, so the ADR conflicts with the explicit operator direction, current checker, and implement skill. The related open [#1568](https://github.com/Sieitzz/dgfy-platform/issues/1568) tracks the Worker version-bump obligation and needs reconciliation; no global policy or tooling change is part of #2833.
+- Local rendered QA: desktop `/map-dgfy` synthetic-fixture captures show two native pins/cards by default, only the mapped Proventous row after explicit Job selection, and native-only results after free-text search. Mobile `/map-dgfy` at 390×844 shows populated content and native-only pins/cards; partner, unknown-provider, and unclassified rows are absent, with no page errors. Screenshots are local-only under `.tmp/qa-2833/`; requests to non-local origins were blocked. No cloud or deployment action was performed.
+
+### Risks and non-goals
+
+Eligibility is intentionally fail-closed: a partner row lacking an exact supported provider or
+`external_listing` entity type is not shown. Partner category selection is explicit opt-in; free-text
+query and legacy category/workflow values cannot grant it. API response shape, migrations, external
+provider configuration, and deployed-environment verification are outside this phase.
+
+### Completion date
+
+Not complete. Record only after the scoped implementation is merged and implementation validation
+passes.
+
+### Post-merge verification
+
+- [ ] **release** — through the approved Storefront release process, verify the merged SHA is the
+  deployed source and record the deployment evidence. Owner: DGFY release operator.
+- [ ] **discovery behavior** — on the deployed Storefront, confirm All and free-text searches show
+  native listings only, each partner category shows only its mapped provider, and changing filters
+  clears stale partner pins/cards/selections. Owner: Storefront verifier.
+- [ ] **partner labels** — confirm Admin/API-backed listing labels render as Proventous while
+  provider identity remains `proventus`. Owner: Storefront verifier.
+
+### Next phase number
+
+Phase 560. No explicit dependency.
