@@ -12,8 +12,8 @@ verification_evidence: Pending implementation checks; see Phase 554 in docs/feat
 rollback_note: Revert the custom staff-role invitation path, cancellation synchronization, UI, tests, ADR amendments, and migration together. If the landlord migration has already run, preserve invitation rows and restore the added nullable metadata columns only through an explicitly approved migration rollback.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-25T16:51:32Z
-preflight_request_ref: NOT-EXECUTED-2812-CUSTOM-STAFF-ROLE-INVITATIONS
+preflight_run_at: 2026-10-26T15:44:49.380Z
+preflight_request_ref: PREFLIGHT-40351385023-2026-10-26-CUSTOM-STAFF-ROLE-INVITATIONS
 ---
 
 # Custom Staff-Role Invitations (#2812, Phase 554)
