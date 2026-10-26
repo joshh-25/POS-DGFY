@@ -75,7 +75,7 @@ if (root && ["prepare", "apply", "rollback"].includes(action)) {
 }
 
 if (action === "inspect") {
-  const report = { action, environment, manifestVersion: manifest.manifestVersion, manifestSha256: manifestDigest, contractHashes: manifest.contractHashes, registrationStatus: target.registrationStatus, target: { issuer: target.issuer, partnerApiOrigin: target.partnerApiOrigin, apiOrigin: target.apiOrigin, storefrontOrigin: target.storefrontOrigin, staffOrigin: manifest.staffOrigin, callback: manifest.callback, paymentMode: target.paymentMode, clientIds: { browser: target.dglaundryBrowserClientId, machine: target.dglaundryMachineClientId, service: target.dglaundryServiceClientId, partnerApp: target.dglaundryPartnerAppId }, keyIds: target.keyIds }, configDir: root ? root : null, registrationInputsConfigured: Object.fromEntries(Object.entries(setupInputs).map(([name, value]) => [name, Boolean(value)])), prerequisites: { ...(await prerequisites(root)), browserClientSecretFile: root ? await privateFileReady(join(root, "dglaundry-oidc-client-secret")) : false }, privateValues: "not-read" };
+  const report = { action, environment, manifestVersion: manifest.manifestVersion, manifestSha256: manifestDigest, contractHashes: manifest.contractHashes, registrationStatus: target.registrationStatus, target: { issuer: target.issuer, partnerApiOrigin: target.partnerApiOrigin, apiOrigin: target.apiOrigin, storefrontOrigin: target.storefrontOrigin, staffOrigin: environmentOrigins(manifest, target).staffOrigin, callback: environmentOrigins(manifest, target).callback, paymentMode: target.paymentMode, clientIds: { browser: target.dglaundryBrowserClientId, machine: target.dglaundryMachineClientId, service: target.dglaundryServiceClientId, partnerApp: target.dglaundryPartnerAppId }, keyIds: target.keyIds }, configDir: root ? root : null, registrationInputsConfigured: Object.fromEntries(Object.entries(setupInputs).map(([name, value]) => [name, Boolean(value)])), prerequisites: { ...(await prerequisites(root)), browserClientSecretFile: root ? await privateFileReady(join(root, "dglaundry-oidc-client-secret")) : false }, privateValues: "not-read" };
   console.log(JSON.stringify(report, null, 2));
 } else if (action === "prepare") {
   await mkdir(join(root, "keys"), { recursive: true });
@@ -180,7 +180,7 @@ if (action === "inspect") {
     && envValue(appliedEnv, "DGFY_OIDC_KEY_ID") === state.registrationIds.oidcKeyId
     && envValue(appliedEnv, "DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID") === state.registrationIds.eventKeyId
     && envValue(appliedEnv, "DGLAUNDRY_PARTNER_SIGNING_KEY_ID") === state.registrationIds.requestKeyId)));
-  checks.push(check("partner-origin-and-audience", envValue(appliedEnv, "DGLAUNDRY_PARTNER_BASE_URL") === manifest.staffOrigin && envValue(appliedEnv, "DGLAUNDRY_PARTNER_AUDIENCE") === new URL(manifest.staffOrigin).origin));
+  checks.push(check("partner-origin-and-audience", envValue(appliedEnv, "DGLAUNDRY_PARTNER_BASE_URL") === environmentOrigins(manifest, target).staffOrigin && envValue(appliedEnv, "DGLAUNDRY_PARTNER_AUDIENCE") === new URL(environmentOrigins(manifest, target).staffOrigin).origin));
   checks.push(check("integration-environment-and-signature-profile", envValue(appliedEnv, "DGLAUNDRY_INTEGRATION_ENVIRONMENT") === environment && envValue(appliedEnv, "DGLAUNDRY_SIGNATURE_PROFILE") === "http-message-signatures-v1"));
   for (const [name, role] of Object.entries(manifest.keyRoles)) {
     const file = join(root, role.owner === "dgfy" ? role.privateFile : role.publicFile);
@@ -268,6 +268,12 @@ function envValue(source, name) {
   return line ? line.slice(prefix.length).trim() : "";
 }
 function check(name, passed) { return { name, passed: Boolean(passed) }; }
+// Per-environment origins (#2513). An environment entry may carry its own staffOrigin/callback; a manifest
+// that predates them (the hand-managed v1.1.0 copies on the hosts) falls back to the top-level pair, which
+// is the DGFY DEV / Surebiz demo target.
+function environmentOrigins(value, entry) {
+  return { staffOrigin: entry?.staffOrigin || value.staffOrigin, callback: entry?.callback || value.callback };
+}
 function exitSetup() { if (operationLockPath) { try { unlinkSync(operationLockPath); } catch { /* exit handler retries lock cleanup */ } operationLockPath = undefined; } }
 function validateManifest(value) {
   const requiredHashes = ["dgfyPartnerContractSha256", "dgfyPartnerOpenApiSha256", "dglaundryPartnerOpenApiSha256", "dglaundryConnectionFixtureSha256", "dglaundryIntegrationContractSha256"];
@@ -286,7 +292,12 @@ function validateManifest(value) {
   }
   if (value.environments.staging.storefrontOrigin !== "https://stage.dgfy.ph" || value.environments.production.storefrontOrigin !== "https://dgfy.ph") fail("STOREFRONT_ORIGIN_INVALID", "Staging and production must use their distinct approved storefront origins.");
   if (value.environments.staging.paymentMode !== "sandbox") fail("STAGING_PAYMENT_MODE_INVALID", "Staging must use sandbox payments.");
-  if (!value.callback.startsWith("https://laundry.surebizcorp.com/")) fail("CALLBACK_INVALID", "The callback must be the protected HTTPS DGLaundry callback.");
+  for (const name of ["staging", "production"]) {
+    const { staffOrigin, callback } = environmentOrigins(value, value.environments[name]);
+    let origin; let redirect;
+    try { origin = new URL(staffOrigin); redirect = new URL(callback); } catch { fail("CALLBACK_INVALID", `The ${name} staffOrigin and callback must be absolute URLs.`); }
+    if (origin.protocol !== "https:" || origin.origin !== staffOrigin || redirect.origin !== origin.origin || redirect.pathname !== "/api/v1/session/dgfy/callback" || redirect.search || redirect.hash) fail("CALLBACK_INVALID", `The ${name} callback must be the HTTPS DGLaundry session callback on the same origin as its staffOrigin.`);
+  }
 }
 async function prerequisites(rootDir) {
   const output = { configDirectory: rootDir ? await exists(rootDir) : false, manifest: true, registrations: Object.fromEntries(Object.entries(setupInputs).map(([name, value]) => [name, Boolean(value)])), keys: {} };
@@ -303,7 +314,7 @@ async function renderEnv(rootDir, value, targetConfig, previousEnv) {
     `DGLAUNDRY_CONNECTION_MANIFEST_SHA256=${manifestDigest}`,
     `DGLAUNDRY_CONNECTION_ENVIRONMENT=${environment}`,
     `DGFY_OIDC_ISSUER=${targetConfig.issuer}`,
-    `DGFY_DGLAUNDRY_REDIRECT_URI=${value.callback}`,
+    `DGFY_DGLAUNDRY_REDIRECT_URI=${environmentOrigins(value, targetConfig).callback}`,
     `DGFY_DGLAUNDRY_POST_LOGOUT_REDIRECT_URI=${process.env.DGFY_DGLAUNDRY_POST_LOGOUT_REDIRECT_URI || ""}`,
     `DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID=${setupInputs.eventKeyId}`,
     "DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY_FILE=/run/dgfy-secrets/dgfy-event-signing.pem",
@@ -321,8 +332,8 @@ async function renderEnv(rootDir, value, targetConfig, previousEnv) {
     "DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY_FILE=/run/dgfy-secrets/dglaundry-request-signing.pub.pem",
     `DGLAUNDRY_PARTNER_REQUEST_KEY_ID=${targetConfig.keyIds.dglaundryRequestSigning}`,
     `DGLAUNDRY_INTEGRATION_ENVIRONMENT=${environment}`,
-    `DGLAUNDRY_PARTNER_BASE_URL=${value.staffOrigin}`,
-    `DGLAUNDRY_PARTNER_AUDIENCE=${new URL(value.staffOrigin).origin}`,
+    `DGLAUNDRY_PARTNER_BASE_URL=${environmentOrigins(value, targetConfig).staffOrigin}`,
+    `DGLAUNDRY_PARTNER_AUDIENCE=${new URL(environmentOrigins(value, targetConfig).staffOrigin).origin}`,
     `DGLAUNDRY_SIGNATURE_PROFILE=http-message-signatures-v1`,
     "DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY_FILE=/run/dgfy-secrets/dgfy-request-signing.pem",
     `DGLAUNDRY_PARTNER_SIGNING_KEY_ID=${setupInputs.requestKeyId}`,

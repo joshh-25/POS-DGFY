@@ -14,8 +14,10 @@
   "environments": {
     "staging": {
       "issuer": "https://api.stage.dgfy.ph/oidc",
+      "staffOrigin": "https://dglaundry.stage.dgfy.ph",
+      "callback": "https://dglaundry.stage.dgfy.ph/api/v1/session/dgfy/callback",
       "partnerApiOrigin": "https://api.stage.dgfy.ph",
-      "apiOrigin": "https://laundry.surebizcorp.com",
+      "apiOrigin": "https://dglaundry.stage.dgfy.ph",
       "storefrontOrigin": "https://stage.dgfy.ph",
       "dglaundryBrowserClientId": "dglaundry-web",
       "dglaundryMachineClientId": "dglaundry-machine",
@@ -43,8 +45,10 @@
     },
     "production": {
       "issuer": "https://api.dgfy.ph/oidc",
+      "staffOrigin": "https://dglaundry.dgfy.ph",
+      "callback": "https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback",
       "partnerApiOrigin": "https://api.dgfy.ph",
-      "apiOrigin": "https://laundry.surebizcorp.com",
+      "apiOrigin": "https://dglaundry.dgfy.ph",
       "storefrontOrigin": "https://dgfy.ph",
       "dglaundryBrowserClientId": "dglaundry-web",
       "dglaundryMachineClientId": "dglaundry-machine",
@@ -80,5 +84,5 @@
     "dgfyRequestSigning": { "owner": "dgfy", "privateFile": "keys/dgfy-request-signing.pem", "publicFile": "keys/dgfy-request-signing.pub.pem", "algorithm": "P-256 ieee-p1363" }
   },
   "secretPolicy": "Private keys and client secrets remain on their owning host and are never written to this manifest.",
-  "manifestNote": "Client IDs and DGLaundry-owned key IDs are the agreed proposed identity contract, not evidence of host registration. Key fingerprints and DGFY-owned key IDs remain blank until verified against installed keys."
+  "manifestNote": "Client IDs and DGLaundry-owned key IDs are the agreed identity contract. The production entry is registered (DGFY prod compose, 2026-10-26, dgfy-platform#2834) and carries its six public-key fingerprints; the staging entry is still proposed with blank fingerprints until verified against installed keys. Each environment carries its own staffOrigin/callback; the top-level staffOrigin/callback are the default for a manifest that predates them and the DGFY DEV / Surebiz demo target."
 }
