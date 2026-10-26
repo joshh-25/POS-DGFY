@@ -8,6 +8,7 @@ import { buildStoreProfile } from '@sieitzz/shared-constants/storeProfile';
 
 const browserSessionMock = vi.hoisted(() => ({
   getAccessToken: vi.fn(() => 'token'),
+  getCompanyToken: vi.fn(() => ''),
   refreshBrowserSession: vi.fn()
 }));
 

@@ -16,11 +16,35 @@ import {
   buildStoreProfile,
   storeProfilesEqual
 } from '@sieitzz/shared-constants/storeProfile';
-import { getAccessToken, refreshBrowserSession } from '@/services/browserSession.js';
+import { getAccessToken, getCompanyToken, refreshBrowserSession } from '@/services/browserSession.js';
 import { shouldRefreshBrowserSessionForPath } from '@/services/publicRoutePolicy.js';
 import { setImageClientConversionFromSettings } from '../../utils/imageEncoding/rolloutFlag.js';
+import { loadWorkflowModeCache, saveWorkflowModeCache } from './workflowModeCache.js';
 
 const WorkflowModeContext = createContext(null);
+
+// Issue #2824: bounded retry while the last settings load failed. The `online` event covers the
+// "connectivity came back" case; this covers a flaky link that never reports offline.
+const WORKFLOW_MODE_RETRY_BASE_MS = 5000;
+const WORKFLOW_MODE_RETRY_MAX_MS = 60000;
+
+// The last-known-good cache is best-effort: a storage or tenant-key problem must never turn a good
+// settings result into a failure, nor crash the failure path.
+const persistWorkflowSettings = (settings) => {
+  try {
+    saveWorkflowModeCache(getCompanyToken(), settings);
+  } catch {
+    // ignore
+  }
+};
+
+const readCachedWorkflowSettings = () => {
+  try {
+    return loadWorkflowModeCache(getCompanyToken());
+  } catch {
+    return null;
+  }
+};
 
 const extractWorkflowModeFromSettings = (settings) => (
   normalizeWorkflowMode(settings?.[WORKFLOW_MODE_SETTING_KEY]?.value)
@@ -96,9 +120,35 @@ export function WorkflowModeProvider({ children }) {
   const [resolved, setResolved] = useState(false);
   const [error, setError] = useState(null);
   const [modeChangeNotice, setModeChangeNotice] = useState(null);
+  // Bumped on every failed fetch so the retry effect re-arms even if the same error object recurs.
+  const [failureCount, setFailureCount] = useState(0);
   const workflowModeRef = useRef(DEFAULT_WORKFLOW_MODE);
+  // Issue #2824: true while the last refresh did not produce a fresh server result -- covers both
+  // the settings-fetch failure and the no-token branch (which leaves `error` null).
+  const recoveryNeededRef = useRef(false);
+  const inFlightRefreshesRef = useRef(0);
+  const retryAttemptRef = useRef(0);
 
-  const refreshWorkflowMode = useCallback(async ({ force = false } = {}) => {
+  // Single derivation path for both a fresh server response and the cached last-known-good
+  // subset, so the persisted-profile-vs-rebuild guard applies to the cache too.
+  const applyWorkflowSettings = useCallback((settings) => {
+    const nextMode = extractWorkflowModeFromSettings(settings);
+    const nextEnabledCapabilities = extractEnabledCapabilitiesFromSettings(settings);
+    const nextDisabledCapabilities = extractDisabledCapabilitiesFromSettings(settings);
+    setWorkflowMode(nextMode);
+    setEnabledCapabilities(nextEnabledCapabilities);
+    setDisabledCapabilities(nextDisabledCapabilities);
+    setProfile(extractProfileFromSettings(settings, {
+      workflowMode: nextMode,
+      enabledCapabilities: nextEnabledCapabilities,
+      disabledCapabilities: nextDisabledCapabilities
+    }));
+    return nextMode;
+  }, []);
+
+  // `background` (issue #2824) is for recovery refreshes: it must not flip loading/resolved, or
+  // WorkflowModeRouteGate would blank a live terminal every retry.
+  const runWorkflowModeRefresh = useCallback(async ({ force = false, background = false } = {}) => {
     if (!shouldRefreshBrowserSessionForPath(window.location.pathname)) {
       setWorkflowMode(DEFAULT_WORKFLOW_MODE);
       setEnabledCapabilities([]);
@@ -110,6 +160,7 @@ export function WorkflowModeProvider({ children }) {
       // Phase 298 (#265): no settings fetch happened on this path -- fail-safe default (every
       // scope disabled) is what setImageClientConversionFromSettings(null) already means.
       setImageClientConversionFromSettings(null);
+      recoveryNeededRef.current = false;
       return DEFAULT_WORKFLOW_MODE;
     }
 
@@ -123,47 +174,72 @@ export function WorkflowModeProvider({ children }) {
       setError(null);
       setLoading(false);
       setImageClientConversionFromSettings(null);
+      // Issue #2824: pre-login this is the normal state, but after a reload that could not
+      // refresh its session it is the same wrong-workflow state as a failed fetch. `error` stays
+      // null here, so recovery is event-driven (`online`) only, never a polling loop.
+      recoveryNeededRef.current = true;
       return DEFAULT_WORKFLOW_MODE;
     }
 
-    setLoading(true);
-    setResolved(false);
-    setError(null);
+    if (!background) {
+      setLoading(true);
+      setResolved(false);
+      setError(null);
+    }
 
     try {
       const settings = await getAllSettings({ force });
-      const nextMode = extractWorkflowModeFromSettings(settings);
-      const nextEnabledCapabilities = extractEnabledCapabilitiesFromSettings(settings);
-      const nextDisabledCapabilities = extractDisabledCapabilitiesFromSettings(settings);
-      setWorkflowMode(nextMode);
-      setEnabledCapabilities(nextEnabledCapabilities);
-      setDisabledCapabilities(nextDisabledCapabilities);
-      setProfile(extractProfileFromSettings(settings, {
-        workflowMode: nextMode,
-        enabledCapabilities: nextEnabledCapabilities,
-        disabledCapabilities: nextDisabledCapabilities
-      }));
+      const nextMode = applyWorkflowSettings(settings);
       setResolved(true);
+      setError(null);
+      // Issue #2824: only a successful server response is ever persisted -- never a fallback.
+      persistWorkflowSettings(settings);
+      recoveryNeededRef.current = false;
+      retryAttemptRef.current = 0;
       // Phase 298 (#265): populates rolloutFlag.js's module-level cache from the same bootstrap
       // /settings response this Provider already fetches -- the identity-sync idiom
       // identifySentryUser/setAnalyticsContext already use, applied to this rollout flag too.
       setImageClientConversionFromSettings(settings);
       return nextMode;
     } catch (refreshError) {
+      recoveryNeededRef.current = true;
+      setFailureCount((count) => count + 1);
+      // Fetch failed -- fail-safe default, matching this catch block's own reset-to-default
+      // pattern for every other piece of settings-derived state.
+      setImageClientConversionFromSettings(null);
+
+      // Issue #2824: prefer this tenant's last-known-good workflow over the Counter default, so a
+      // failed load does not silently change what an F&B terminal sells. `error` stays set so the
+      // staleness is observable and the retry loop keeps running; `resolved` is true because the
+      // cached subset is a confirmed result for this tenant.
+      const cachedSettings = readCachedWorkflowSettings();
+      if (cachedSettings) {
+        const cachedMode = applyWorkflowSettings(cachedSettings);
+        setResolved(true);
+        setError(refreshError);
+        return cachedMode;
+      }
+
       setWorkflowMode(DEFAULT_WORKFLOW_MODE);
       setEnabledCapabilities([]);
       setDisabledCapabilities([]);
       setProfile(DEFAULT_PROFILE);
       setResolved(false);
       setError(refreshError);
-      // Fetch failed -- fail-safe default, matching this catch block's own reset-to-default
-      // pattern for every other piece of settings-derived state.
-      setImageClientConversionFromSettings(null);
       return DEFAULT_WORKFLOW_MODE;
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [applyWorkflowSettings]);
+
+  const refreshWorkflowMode = useCallback(async (options) => {
+    inFlightRefreshesRef.current += 1;
+    try {
+      return await runWorkflowModeRefresh(options);
+    } finally {
+      inFlightRefreshesRef.current -= 1;
+    }
+  }, [runWorkflowModeRefresh]);
 
   const dismissModeChangeNotice = useCallback(() => {
     setModeChangeNotice(null);
@@ -181,6 +257,12 @@ export function WorkflowModeProvider({ children }) {
     const handleAuthLogin = () => {
       refreshWorkflowMode({ force: true });
     };
+    // Issue #2824: connectivity returned. Re-fetch settings only -- this must never touch the
+    // offline queue or replay (ADR 0014: no reconnect event may submit queued records).
+    const handleOnline = () => {
+      if (!recoveryNeededRef.current || inFlightRefreshesRef.current > 0) return;
+      refreshWorkflowMode({ force: true, background: true });
+    };
     const handleAuthLogout = () => {
       setWorkflowMode(DEFAULT_WORKFLOW_MODE);
       setEnabledCapabilities([]);
@@ -190,6 +272,8 @@ export function WorkflowModeProvider({ children }) {
       setError(null);
       setModeChangeNotice(null);
       setLoading(false);
+      recoveryNeededRef.current = false;
+      retryAttemptRef.current = 0;
       // Phase 298 (#265): a signed-out session has no settings of its own -- fail-safe default.
       setImageClientConversionFromSettings(null);
     };
@@ -210,14 +294,37 @@ export function WorkflowModeProvider({ children }) {
 
     window.addEventListener('auth:login', handleAuthLogin);
     window.addEventListener('auth:logout', handleAuthLogout);
+    window.addEventListener('online', handleOnline);
     window.addEventListener(WORKFLOW_MODE_CHANGED_EVENT, handleModeChanged);
 
     return () => {
       window.removeEventListener('auth:login', handleAuthLogin);
       window.removeEventListener('auth:logout', handleAuthLogout);
+      window.removeEventListener('online', handleOnline);
       window.removeEventListener(WORKFLOW_MODE_CHANGED_EVENT, handleModeChanged);
     };
   }, [refreshWorkflowMode]);
+
+  // Issue #2824: bounded exponential backoff while the last fetch failed (`error` set). Each failed
+  // attempt bumps `failureCount`, which re-arms this effect; success clears `error` and resets the
+  // attempt counter. Paused while the browser reports offline (the `online` listener above
+  // resumes it), and cleared on logout/unmount via the effect cleanup.
+  useEffect(() => {
+    if (!error || loading) return undefined;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return undefined;
+
+    const delay = Math.min(
+      WORKFLOW_MODE_RETRY_MAX_MS,
+      WORKFLOW_MODE_RETRY_BASE_MS * Math.pow(2, retryAttemptRef.current)
+    );
+    const timer = setTimeout(() => {
+      retryAttemptRef.current += 1;
+      if (inFlightRefreshesRef.current > 0) return;
+      refreshWorkflowMode({ force: true, background: true });
+    }, delay);
+
+    return () => clearTimeout(timer);
+  }, [error, failureCount, loading, refreshWorkflowMode]);
 
   // Issue #178 Phase 21: honors the disabled overlay too, so a curated
   // template's subtraction is reflected everywhere this hook gates UI, not
