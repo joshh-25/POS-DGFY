@@ -19,6 +19,20 @@ describe('POS Items modal viewport contract', () => {
     expect(css).toContain('env(safe-area-inset-bottom, 0px)');
   });
 
+  it('keeps the option-group editor scroll region constrained, touchable, and discoverable', () => {
+    const css = read('src/index.css');
+    const component = read('src/features/pos/components/PosFnbModifierManager.jsx');
+
+    expect(component).toContain('className="flex min-h-0 flex-1 flex-col overflow-hidden"');
+    expect(component).toContain('role="region" aria-label="Option group editor fields" tabIndex={0}');
+    expect(component).toContain('min-h-0 flex-1 overflow-y-auto');
+    expect(css).toContain('.pos-fnb-option-group-editor-body {');
+    expect(css).toContain('scrollbar-color: #94a3b8 transparent;');
+    expect(css).toContain('scrollbar-width: thin;');
+    expect(css).toContain('.pos-fnb-option-group-editor-body::-webkit-scrollbar-thumb {');
+    expect(css).toContain('touch-action: pan-y;');
+  });
+
   it('keeps the Pricelist editor at a stable height when the filtered row count changes', () => {
     const pricelistRule = read('src/features/pos/pricelists/pricelist.css');
     const component = read('src/features/pos/pricelists/PricelistItemsEditor.jsx');
@@ -56,7 +70,7 @@ describe('POS Items modal viewport contract', () => {
     expect(source.match(/className="[^"]*\bpos-items-modal-panel\b[^"]*"/g)).toHaveLength(2);
     expect(source.match(/className="[^"]*\bpos-items-catalog-form-modal\b[^"]*"/g)).toHaveLength(2);
     expect(source.match(/className="[^"]*\bpos-items-modal-scroll-region\b[^"]*"/g)).toHaveLength(2);
-    expect(source.match(/className="pos-items-modal-footer(?:\s|")/g)).toHaveLength(2);
+    expect(source.match(/className=\{\['pos-items-modal-footer(?:\s|,)/g)).toHaveLength(2);
   });
 
   it('keeps Add and Edit footer actions in one shared tablet button row', () => {

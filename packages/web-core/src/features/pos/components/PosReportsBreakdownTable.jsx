@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Clock3, Package2, Tags } from 'lucide-react';
 import PosReportsResponsiveTable from './PosReportsResponsiveTable.jsx';
 import PosReportsHourlySalesChart from './PosReportsHourlySalesChart.jsx';
@@ -6,7 +6,6 @@ import PosReportsBreakdownChart from './PosReportsBreakdownChart.jsx';
 import { getPosReportSignedValueTone } from './posReportValueTones.js';
 import { getPosReportRefundsVoidsDisplayValue } from './posReportFormatting.js';
 import {
-  BackOfficeReportMetric as MetricCard,
   BackOfficeReportSectionCard as SectionCard
 } from '../../../components/backOffice/BackOfficePrimitives.jsx';
 
@@ -191,35 +190,15 @@ const buildColumns = (breakdown, currencySymbol) => {
 const getSearchValue = (row) => Object.values(row || {}).join(' ').toLowerCase();
 
 export function PosReportsBreakdownSummary({ breakdown, data, currencySymbol = '₱', stale = false }) {
-  const [summaryView, setSummaryView] = useState('graph');
   const definition = reportDefinitions[breakdown] || reportDefinitions.hourly;
-  const summary = data?.summary || {};
   const Icon = definition.icon;
-  const itemsSold = Number(summary.total_items_sold ?? summary.quantity ?? 0);
-  const transactions = Number(summary.total_transactions ?? summary.orders ?? 0);
-  const completedTransactions = Number(summary.completed_transactions ?? transactions);
-  const voidedRefundedTransactions = Number(summary.voided_refunded_transactions ?? 0);
-  const isGraphView = summaryView === 'graph';
   const isHourly = breakdown === 'hourly';
 
   return (
     <SectionCard
-      title={isGraphView ? `${definition.title} trend` : `${definition.title} summary`}
+      title={`${definition.title} trend`}
       actions={(
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5" role="group" aria-label={`${definition.title} summary view`}>
-            {['cards', 'graph'].map((view) => (
-              <button
-                key={view}
-                type="button"
-                aria-pressed={summaryView === view}
-                onClick={() => setSummaryView(view)}
-                className={`rounded-md px-2.5 py-1 text-[11px] font-black capitalize transition ${summaryView === view ? 'bg-[#1A4E8D] text-white shadow-sm' : 'text-slate-600 hover:bg-white hover:text-slate-900'}`}
-              >
-                {view}
-              </button>
-            ))}
-          </div>
           <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500"><Icon className="h-4 w-4" aria-hidden="true" />{data?.timezone || 'Asia/Manila'}</span>
         </div>
       )}
@@ -230,22 +209,10 @@ export function PosReportsBreakdownSummary({ breakdown, data, currencySymbol = '
         </div>
       ) : null}
       <p className="mb-3 text-xs font-semibold text-slate-500">{formatRange(data?.range)} · Generated {data?.generated_at ? new Date(data.generated_at).toLocaleString('en-PH', { timeZone: 'Asia/Manila' }) : '—'}</p>
-      {isGraphView ? (
-        isHourly ? (
-          <PosReportsHourlySalesChart rows={data?.rows} currencySymbol={currencySymbol} />
-        ) : (
-          <PosReportsBreakdownChart breakdown={breakdown} rows={data?.rows} currencySymbol={currencySymbol} />
-        )
+      {isHourly ? (
+        <PosReportsHourlySalesChart rows={data?.rows} currencySymbol={currencySymbol} />
       ) : (
-        <div className="grid min-w-0 grid-cols-2 gap-2.5 xl:grid-cols-5">
-          <MetricCard label="Net Sales" value={money(summary.net_sales, currencySymbol)} />
-          <MetricCard label="Gross Sales" value={money(summary.gross_sales, currencySymbol)} />
-          <MetricCard label="Recorded Transactions" value={transactions.toLocaleString('en-US')} />
-          <MetricCard label="Completed Sales" value={completedTransactions.toLocaleString('en-US')} />
-          <MetricCard label="Voided/Refunded" value={voidedRefundedTransactions.toLocaleString('en-US')} />
-          <MetricCard label="Items Sold" value={number(itemsSold)} />
-          <MetricCard label="Profit" value={money(summary.profit ?? summary.pos_profit_loss, currencySymbol)} />
-        </div>
+        <PosReportsBreakdownChart breakdown={breakdown} rows={data?.rows} currencySymbol={currencySymbol} />
       )}
     </SectionCard>
   );
@@ -306,7 +273,7 @@ export default function PosReportsBreakdownTable({
       idPrefix={`pos-reports-${breakdown}`}
       resultLabel={definition.resultLabel}
       detailsDialogTitle={`${definition.title} details`}
-      showActions={false}
+      loading={loading}
     />
   );
 }

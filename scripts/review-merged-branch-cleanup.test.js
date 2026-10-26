@@ -233,3 +233,19 @@ run('merge commit not reachable from base is blocked', () => {
     process.chdir(previous);
   }
 });
+
+run('real branch cleanup policy protects reserved integration prefixes and keeps feat eligible', () => {
+  const realPolicy = JSON.parse(fs.readFileSync(
+    path.join(__dirname, '..', '.github', 'branch-cleanup-policy.json'),
+    'utf8',
+  ));
+  const isEligible = (name) => realPolicy.eligibleHeadPrefixes.some((prefix) => name.startsWith(prefix));
+  const isProtected = (name) => realPolicy.protectedHeadPrefixes.some((prefix) => name.startsWith(prefix));
+
+  for (const name of ['epic/2634-delivery', 'feature/2634-delivery']) {
+    assert.strictEqual(isEligible(name), false, `${name} must not be eligible for cleanup`);
+    assert.strictEqual(isProtected(name), true, `${name} must be protected from cleanup`);
+  }
+  assert.strictEqual(isEligible('feat/2737-branch-policy'), true);
+  assert.strictEqual(isProtected('feat/2737-branch-policy'), false);
+});

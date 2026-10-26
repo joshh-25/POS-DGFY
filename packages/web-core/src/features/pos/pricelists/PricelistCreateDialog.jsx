@@ -1,4 +1,5 @@
 import React from 'react';
+import { Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,6 +13,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 import StorefrontSectionInfo from '../settings/StorefrontSectionInfo.jsx';
+import { POS_MODAL_FOOTER_SURFACE_CLASS, POS_MODAL_HEADER_ICON_CLASS, POS_MODAL_HEADER_SURFACE_CLASS } from '../components/posModalStyles.js';
 
 export default function PricelistCreateDialog({
   open,
@@ -30,11 +32,14 @@ export default function PricelistCreateDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         data-testid="pos-pricelist-create-dialog"
-        className="w-[calc(100vw-1.5rem)] max-w-md overflow-y-auto rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/20 sm:w-full"
+        className="w-[calc(100vw-1.5rem)] max-w-md overflow-y-auto rounded-2xl border border-[#D9E5F3] bg-white p-0 shadow-2xl shadow-slate-950/15 sm:w-full"
       >
-        <DialogHeader className="border-b border-slate-100 px-5 py-4 text-left sm:px-6">
-          <DialogTitle className="text-[16px] font-extrabold text-[#0F172A]">New pricelist</DialogTitle>
-          <DialogDescription className="mt-1 text-[12px] leading-5 text-[#64748B]">Create a pricelist to set per-item prices for wholesale vouchers.</DialogDescription>
+        <DialogHeader className={['flex-row items-center gap-2.5 rounded-t-2xl px-5 py-4 text-left sm:px-6', POS_MODAL_HEADER_SURFACE_CLASS].join(' ')}>
+          <span className={POS_MODAL_HEADER_ICON_CLASS}><Tag className="h-4 w-4" aria-hidden="true" /></span>
+          <div className="min-w-0">
+            <DialogTitle className="text-[16px] font-extrabold text-[#0F172A]">New pricelist</DialogTitle>
+            <DialogDescription className="mt-1 text-[12px] leading-5 text-[#64748B]">Create a pricelist to set per-item prices for wholesale vouchers.</DialogDescription>
+          </div>
         </DialogHeader>
 
         <div className="space-y-4 px-5 py-5 sm:px-6">
@@ -84,7 +89,7 @@ export default function PricelistCreateDialog({
           )}
         </div>
 
-        <DialogFooter stacked className="border-t border-slate-100 px-5 py-4 sm:px-6">
+        <DialogFooter stacked className={['px-5 py-4 sm:px-6', POS_MODAL_FOOTER_SURFACE_CLASS].join(' ')}>
           <Button
             type="button"
             variant="outline"

@@ -11,6 +11,7 @@ const REQUIRED_METHODS = Object.freeze([
     'clearDefaultAddress',
     'deleteAddressById',
     'findSellableItemsByIds',
+    'listStorefrontItemImages',
     'getLocationStocksByItemIds',
     'listStoreCatalog',
     'resolvePublicBarcode',

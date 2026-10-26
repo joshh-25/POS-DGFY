@@ -5,7 +5,13 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const { runCheck, runFloor, detectChangedAppsNarrowed, fileExistsAtRef } = require('./check-app-version-bump');
+const {
+  runCheck,
+  runFloor,
+  detectChangedAppsNarrowed,
+  fileExistsAtRef,
+  resolveMode,
+} = require('./check-app-version-bump');
 
 // --- git fixture harness, same shape as scripts/check-compat-seams.test.js's ------
 
@@ -44,6 +50,21 @@ function commitAll(root, message) {
 function pkgJson(version, deps = {}) {
     return `${JSON.stringify({ name: 'fixture', version, dependencies: deps }, null, 2)}\n`;
 }
+
+test('reserved integration bases preserve package version floors', () => {
+  assert.equal(resolveMode('epic/2634-delivery', 'feature/2634-delivery'), 'unchanged');
+  assert.equal(resolveMode('feature/2634-delivery', 'fix/2737-checker'), 'unchanged');
+  assert.equal(resolveMode('develop', 'epic/2634-delivery'), 'unchanged');
+});
+
+test('reserved bases do not change existing develop, staging, or main mode selection', () => {
+  assert.equal(resolveMode('develop', 'chore/release/bump-2026-10-23-01'), 'minor-floor');
+  assert.equal(resolveMode('develop', 'feature/ordinary'), 'unchanged');
+  assert.equal(resolveMode('staging', 'to-staging/2026-10-23-01'), 'minor-floor');
+  assert.equal(resolveMode('staging', 'fix/staging/2026-10-23-01-r1'), 'patch-only');
+  assert.equal(resolveMode('main', 'release/2026-10-23-01'), 'any-increase');
+  assert.equal(resolveMode('main', 'fix/2737-hotfix'), 'patch-only');
+});
 
 // Mirrors the real repo's seven apps and their file: fan-out (apps/*/package.json,
 // confirmed live): shared-constants -> all seven, web-core -> frontend consumers,

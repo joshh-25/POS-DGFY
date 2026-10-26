@@ -107,7 +107,7 @@ describe('POS terminal responsive scroll contracts', () => {
 
   it('shows the terminal status below the title on narrow mobile headers', () => {
     expect(terminalLayoutContent).toContain('data-testid="pos-mobile-terminal-indicator"');
-    expect(terminalLayoutContent).toContain('flex min-h-[38px] min-w-0 items-center justify-between gap-2 lg:min-h-[46px] lg:gap-3');
+    expect(terminalLayoutContent).toContain('dgfy-pos-header-page-title-group');
     expect(terminalLayoutContent).toContain('flex min-w-0 items-center gap-1.5 leading-none sm:hidden');
     expect(terminalLayoutContent).toContain('role="status"');
     expect(terminalLayoutContent).toContain('{normalizedActiveTerminalId || \'COUNTER-01\'}');
@@ -137,6 +137,8 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(appStylesContent).toContain('.dgfy-pos-shell[data-pos-items-view="true"] .pos-items-responsive-results.pos-items-mobile-results.dgfy-pos-items-catalog-results');
     expect(appStylesContent).toContain('grid-template-columns: repeat(auto-fill, minmax(max(16rem, calc((100% - 1.5rem) / 4)), 1fr));');
     expect(terminalOperationsWorkspaceContent).not.toContain('dgfy-pos-items-catalog-results xl:flex-none');
+    expect(posItemsWorkspaceContent).toContain('content-start auto-rows-max overflow-y-auto overscroll-contain pr-1 touch-pan-y grid gap-2 dgfy-pos-items-catalog-results');
+    expect(posItemsWorkspaceContent).not.toContain('dgfy-pos-items-catalog-results xl:flex-none');
     expect(terminalLayoutContent).toContain("'flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden catalog-slide-enter'");
     expect(terminalLayoutContent).toContain("data-testid={isCheckoutWorkspaceMode ? 'pos-checkout-workspace' : 'pos-customer-display-controller-host'}");
     expect(terminalLayoutContent).toContain("className={isCheckoutWorkspaceMode ? 'h-full min-h-0 overflow-hidden catalog-slide-enter' : 'hidden'}");

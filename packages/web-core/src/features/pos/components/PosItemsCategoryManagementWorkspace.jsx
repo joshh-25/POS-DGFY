@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import PosTableActionButton from './PosTableActionButton.jsx';
 import PosFnbSelect from './PosFnbSelect.jsx';
 import PosSearchField from './PosSearchField.jsx';
+import { POS_MODAL_FOOTER_SURFACE_CLASS, POS_MODAL_HEADER_ICON_CLASS, POS_MODAL_HEADER_SURFACE_CLASS } from './posModalStyles.js';
 import {
   createFolder,
   deleteFolder,
@@ -366,17 +367,17 @@ export default function CategoryManagementWorkspace() {
           onClick={() => { if (!busy) setEditor(null); }}
         >
           <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/20" onClick={(event) => event.stopPropagation()}>
-            <div className="-mx-px -mt-px flex shrink-0 items-center justify-between gap-3 rounded-t-[17px] border-b border-[#143F73] bg-[#1A4E8D] px-4 py-2.5 text-white sm:px-5">
+            <div className={['-mx-px -mt-px flex shrink-0 items-center justify-between gap-3 rounded-t-[17px] px-4 py-2.5 text-[#0F172A] sm:px-5', POS_MODAL_HEADER_SURFACE_CLASS].join(' ')}>
               <div className="flex min-w-0 items-center gap-2.5">
-                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white text-[#1A4E8D] shadow-sm ring-1 ring-[#C7DCF3]">
+                <div className={POS_MODAL_HEADER_ICON_CLASS}>
                   <Tags className="h-4 w-4" aria-hidden="true" />
                 </div>
                 <div className="min-w-0">
                   <h2 id="pos-category-editor-title" className="truncate text-sm font-black">Category Details</h2>
-                  <p className="mt-0.5 max-w-full break-words text-[10px] leading-3 text-blue-100">Configure category name and catalog description</p>
+                  <p className="mt-0.5 max-w-full break-words text-[10px] leading-3 text-slate-600">Configure category name and catalog description</p>
                 </div>
               </div>
-              <button type="button" onClick={() => setEditor(null)} disabled={busy} aria-label="Close category details" className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-blue-100 transition-colors hover:bg-white/15 hover:text-white focus-visible:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#1A4E8D] disabled:cursor-not-allowed disabled:opacity-60">
+              <button type="button" onClick={() => setEditor(null)} disabled={busy} aria-label="Close category details" className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-500 transition-colors hover:bg-white hover:text-slate-900 focus-visible:outline-none focus:ring-2 focus:ring-[#1A4E8D] focus:ring-offset-2 focus:ring-offset-[#EFF6FF] disabled:cursor-not-allowed disabled:opacity-60">
                 <X className="h-3.5 w-3.5" aria-hidden="true" />
               </button>
             </div>
@@ -396,7 +397,7 @@ export default function CategoryManagementWorkspace() {
                 <textarea id="pos-category-description" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} disabled={busy} maxLength={1000} placeholder="Optional description for the category" className="min-h-20 w-full resize-none rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm leading-5 text-[#0F172A] shadow-sm outline-none placeholder:text-slate-300 focus:border-[#1A4E8D] focus:ring-1 focus:ring-blue-100" />
               </div>
             </div>
-            <div className="grid shrink-0 grid-cols-2 gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:px-5">
+            <div className={['grid shrink-0 grid-cols-2 gap-2 px-4 py-3 sm:px-5', POS_MODAL_FOOTER_SURFACE_CLASS].join(' ')}>
               <Button type="button" variant="outline" onClick={() => setEditor(null)} disabled={busy} className="h-10 w-full rounded-lg border-[#1A4E8D] px-4 text-xs font-bold text-[#1A4E8D] hover:bg-blue-50">Cancel</Button>
               <Button type="button" onClick={saveFolder} disabled={busy} className="h-10 w-full rounded-lg bg-[#1A4E8D] px-4 text-xs font-bold text-white shadow-sm hover:bg-[#143F73]">{busy ? 'Saving...' : 'Save Category'}</Button>
             </div>

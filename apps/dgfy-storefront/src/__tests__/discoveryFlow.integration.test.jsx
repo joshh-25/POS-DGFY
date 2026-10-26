@@ -823,6 +823,21 @@ describe('storefront discovery integration flow', () => {
     expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(2);
   });
 
+  it('expands the category rail and searches for a partner Hotel chip', async () => {
+    const user = userEvent.setup();
+    render(<BrowserRouter><App /></BrowserRouter>);
+    await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(1));
+
+    await user.click(screen.getByRole('button', { name: 'More' }));
+    await user.click(screen.getByRole('button', { name: 'Hotel' }));
+
+    await waitFor(() => {
+      expect(getLastDiscoveryParams(fetchMock).get('search')).toBe('Hotel');
+      expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(2);
+    });
+    expect(screen.getByPlaceholderText('Search products, services or stores nearby...').value).toBe('Hotel');
+  });
+
   it('keeps mobile discovery search results rendered after submit', async () => {
     Object.defineProperty(window, 'innerWidth', {
       configurable: true,

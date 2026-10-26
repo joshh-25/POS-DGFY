@@ -1,5 +1,6 @@
 
-import { Tenant, UserTenantMapping, UserInvitation, sequelize } from '../models/index.js';
+import { Op } from 'sequelize';
+import { Tenant, UserTenantMapping, UserInvitation, DgfyAccountTenantMembership, sequelize } from '../models/index.js';
 import crypto from 'crypto';
 import logger from '../config/logger.js';
 
@@ -184,6 +185,9 @@ export const upsertUserInvitationRegistry = async ({
     status = 'pending',
     deliveryStatus = 'manual_link',
     deliveryError = null,
+    staffRoleId = null,
+    staffRoleName = null,
+    cancellationReason = null,
     invitedByUserId = null,
     invitedByName = null,
     expiresAt,
@@ -199,6 +203,9 @@ export const upsertUserInvitationRegistry = async ({
         tenant_user_id: tenantUserId,
         email: String(email || '').trim().toLowerCase(),
         role,
+        staff_role_id: staffRoleId,
+        staff_role_name: staffRoleName,
+        cancellation_reason: cancellationReason,
         token_hash: tokenHash,
         status,
         delivery_status: deliveryStatus,
@@ -206,7 +213,10 @@ export const upsertUserInvitationRegistry = async ({
         invited_by_user_id: invitedByUserId,
         invited_by_name: invitedByName,
         expires_at: expiresAt,
-        last_sent_at: lastSentAt
+        last_sent_at: lastSentAt,
+        accepted_at: null,
+        cancelled_at: null,
+        cancelled_by_user_id: null
     };
 
     const [row, created] = await UserInvitation.findOrCreate({ where, defaults });
@@ -230,6 +240,88 @@ export const updateInvitationRegistryByTenantUser = async ({
     if (!row) return null;
     await row.update(updates);
     return row.reload();
+};
+
+export const findInvitationRegistryByTenantUser = async ({ tenantId, tenantUserId }) => UserInvitation.findOne({
+    where: { tenant_id: tenantId, tenant_user_id: tenantUserId }
+});
+
+export const listInvitationRegistryMetadataByTenantUsers = async ({ tenantId, tenantUserIds = [] }) => {
+    const ids = [...new Set((tenantUserIds || []).map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0))];
+    if (!tenantId || ids.length === 0) return [];
+    return UserInvitation.findAll({
+        where: { tenant_id: tenantId, tenant_user_id: { [Op.in]: ids } },
+        attributes: ['tenant_user_id', 'staff_role_id', 'staff_role_name', 'cancellation_reason', 'status']
+    });
+};
+
+export const transitionInvitationRegistryByTenantUser = async ({
+    tenantId,
+    tenantUserId,
+    expectedStatus,
+    updates = {}
+}) => {
+    const [updatedCount] = await UserInvitation.update(updates, {
+        where: { tenant_id: tenantId, tenant_user_id: tenantUserId, status: expectedStatus }
+    });
+    if (updatedCount !== 1) return null;
+    return findInvitationRegistryByTenantUser({ tenantId, tenantUserId });
+};
+
+export const deleteInvitationRegistryByTenantUser = async ({ tenantId, tenantUserId }) => {
+    return UserInvitation.destroy({ where: { tenant_id: tenantId, tenant_user_id: tenantUserId } });
+};
+
+export const syncStaffRoleInvitationCancellations = async ({
+    tenantId,
+    staffRoleId,
+    actorUserId = null,
+    cancelledAt = new Date()
+}) => {
+    const rows = await UserInvitation.findAll({
+        where: {
+            tenant_id: tenantId,
+            staff_role_id: staffRoleId,
+            [Op.or]: [
+                { status: 'pending' },
+                { status: 'cancelled', cancellation_reason: 'staff_role_unavailable' }
+            ]
+        },
+        attributes: ['tenant_user_id', 'status']
+    });
+    const tenantUserIds = [...new Set(rows.map((row) => Number(row.tenant_user_id)).filter((id) => Number.isInteger(id) && id > 0))];
+    let cancelledCount = 0;
+
+    for (const row of rows) {
+        if (row.status !== 'pending') continue;
+        const [updatedCount] = await UserInvitation.update({
+            status: 'cancelled',
+            cancellation_reason: 'staff_role_unavailable',
+            cancelled_at: cancelledAt,
+            cancelled_by_user_id: actorUserId
+        }, {
+            where: {
+                tenant_id: tenantId,
+                tenant_user_id: row.tenant_user_id,
+                staff_role_id: staffRoleId,
+                status: 'pending'
+            }
+        });
+        cancelledCount += updatedCount === 1 ? 1 : 0;
+    }
+
+    if (tenantUserIds.length > 0) {
+        await DgfyAccountTenantMembership.update({ status: 'removed' }, {
+            where: {
+                tenant_id: tenantId,
+                tenant_user_id: { [Op.in]: tenantUserIds },
+                source: 'invite',
+                status: 'pending'
+            }
+        });
+    }
+
+    return { cancelled_count: cancelledCount, synchronized_tenant_user_count: tenantUserIds.length };
 };
 
 /**

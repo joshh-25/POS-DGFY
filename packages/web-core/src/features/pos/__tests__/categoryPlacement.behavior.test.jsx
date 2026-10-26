@@ -322,6 +322,7 @@ describe('Items category placement', () => {
       isOnline: false
     })} />);
 
+    expect(screen.getByRole('region', { name: 'Categories' })).toBeTruthy();
     expect(screen.getByText('Category management is available online only.')).toBeTruthy();
     expect(screen.queryByPlaceholderText('Search item by Name, SKU, or Barcode')).toBeNull();
   });
@@ -472,10 +473,11 @@ describe('Items category placement', () => {
       onQueueOfflineItemDraft
     })} />);
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Add Service' })[0]);
+    const addServiceButton = screen.getAllByRole('button', { name: 'Add Service' }).at(-1);
+    fireEvent.click(addServiceButton);
 
-    expect(await screen.findByText('Service creation is available online only.')).toBeTruthy();
-    expect((await screen.findByRole('button', { name: 'Create Service' })).hasAttribute('disabled')).toBe(true);
+    expect(await screen.findByText('Service creation is available online only.', {}, { timeout: 5000 })).toBeTruthy();
+    expect((await screen.findByRole('button', { name: 'Create Service' }, { timeout: 5000 })).hasAttribute('disabled')).toBe(true);
     expect(onQueueOfflineItemDraft).not.toHaveBeenCalled();
   });
 

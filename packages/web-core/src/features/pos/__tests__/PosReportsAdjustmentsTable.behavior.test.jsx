@@ -35,13 +35,13 @@ const rows = [
 describe('POS reports adjustments table', () => {
   afterEach(() => cleanup());
 
-  it('renders prioritized adjustment columns without an actions column', () => {
+  it('renders prioritized adjustment columns with the shared view action', () => {
     render(<PosReportsAdjustmentsTable rows={rows} />);
 
     ['Date/Time', 'Type', 'Reference No.', 'Order No.', 'Voided Item(s)', 'Cashier', 'Amount (₱)', 'Affected Sales'].forEach((label) => {
       expect(screen.getByRole('columnheader', { name: new RegExp(label.replace(/[().]/g, '\\$&')) })).toBeTruthy();
     });
-    expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeTruthy();
     expect(screen.getAllByText('Refund').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Void').length).toBeGreaterThan(0);
     expect(screen.getAllByText('REF-000125').length).toBeGreaterThan(0);

@@ -19,6 +19,7 @@ jest.unstable_mockModule('../src/services/operationalAlertService.js', () => ({
 
 const {
   sendEmail,
+  sendStorefrontOrderConfirmationEmail,
   setEmailDeliveryLogRepository,
   resetTransporter
 } = await import('../src/services/emailService.js');
@@ -164,5 +165,73 @@ describe('emailService.sendEmail delivery logging (issue #279)', () => {
     expect(payload).not.toHaveProperty('text');
     expect(payload).not.toHaveProperty('body');
     expect(JSON.stringify(payload)).not.toContain('hunter2');
+  });
+
+  it('sends a structured storefront order confirmation and logs its purpose without storing the body', async () => {
+    sendMailMock.mockResolvedValue({ accepted: ['buyer@example.com'], rejected: [], response: '250 OK' });
+
+    const result = await sendStorefrontOrderConfirmationEmail({
+      email: 'buyer@example.com',
+      storeName: 'Main Cafe\r\nBcc: attacker@example.com',
+      tenantId: 'tenant-1',
+      trackingUrl: 'https://shop.example.test/track?pin=SK-ABC123',
+      logoUrl: 'https://shop.example.test/uploads/storefront-assets/profile.png',
+      supportUrl: 'https://shop.example.test/contact-us',
+      order: {
+        tracking_pin: 'SK-ABC123',
+        invoice_number: 'INV-000123',
+        payment_reference: 'pay_123',
+        created_at: '2026-10-25T00:00:00.000Z',
+        items: [{ item_name: 'Burger', quantity: 2, sale_price: 100, line_subtotal: 200 }],
+        subtotal_amount: 200,
+        vat_amount: 10.71,
+        service_fee_amount: 0,
+        service_fee_label_snapshot: 'DGFY convenience fee',
+        total_amount: 200,
+        payment_type: 'cash',
+        payment_status: 'partially_paid',
+        amount_paid: 100,
+        balance_due: 100,
+        order_method: 'pickup',
+        location: { name: 'Main branch', address_line: '42 Market Road' },
+        special_instructions: 'Do not include this private note'
+      }
+    });
+
+    expect(result.provider).toBe('smtp');
+    const [mailOptions] = sendMailMock.mock.calls[0];
+    expect(mailOptions.from).toBe('"DGFY" <noreply@dgfy.ph>');
+    expect(mailOptions.subject).toContain('Order confirmation SK-ABC123');
+    expect(mailOptions.subject).not.toMatch(/[\r\n]/);
+    expect(mailOptions.text).not.toContain('\nBcc:');
+    expect(mailOptions.html).toContain('Track your order');
+    expect(mailOptions.html).toContain('src="https://shop.example.test/uploads/storefront-assets/profile.png"');
+    expect(mailOptions.html).toContain('href="https://shop.example.test/contact-us"');
+    expect(mailOptions.text).toContain('Burger — x 2 — ₱200.00');
+    expect(mailOptions.text).toContain('Order time: Oct 25, 2026, 08:00 AM');
+    expect(mailOptions.text).not.toContain('Asia/Manila');
+    expect(mailOptions.text).toContain('Order PIN: SK-ABC123');
+    expect(mailOptions.text).not.toContain('INV-000123');
+    expect(mailOptions.text).not.toContain('pay_123');
+    expect(mailOptions.text).not.toContain('Invoice number');
+    expect(mailOptions.text).not.toContain('Payment reference');
+    expect(mailOptions.text).toContain('VAT (included in item prices): ₱10.71');
+    expect(mailOptions.text).toContain('VAT shown above is already included in item prices');
+    expect(mailOptions.text).not.toContain('DGFY convenience fee');
+    expect(mailOptions.text).toContain('Downpayment paid: ₱100.00');
+    expect(mailOptions.text).toContain('Balance due at pickup: ₱100.00');
+    expect(mailOptions.text).toContain('42 Market Road');
+    expect(mailOptions.text).not.toContain('Do not include this private note');
+
+    expect(deliveryLogRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+      purpose: 'storefront_order_confirmation',
+      tenant_id: 'tenant-1',
+      status: 'sent'
+    }));
+    const [logPayload] = deliveryLogRepository.create.mock.calls[0];
+    expect(logPayload).not.toHaveProperty('html');
+    expect(logPayload).not.toHaveProperty('text');
+    expect(logPayload).not.toHaveProperty('body');
+    expect(JSON.stringify(logPayload)).not.toContain('Burger');
   });
 });

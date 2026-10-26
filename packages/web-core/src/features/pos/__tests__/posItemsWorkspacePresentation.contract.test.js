@@ -6,11 +6,13 @@ import { describe, expect, it } from 'vitest';
 const workspacePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../components/TerminalOperationsWorkspace.jsx');
 const itemsWorkspacePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../components/PosItemsWorkspace.jsx');
 const catalogWorkspacePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../components/PosItemsCatalogWorkspace.jsx');
+const lineTabNavigationPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../components/PosLineTabNavigation.jsx');
 const responsiveCardPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../components/PosItemResponsiveCard.jsx');
 const stylesPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../index.css');
 const readWorkspace = () => fs.readFileSync(itemsWorkspacePath, 'utf8');
 const readTerminalWorkspace = () => fs.readFileSync(workspacePath, 'utf8');
 const readCatalogWorkspace = () => fs.readFileSync(catalogWorkspacePath, 'utf8');
+const readLineTabNavigation = () => fs.readFileSync(lineTabNavigationPath, 'utf8');
 const readResponsiveCard = () => fs.readFileSync(responsiveCardPath, 'utf8');
 const readStyles = () => fs.readFileSync(stylesPath, 'utf8');
 
@@ -68,6 +70,28 @@ describe('standalone POS Items workspace presentation', () => {
     expect(responsiveCard.indexOf('Stock:')).toBeLessThan(responsiveCard.indexOf('Price (₱):'));
     expect(responsiveCard.indexOf('Price (₱):')).toBeLessThan(responsiveCard.indexOf('Profit (₱):'));
     expect(responsiveCard.indexOf('onClick={onDelete}')).toBeLessThan(responsiveCard.indexOf('onClick={onEdit}'));
+  });
+
+  it('uses branded Edit and destructive Delete fills across item-card layouts', () => {
+    const source = readWorkspace();
+    const responsiveCard = readResponsiveCard();
+
+    expect(source).toContain('border-[#1A4E8D] bg-[#1A4E8D]/[0.08]');
+    expect(source).toContain('hover:bg-[#1A4E8D]/[0.14]');
+    expect(source).toContain('border-rose-600 bg-rose-50');
+    expect(source).toContain('hover:bg-rose-100');
+    expect(responsiveCard).toContain('bg-[#1A4E8D]/[0.08]');
+    expect(responsiveCard).toContain('hover:bg-[#1A4E8D]/[0.14]');
+    expect(responsiveCard).toContain('border-rose-500 bg-rose-50');
+    expect(responsiveCard).toContain('hover:bg-rose-100');
+    expect(source).toContain('onClick={() => setDeleteConfirmItem(item)}');
+  });
+
+  it('uses a light DGFY blue tint for the item-option cards in both forms', () => {
+    const source = readWorkspace();
+
+    expect(source).toContain('bg-[#1A4E8D]/[0.06]');
+    expect(source.match(/className={POS_ITEM_STATUS_CARD_CLASS}/g) || []).toHaveLength(6);
   });
 
   it('keeps tablet toolbar actions icon-only with accessible names and preserves desktop labels', () => {
@@ -198,6 +222,20 @@ describe('standalone POS Items workspace presentation', () => {
     expect(source).toContain('aria-labelledby={availableTabs.length > 1 && visibleTab ? `pos-items-tab-${visibleTab}` : undefined}');
     expect(source).toContain('aria-label={availableTabs.length === 1 ? availableTabs[0].label : undefined}');
     expect(source).not.toContain('aria-labelledby={visibleTab ? `pos-items-tab-${visibleTab}` : undefined}');
+  });
+
+  it('keeps the selected Items tab underline visible on mobile', () => {
+    const source = readCatalogWorkspace();
+    const styles = readStyles();
+    const ruleStart = styles.indexOf('/* Keep the selected Items tab underline visible above the mobile rail divider. */');
+    const tabletRulesStart = styles.indexOf('/* Tablet Items toolbar actions use compact icon-only buttons.');
+    const mobileIndicatorRule = styles.slice(ruleStart, tabletRulesStart);
+
+    expect(readLineTabNavigation()).toContain('aria-selected={active}');
+    expect(mobileIndicatorRule).toContain('@media screen and (max-width: 767.98px)');
+    expect(mobileIndicatorRule).toContain('.pos-items-mobile-tab[aria-selected="true"]');
+    expect(mobileIndicatorRule).toContain('border-bottom-color: transparent;');
+    expect(mobileIndicatorRule).toContain('box-shadow: inset 0 -2px 0 #1A4E8D;');
   });
 
   it('keeps Grid/List as presentation-only views and limits the table to tablet and larger screens', () => {

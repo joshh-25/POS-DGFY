@@ -1,0 +1,11 @@
+.pos-fnb-modifier-quantity {
+  box-sizing: border-box;
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+@media (min-width: 768px) and (hover: hover) and (pointer: fine) {
+  .pos-fnb-modifier-quantity {
+    font-size: 14px;
+  }
+}

@@ -8,6 +8,8 @@ const repoRoot = path.resolve(__dirname, '..');
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 
 const REQUIRED_PR_CHECKS_MARKERS = [
+  "      - 'epic/**'",
+  "      - 'feature/**'",
   'RUNNER_HEAVY_JSON: *runner_heavy',
   'route-build-checks:',
   'release/*|hotfix/*',

@@ -25,7 +25,9 @@ describe('POS single-date calendar', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Open business date calendar' }));
 
-    expect(screen.getByRole('dialog', { name: 'Select business date' })).toBeTruthy();
+    const dialog = screen.getByRole('dialog', { name: 'Select business date' });
+    expect(dialog.className).toContain('h-auto');
+    expect(dialog.className.split(/\s+/)).not.toContain('h-[min(90vh,40rem)]');
     expect(screen.queryByRole('group', { name: 'Date presets' })).toBeNull();
     fireEvent.click(screen.getByRole('gridcell', { name: 'Sep 15, 2026' }));
 

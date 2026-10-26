@@ -49,6 +49,33 @@ const dismissStockAlertIfPresent = async (page) => {
 };
 
 test('POS checkout decrements stock, opens history detail, and downloads sales CSV', async ({ page }, testInfo) => {
+  const pageErrors = [];
+  const consoleErrors = [];
+  const responseCaptureTasks = [];
+  const httpFailures = [];
+  let tenantSessionEstablished = false;
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  page.on('response', (response) => {
+    const url = new URL(response.url());
+    const status = response.status();
+    if (url.pathname === '/api/v1/dgfy/auth/tenant-session' && status === 200) {
+      tenantSessionEstablished = true;
+    }
+    if (status < 400) return;
+    const authenticated = tenantSessionEstablished;
+    responseCaptureTasks.push((async () => {
+      const body = await response.json().catch(() => null);
+      httpFailures.push({
+        status,
+        path: url.pathname,
+        authenticated,
+        errorCode: String(body?.error_code || '').trim(),
+      });
+    })());
+  });
   const user = JSON.parse(execFileSync(process.execPath, [setupScript], {
     cwd: path.join(repositoryRoot, 'apps/dgfy-api'),
     env: process.env,
@@ -70,9 +97,35 @@ test('POS checkout decrements stock, opens history detail, and downloads sales C
   await page.addInitScript(({ terminalId }) => {
     window.localStorage.setItem('pos_terminal_identity_v1', terminalId);
   }, { terminalId: user.terminalId });
-  await signIn(page, { email: user.email, password: user.password }, {
-    companyName: process.env.E2E_TEST_COMPANY_NAME || 'Original Legacy Data',
+  const signInResult = await signIn(page, { email: user.email, password: user.password }, {
+    expectedPostcondition: 'branch-selection',
+    companyName: process.env.E2E_TEST_COMPANY_NAME || 'Original Legacy Data'
   });
+  expect(signInResult.postcondition).toBe('branch-selection');
+  await testInfo.attach('pos-login-route-statuses.txt', {
+    body: signInResult.routeStatuses.join('\n'),
+    contentType: 'text/plain'
+  });
+  const branchDialog = page.getByTestId('pos-branch-selector-dialog');
+  const branchHeading = page.getByRole('heading', { name: 'Choose your branch', exact: true });
+  const branchOpenButton = page.getByTestId(`pos-cashier-branch-selector-open-${user.locationId}`);
+  await expect(branchDialog).toBeVisible();
+  await expect(branchHeading).toBeVisible();
+  await expect(branchDialog.getByText(user.locationName, { exact: true })).toBeVisible();
+  await expect(branchOpenButton).toBeEnabled();
+  await expect(page.locator('vite-error-overlay')).toHaveCount(0);
+  await expect(page.getByText('Confirm the company, then continue to POS.')).toBeHidden();
+  await page.screenshot({ path: testInfo.outputPath('pos-branch-entry-desktop.png') });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(branchDialog).toBeVisible();
+  await expect(branchHeading).toBeVisible();
+  await expect(branchOpenButton).toBeEnabled();
+  await page.screenshot({ path: testInfo.outputPath('pos-branch-entry-mobile.png') });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await branchOpenButton.click();
+  await expect(branchDialog).toBeHidden();
+
   await expect.poll(() => Boolean(authHeaders.authorization), { timeout: 15_000 }).toBe(true);
 
   const item = await authenticatedRequest(page, authHeaders, 'POST', '/items', {
@@ -81,6 +134,7 @@ test('POS checkout decrements stock, opens history detail, and downloads sales C
     category: 'product',
     product_type: 'finished_goods',
     unit_of_measure: 'pcs',
+    location_id: user.locationId,
     cost_per_unit: 120,
     default_sale_price: price,
     vat_type: 'vatable',
@@ -128,6 +182,21 @@ test('POS checkout decrements stock, opens history detail, and downloads sales C
       await expect(unlockDialog).toBeHidden();
     }
 
+    await expect(page.getByText('POS unlocked and cashier shift opened successfully.')).toBeHidden();
+    await page.getByTestId('pos-nav-sell').click();
+    await expect(page.getByRole('heading', { name: 'POS Catalog' })).toBeVisible();
+    await page.getByTestId('pos-nav-shift').click();
+    const shiftTabs = page.getByTestId('pos-shift-sticky-tabs');
+    await expect(shiftTabs).toBeVisible();
+    await expect(page.getByText('Current register', { exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('pos-shift-navigation-desktop.png') });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(shiftTabs).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('pos-shift-navigation-mobile.png') });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.getByTestId('pos-nav-sell').click();
+    await expect(page.getByRole('heading', { name: 'POS Catalog' })).toBeVisible();
     await dismissStockAlertIfPresent(page);
 
     const catalogSearch = page.locator('input[placeholder="Search POS-visible items..."]:visible').first();
@@ -175,6 +244,9 @@ test('POS checkout decrements stock, opens history detail, and downloads sales C
 
     await page.getByRole('button', { name: 'Close receipt preview' }).click();
     await page.getByTestId('pos-nav-reports').click();
+    const salesReportsTab = page.getByRole('tab', { name: 'Sales Reports', exact: true });
+    await expect(salesReportsTab).toBeVisible();
+    await salesReportsTab.click();
     await expect(page.getByRole('tab', { name: 'Sales', exact: true })).toBeVisible();
     await page.getByRole('tab', { name: 'Sales', exact: true }).click();
     const exportButton = page.getByRole('button', { name: 'Export CSV', exact: true }).first();
@@ -202,4 +274,35 @@ test('POS checkout decrements stock, opens history detail, and downloads sales C
       }).catch(() => {});
     }
   }
+  await Promise.all(responseCaptureTasks);
+  const unauthenticatedBootstrapPaths = new Set([
+    '/api/v1/pos/catalog/events',
+    '/api/v1/settings',
+    '/api/v1/tenant-locations',
+  ]);
+  const classifiedHttpFailures = httpFailures.map((failure) => {
+    if (failure.status === 401 && !failure.authenticated && unauthenticatedBootstrapPaths.has(failure.path)) {
+      return { ...failure, disposition: 'expected unauthenticated startup probe' };
+    }
+    if (failure.status === 403 && failure.authenticated && failure.path === '/api/v1/onboarding/status') {
+      return { ...failure, disposition: 'expected master-admin-only onboarding endpoint denial for restricted admin' };
+    }
+    if (failure.status === 404 && failure.authenticated
+      && failure.path === '/api/v1/pos/terminal/operator/current'
+      && failure.errorCode === 'POS_ATTENDANCE_FEATURE_DISABLED') {
+      return { ...failure, disposition: 'optional cashier attendance controls are disabled for this test location' };
+    }
+    return { ...failure, disposition: 'unexpected HTTP failure' };
+  });
+  await testInfo.attach('pos-http-failure-dispositions.txt', {
+    body: classifiedHttpFailures
+      .map(({ status, path, errorCode, disposition }) => `${status} ${path}${errorCode ? ` [${errorCode}]` : ''} — ${disposition}`)
+      .join('\n'),
+    contentType: 'text/plain',
+  });
+  expect(pageErrors).toEqual([]);
+  expect(classifiedHttpFailures.filter((failure) => failure.disposition === 'unexpected HTTP failure'))
+    .toEqual([]);
+  expect(consoleErrors.filter((message) => !/^Failed to load resource: the server responded with a status of \d+ /.test(message)))
+    .toEqual([]);
 });

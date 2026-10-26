@@ -26,6 +26,7 @@ import {
   getCashierCredentialTemplate,
   getCompanyApprovedTemplate,
   getCompanyRejectedTemplate,
+  getStorefrontOrderConfirmationTemplate,
   getSubscriptionExpiringTemplate,
   getSubscriptionCancelledTemplate,
   getPaymentFailedTemplate,
@@ -38,6 +39,15 @@ import {
   getReactivationApprovedTemplate,
   getResubmissionConfirmationTemplate
 } from '../templates/emailTemplates.js';
+import {
+  buildOrderConfirmationBreakdownRows,
+  formatOrderConfirmationMoney,
+  formatOrderQuantity,
+  formatOrderTime,
+  resolveBalanceLabel,
+  resolveFulfillmentLabel,
+  VAT_DISCLOSURE_NOTE
+} from '../templates/storefrontOrderConfirmationPresentation.js';
 
 // Lazy initialize transporter
 let _transporter = null;
@@ -451,6 +461,152 @@ export const sendCashierCredentialEmail = async ({
   });
 };
 
+const normalizeOrderConfirmationStoreName = (value) => {
+  const safe = String(value || '').replace(/[^A-Za-z0-9 &'.-]/g, '').trim().slice(0, 40);
+  return safe || 'DGFY';
+};
+
+const normalizeOrderConfirmationUrl = (value) => {
+  try {
+    const url = new URL(String(value || ''));
+    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.toString() : null;
+  } catch {
+    return null;
+  }
+};
+
+const formatOrderConfirmationPaymentMethod = (order = {}) => {
+  const paymentType = String(order.payment_type || '').trim().toLowerCase();
+  if (paymentType === 'qrph') return 'QRPh';
+  if (paymentType === 'cash') {
+    return ({ delivery: 'Cash on delivery', pickup: 'Cash on pickup', dine_in: 'Pay at store' }[order.order_method] || 'Cash');
+  }
+  return paymentType.replace(/[_-]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) || 'Not provided';
+};
+
+const normalizeOrderConfirmationText = (value) => String(value ?? '')
+  .split('')
+  .map((character) => {
+    const codePoint = character.charCodeAt(0);
+    return codePoint < 32 || codePoint === 127 ? ' ' : character;
+  })
+  .join('')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const buildStorefrontOrderConfirmationText = ({ storeName, order = {}, trackingUrl = null, supportUrl = null }) => {
+  const safeTextStoreName = normalizeOrderConfirmationText(storeName) || 'DGFY';
+  const safeTrackingPin = normalizeOrderConfirmationText(order.tracking_pin);
+  const lines = [
+    'DGFY Order confirmation',
+    `Store: ${safeTextStoreName}`,
+    '',
+    'Order Summary',
+    `Total: ${formatOrderConfirmationMoney(order.total_amount)}`,
+    `Fulfillment: ${resolveFulfillmentLabel(order.order_method)}`
+  ];
+  const scheduledFor = formatOrderTime(order.scheduled_for);
+  const orderTime = formatOrderTime(order.created_at);
+  if (scheduledFor) lines.push(`Scheduled for: ${scheduledFor}`);
+  else if (orderTime) lines.push(`Order time: ${orderTime}`);
+  lines.push(
+    'Status: Order placed',
+    `Payment method: ${normalizeOrderConfirmationText(formatOrderConfirmationPaymentMethod(order))}`,
+    `Payment status: ${normalizeOrderConfirmationText(String(order.payment_status || 'Not provided').replace(/[_-]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()))}`,
+    `Order PIN: ${safeTrackingPin || 'Not available'}`
+  );
+  lines.push('', 'Your Items:');
+  for (const item of Array.isArray(order.items) ? order.items : []) {
+    const quantity = formatOrderQuantity(item?.quantity);
+    const fractionalPrice = quantity.includes('.') ? ` · ${formatOrderConfirmationMoney(item?.sale_price)} each` : '';
+    lines.push(`${normalizeOrderConfirmationText(item?.item_name) || 'Item'} — x ${quantity}${fractionalPrice} — ${formatOrderConfirmationMoney(item?.line_subtotal)}`);
+  }
+  lines.push('', 'Order breakdown:');
+  const breakdownRows = buildOrderConfirmationBreakdownRows(order);
+  for (const row of breakdownRows) {
+    const amount = `${row.kind === 'discount' ? '- ' : ''}${formatOrderConfirmationMoney(row.amount)}`;
+    lines.push(`${normalizeOrderConfirmationText(row.label)}: ${amount}`);
+  }
+  if (breakdownRows.some((row) => row.kind === 'informational')) lines.push(VAT_DISCLOSURE_NOTE);
+  if (order.payment_status === 'partially_paid') {
+    lines.push(`Downpayment paid: ${formatOrderConfirmationMoney(order.amount_paid)}`);
+    lines.push(`${resolveBalanceLabel(order.order_method)}: ${formatOrderConfirmationMoney(order.balance_due)}`);
+  }
+  lines.push('', ({
+    delivery: 'Delivery To:',
+    pickup: 'Pickup At:',
+    dine_in: 'Dine In At:'
+  }[order.order_method] || 'Store Location:'));
+  const locationName = String(order.location?.name || '').trim();
+  const locationAddress = String(order.location?.address_line || '').trim();
+  if (order.order_method === 'delivery') {
+    lines.push(normalizeOrderConfirmationText(order.delivery_address) || 'Not provided', 'Customer delivery address');
+  } else if (order.order_method === 'pickup') {
+    lines.push(`Pickup location: ${normalizeOrderConfirmationText(locationName) || 'Store location'}`);
+    if (locationAddress) lines.push(normalizeOrderConfirmationText(locationAddress));
+  } else if (order.order_method === 'dine_in') {
+    lines.push(normalizeOrderConfirmationText(locationName) || 'Store location');
+  } else if (locationName) {
+    lines.push(normalizeOrderConfirmationText(locationName));
+  }
+  const safeTrackingUrl = normalizeOrderConfirmationUrl(trackingUrl);
+  if (safeTrackingPin) lines.push('', `Keep your order PIN ${safeTrackingPin} for tracking.`);
+  if (safeTrackingUrl) lines.push(`Track your order: ${safeTrackingUrl}`);
+  const safeSupportUrl = normalizeOrderConfirmationUrl(supportUrl);
+  if (safeSupportUrl) lines.push('', `Need help? Contact DGFY support: ${safeSupportUrl}`);
+  lines.push('', 'Thank you for your order!', safeTrackingUrl
+    ? "You can follow your order's progress anytime with the Track your order button."
+    : `We appreciate your order with ${safeTextStoreName}.`, '', 'Powered by DGFY', `© ${new Date().getFullYear()} DGFY. All rights reserved.`, 'This message confirms your order and is not an official receipt.');
+  return lines.join('\n');
+};
+
+/** Send a receipt-style confirmation after a storefront order has committed. */
+export const sendStorefrontOrderConfirmationEmail = async ({
+  email,
+  storeName,
+  order = {},
+  trackingUrl = null,
+  logoUrl = null,
+  supportUrl = null,
+  tenantId = null
+}) => {
+  const safeStoreName = normalizeOrderConfirmationStoreName(storeName);
+  const safeTrackingPin = String(order.tracking_pin || '').replace(/[^A-Za-z0-9-]/g, '').slice(0, 32) || 'order';
+  const htmlStoreName = String(storeName || 'DGFY');
+  let html;
+  let text;
+  try {
+    html = getStorefrontOrderConfirmationTemplate({
+      storeName: htmlStoreName,
+      order,
+      trackingUrl: normalizeOrderConfirmationUrl(trackingUrl),
+      logoUrl: normalizeOrderConfirmationUrl(logoUrl),
+      supportUrl: normalizeOrderConfirmationUrl(supportUrl)
+    });
+    text = buildStorefrontOrderConfirmationText({
+      storeName: htmlStoreName,
+      order,
+      trackingUrl,
+      supportUrl
+    });
+  } catch (cause) {
+    const error = new Error('Failed to build storefront order confirmation email');
+    error.code = 'STOREFRONT_ORDER_CONFIRMATION_TEMPLATE_FAILED';
+    error.orderConfirmationTemplateFailed = true;
+    error.cause = cause;
+    throw error;
+  }
+
+  return sendEmail({
+    to: email,
+    subject: `Order confirmation ${safeTrackingPin} — ${safeStoreName}`,
+    html,
+    text,
+    fromName: 'DGFY',
+    meta: { purpose: 'storefront_order_confirmation', tenantId: tenantId || null }
+  });
+};
+
 /**
  * Send company approval notification email
  * @param {Object} params - Email parameters
@@ -733,6 +889,7 @@ export default {
   sendAffiliateInviteEmail,
   sendWelcomeEmail,
   sendCashierCredentialEmail,
+  sendStorefrontOrderConfirmationEmail,
   sendCompanySubmissionReceivedEmail,
   sendCompanyApprovedEmail,
   sendCompanyOnboardingEmail,

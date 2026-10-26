@@ -44,8 +44,8 @@ loop. Use it explicitly as `/planner <open issue-or-epic-number>` (Claude) or
 Record `execution_route` and `target_branch` in every new handoff artifact, including an ordinary
 `develop` plan. Use the field combinations and required evidence in
 `docs/ai/PLANNER_WORKER_HANDOFF_COMPATIBILITY.md`; that document is the single source for the
-route contract. The fields are `execution_route`, `target_branch`, and `hotfix`; valid pairs are
-`develop`/`develop`, `hotfix`/`main`, and `hotfix`/`staging`.
+route contract. The fields are `execution_route`, `target_branch`, `hotfix`, and `epic`; use its
+valid combinations.
 
 Set `execution_route: hotfix` only when the operator explicitly marks the Planner request. The
 canonical forms are `--hotfix`, `--hotfix main`, and `--hotfix staging`; a sentence is
@@ -67,6 +67,15 @@ Cite the issue or its comments and copy the evidence into the artifact's `hotfix
 fields. If any fact is missing or contradicted, mark `needs-decision`, name that exact fact, and
 withhold the `/implement` command. For `staging`, record why the fix can safely ride the next
 promotion in `hotfix.target_rationale`; the four-fact direct-main test is not required.
+
+Set `execution_route: epic` only on explicit operator direction such as `--epic`. Validate the
+child issue's live parent epic and its exact registered `Integration branch: <name>` issue-comment
+marker. Record the parent issue number as `epic.parent_epic`, the exact comment line as
+`epic.marker`, and that branch as `target_branch`. Never infer this route from a child issue's
+parent. If the operator requests the route but the parent, marker, or branch cannot be validated,
+write `status: needs-decision`, name the missing or conflicting evidence, and withhold the
+`/implement` command. Without explicit direction, use `develop`/`develop`; this includes ordinary
+first-wave discovery children of an epic.
 
 Missing `## Acceptance criteria` remains non-blocking (#1908); do not conflate it with main-hotfix
 eligibility.
@@ -130,7 +139,7 @@ When status is `ready`, finish with exactly this copyable handoff shape:
 
 ```text
 Plan is built.
-Route: <develop → develop | hotfix → main (operator-marked) | hotfix → staging (operator-marked)>
+Route: <develop → develop | hotfix → main (operator-marked) | hotfix → staging (operator-marked) | epic → registered integration branch (operator-marked)>
 Handoff: /implement @.tmp/plan-<issue>.md
 ```
 
@@ -146,8 +155,13 @@ turns an existing issue/epic into a local implementation contract.
 ## Manual handoff input
 
 When a session resumes from `/handoff`, accept `/planner <issue-or-epic-number> @.tmp/handoff-<...>.md`.
-Validate the `dgfy-handoff/v1` schema, confirm the issue or epic and `role: planner`, and use the
-artifact only as a snapshot of prior progress. Re-read the live issue and authoritative docs; they
-win over the artifact. A missing, malformed, mismatched, or ambiguous handoff is a hard stop with
-an instruction to rerun `/handoff` or resume without the artifact. Without a handoff artifact, the
-existing planner workflow is unchanged.
+Follow the [manual session handoff compatibility contract](../../../docs/ai/MANUAL_SESSION_HANDOFF_COMPATIBILITY.md),
+including its supported `agent-handoff/v1` and `dgfy-handoff/v1` variants. Confirm the requested
+issue or epic and `role: planner`; infer omitted context from the explicit invocation and verified
+live sources only when they settle it. Use the artifact as prior-progress evidence, then re-read the
+live issue, checkout, and authoritative docs before continuing; they win over snapshot state. A
+real identity/role conflict or consequential unresolved ambiguity is a hard stop with a precise
+question. A schema-label difference, extra metadata, descriptive runtime/model value, or stale
+branch/HEAD by itself is not. A snapshot does not authorize implementation or any other action
+outside Planner's existing boundary. Without a handoff artifact, the existing planner workflow is
+unchanged.

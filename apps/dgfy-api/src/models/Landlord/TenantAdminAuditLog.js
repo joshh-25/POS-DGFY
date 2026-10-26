@@ -28,7 +28,8 @@ export default (sequelize) => {
                 'affiliate_slots_update',
                 'force_delete_registration_history',
                 'registration_upload_download',
-                'business_name_update'
+                'business_name_update',
+                'apply_template'
             ),
             allowNull: false
         },

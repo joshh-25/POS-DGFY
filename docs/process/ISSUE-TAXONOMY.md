@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: engineering
-last_reviewed: 2026-09-03
+last_reviewed: 2026-10-24
 applies_to: issue_and_backlog_organization
 topic: issue_taxonomy
 ---
@@ -343,6 +343,20 @@ case.
 
 Every PR needs a linked issue. A PR that advances an epic without finishing it should reference the
 **child** issue, not the epic — epics close when their children do.
+
+### Optional epic integration branches
+
+For large, behavior-replacing work that cannot be dark-launched and is expected to take more than
+about one iteration, an operator may register one integration branch named
+`epic/<epic-number>-<slug>` or `feature/<epic-number>-<slug>`. The branch is linked to an open issue
+labeled `epic` by an issue comment containing the exact line `Integration branch: <branch-name>`.
+The optional route does not change the default: ordinary branches use `feat/` and target `develop`.
+The authoritative lifecycle and readiness rules are in
+[`RELEASE_CANDIDATE_POLICY.md`](../ops/RELEASE_CANDIDATE_POLICY.md#2026-10-24-optional-reserved-name-integration-branches-2737).
+
+Child PRs target the registered integration branch and use `Refs #<child-issue>`, not an epic
+closure reference. Their issue cards stay `In progress` through merges into the integration branch;
+the final PR into `develop` applies the existing `For QA` gate to each child after its merge.
 
 ### Issue linkage: `Closes #N` vs. `Refs #N`
 

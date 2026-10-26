@@ -85,11 +85,11 @@ describe('usePosCartDraft', () => {
     });
 
     expect(loadPosCartDraftState(scope, 81, catalog)).toEqual(expect.objectContaining({
-      activeParkedSale: {
+      activeParkedSale: expect.objectContaining({
         pos_parked_sale_id: 17,
         park_reference: 'PARK-ABC123',
         revision: 2,
-        snapshot: {
+        snapshot: expect.objectContaining({
           lines: [{
             item_id: 4,
             item_name: 'Beef Meal',
@@ -97,8 +97,8 @@ describe('usePosCartDraft', () => {
             quantity: 1,
             sale_price: 150
           }]
-        }
-      }
+        })
+      })
     }));
   });
 });

@@ -110,27 +110,29 @@ describe('DGFY POS administrator bypass contract', () => {
     expect(terminalPageSource).toContain('setBranchSelectorOpen(false);');
   });
 
-  it('reopens branch selection before resuming a locked cashier shift', () => {
-    expect(terminalPageSource).toContain('if ((!locked && !drawerOpen) || !branchSelectorOpen) return;');
-    expect(terminalPageSource).toContain("const cashierBranchSelectorCanShowWhileLocked = branchSelectorMode === 'cashier'");
-    expect(terminalPageSource).toContain('if (cashierBranchSelectorCanShowWhileLocked && !drawerOpen) return;');
-    expect(terminalPageSource).toContain('open={branchSelectorOpen && !drawerOpen && (!locked || cashierBranchSelectorCanShowWhileLocked)}');
-    expect(terminalPageSource).toContain('branchSelectorContinuationRef.current = null;');
-
-    const lockStart = terminalPageSource.lastIndexOf("if (hasOpenShift && !adminLock) {");
-    const lockEnd = terminalPageSource.indexOf("setStoredTerminalLockReason('full_auth');", lockStart);
+  it('opens Unlock Shift directly on manual lock and preserves the current shift context', () => {
+    const lockStart = terminalPageSource.indexOf('const handleLock = async');
+    const lockEnd = terminalPageSource.indexOf('const handlePostShiftReturnToLogin', lockStart);
     const lockSource = terminalPageSource.slice(lockStart, lockEnd);
+    const cashierLockStart = lockSource.lastIndexOf("if (hasOpenShift && !adminLock) {");
+    const cashierLockEnd = lockSource.indexOf("setStoredTerminalLockReason('full_auth');", cashierLockStart);
+    const cashierLockSource = lockSource.slice(cashierLockStart, cashierLockEnd);
 
     expect(lockStart).toBeGreaterThan(-1);
     expect(lockEnd).toBeGreaterThan(lockStart);
-    expect(lockSource).toContain("setTerminalUnlockMode('cashier_resume');");
-    expect(lockSource).toContain('setTerminalUnlockModalOpen(false);');
-    expect(lockSource).toContain("mode: 'cashier'");
-    expect(lockSource).toContain("continuation: 'terminal_unlock'");
-    expect(lockSource).toContain('resumeShift: shiftState?.shift');
-    expect(terminalPageSource).toContain("const lockedShiftBranchSelection = branchSelectorContinuationRef.current === 'terminal_unlock'");
-    expect(terminalPageSource).toContain('setCashierResumeContext((previous) => (previous');
-    expect(terminalPageSource).toContain('resumeShiftOverride');
+    expect(cashierLockStart).toBeGreaterThan(-1);
+    expect(cashierLockEnd).toBeGreaterThan(cashierLockStart);
+    expect(cashierLockSource).toContain("setStoredTerminalLockReason('terminal_reunlock');");
+    expect(cashierLockSource).toContain('setCashierResumeContext({');
+    expect(cashierLockSource).toContain('shiftId: activeShiftId');
+    expect(cashierLockSource).toContain('shiftSnapshot: {');
+    expect(cashierLockSource).toContain('openingFloatAmount: \'\'');
+    expect(cashierLockSource).toContain('clearBrowserSession();');
+    expect(cashierLockSource).toContain("setTerminalUnlockMode('cashier_resume');");
+    expect(cashierLockSource).toContain('setTerminalUnlockModalOpen(true);');
+    expect(cashierLockSource).not.toContain('openBranchSelector({');
+    expect(terminalPageSource).toContain("if (storedReason === 'terminal_reunlock' && cashierResumeContext?.shiftId)");
+    expect(terminalPageSource).toContain("terminalUnlockMode === 'cashier_resume'");
   });
 
   it('requires restored cashiers to select a branch before opening a shift', () => {

@@ -13,7 +13,9 @@ import {
     buildResolveExternalRedirectUseCase,
     buildListExternalAdminUseCase,
     buildSaveExternalSiteUseCase,
+  buildSetExternalSiteVisibilityUseCase,
     buildSaveExternalListingUseCase,
+  buildSetExternalListingVisibilityUseCase,
     buildRemoveExternalListingUseCase,
     buildClearTemporaryExternalListingsUseCase
 } from './usecases/externalRedirectUseCases.js';
@@ -27,7 +29,9 @@ export const listExternalStorefrontListingsUseCase = buildListExternalStorefront
 export const resolveExternalRedirectUseCase = buildResolveExternalRedirectUseCase({ repository: externalRedirectRepository });
 export const listExternalAdminUseCase = buildListExternalAdminUseCase({ repository: externalRedirectRepository });
 export const saveExternalSiteUseCase = buildSaveExternalSiteUseCase({ repository: externalRedirectRepository });
+export const setExternalSiteVisibilityUseCase = buildSetExternalSiteVisibilityUseCase({ repository: externalRedirectRepository });
 export const saveExternalListingUseCase = buildSaveExternalListingUseCase({ repository: externalRedirectRepository });
+export const setExternalListingVisibilityUseCase = buildSetExternalListingVisibilityUseCase({ repository: externalRedirectRepository });
 export const removeExternalListingUseCase = buildRemoveExternalListingUseCase({ repository: externalRedirectRepository });
 export const clearTemporaryExternalListingsUseCase = buildClearTemporaryExternalListingsUseCase({ repository: externalRedirectRepository });
 

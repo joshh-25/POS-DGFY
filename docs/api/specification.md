@@ -110,7 +110,21 @@ All responses follow a consistent JSON structure:
 ## Authentication & Multi-Tenancy
 
 ### Multi-Tenant Header Requirement
-All API requests (except for root `/admin` registration) must include the `x-company-token` header. This token determines which isolated database context is used for the request.
+Tenant-scoped API requests must include the `x-company-token` header. This token determines which
+isolated database context is used for the request. Public registration and
+`/api/v1/public/support-contact` are no-tenant exceptions.
+
+### Public Storefront Support Contact
+
+`GET /api/v1/public/support-contact` is a no-authentication, no-tenant-context endpoint used by the
+Storefront Contact Us page. It returns the address configured by Platform Admin even when optional
+email verification has not completed. It returns `{ "email": null }` only if no address is
+configured. The response uses `Cache-Control: no-store`.
+
+Platform Admin support-email configuration lives under `/api/v1/admin/contact-inquiries/support-email*`
+and requires the `admin.contact_inquiries` page grant. Saving an address publishes it immediately.
+Admin may optionally request and confirm a one-time verification code and record that the inbox is
+monitored. Changing the address clears the prior verification and monitoring timestamps.
 
 ---
 
@@ -3504,7 +3518,7 @@ Assign or reassign a registered delivery person or an unregistered third-party c
 ```
 
 **Transition Notes**
-1. A direct delivery order may be Confirmed, Preparing, Packed, Waiting for rider, or Out for delivery. Active run members retain the out-for-delivery gate. The job provider must be `manual`.
+1. A direct delivery order may be Confirmed, Preparing, Packed, Ready for pickup, or Out for delivery. Active run members retain the out-for-delivery gate. The job provider must be `manual`.
 2. The authenticated user must own an open shift at the order location.
 3. Send at most one of `delivery_personnel_id` (an active registered person) or `delivery_personnel_name` (a trimmed typed rider name). `courier_service` is one of `own`, `maxim`, `grabexpress`, `lalamove`, `other`; it is required for early direct assignment. `own` requires a registered person or typed name, while a third-party service may be assigned without one. `other` requires `courier_service_name` (120 characters). `courier_reference` is optional (120 characters); `tracking_url` is optional, HTTPS-only (1000 characters). Legacy out-for-delivery person-only requests remain valid.
 4. The assignment atomically records the person or name, assigning user, assigning shift, timestamp, and `pending_dispatch -> assigned` transition.
@@ -3539,7 +3553,7 @@ Update online order fulfillment status from POS terminal operations.
 
 **Transition Notes**
 1. Allowed transitions are lifecycle-validated server-side.
-2. Direct delivery orders may progress from Preparing or Packed to `ready_for_rider` (Waiting for rider). The older direct transition to `out_for_delivery` remains accepted for native clients and run dispatch. Delivery orders cannot use `ready_for_pickup`.
+2. Direct delivery orders may progress from Preparing or Packed to `ready_for_rider` (Ready for pickup). The older direct transition to `out_for_delivery` remains accepted for native clients and run dispatch. Delivery orders cannot use `ready_for_pickup`.
 3. Non-delivery orders must use `ready_for_pickup` where applicable.
 4. Successful responses include:
    - `data.idempotent_replay`
@@ -4080,9 +4094,11 @@ The master Platform Admin routes below require the cookie-backed Platform Admin 
 
 | Route | Purpose |
 | --- | --- |
-| `GET /admin/external-discovery` | List four partner configurations and external pins for management |
+| `GET /admin/external-discovery` | List four partner configurations and external pins for management; each site includes `type_label`, `show_on_map`, `pin_count`, and `visible_pin_count` (effective public pins after both visibility switches) |
 | `PUT /admin/external-discovery/sites/:siteKey` | Set an approved HTTPS `url_template` with exactly one `{id}` slot and `enabled` boolean |
+| `PATCH /admin/external-discovery/sites/:siteKey/visibility` | Set the managed partner type's `show_on_map` boolean; requires a saved destination |
 | `PUT /admin/external-discovery/listings/:slug` | Create or update an external pin by stable DGFY slug, `external_provider`, `external_reference_id`, title, real coordinates, `external_record_origin` (`event_seed` or `manual`), and optional public fields |
+| `PATCH /admin/external-discovery/listings/:slug/visibility` | Set the managed external pin's `is_visible` boolean without resending its listing or requiring an enabled destination |
 | `DELETE /admin/external-discovery/listings/:slug` | Remove one external pin |
 | `POST /admin/external-discovery/temporary/clear` | Remove only the four partners' `event_seed` pins |
 

@@ -1,8 +1,10 @@
 import bcrypt from 'bcryptjs';
 import { dgfyAccountRepository } from './repositories/dgfyAccountRepository.js';
 import { dgfyAffiliateRepository } from './repositories/dgfyAffiliateRepository.js';
+import { invalidateUserCache } from '../../middleware/auth.js';
 import { ensureDgfyCompanyRegistrationRejectionNotifications } from './services/dgfyCustomerNotifications.js';
 export { dispatchDgfyOrderSmsAlert } from './services/dgfyOrderSmsAlerts.js';
+export { dispatchDgfyOrderConfirmationEmail } from './services/dgfyOrderConfirmationEmail.js';
 import { buildGetDgfyLegalTermsUseCase } from './usecases/dgfyLegalUseCases.js';
 import {
     buildGetAdminDgfyAccountUseCase,
@@ -192,6 +194,7 @@ export const exchangeDgfyHandoffUseCase = buildExchangeDgfyHandoffUseCase({
 
 export const acceptDgfyInvitationUseCase = buildAcceptDgfyInvitationUseCase({
     repository: dgfyAccountRepository,
+    invalidateUserCache,
     verifyEmailOtp,
     emailOtpPurposes: {
         DGFY_BUSINESS_STEP_UP: 'dgfy_business_step_up'

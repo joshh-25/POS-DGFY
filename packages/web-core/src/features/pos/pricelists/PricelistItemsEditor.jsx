@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { GlobalPagination } from '@/components/ui/pagination';
 import PosSearchField, { POS_CATALOG_TOOLBAR_SEARCH_FIELD_INPUT_CLASS } from '../components/PosSearchField.jsx';
+import { POS_MODAL_FOOTER_SURFACE_CLASS, POS_MODAL_HEADER_ICON_CLASS, POS_MODAL_HEADER_SURFACE_CLASS } from '../components/posModalStyles.js';
 import {
   DESKTOP_TABLE_PAGE_SIZE_OPTIONS,
   formatSavedAt,
@@ -139,19 +140,19 @@ export default function PricelistItemsEditor({
       }}
     >
       <div
-        className="pos-items-modal-panel pos-items-catalog-form-modal pos-items-mobile-sheet-panel pos-pricelist-items-modal relative flex h-[calc(100dvh-1.5rem)] w-full max-w-[64rem] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 sm:h-[min(52rem,calc(100dvh-6rem))] sm:max-h-[calc(100dvh-2rem)]"
+        className="pos-items-modal-panel pos-items-catalog-form-modal pos-items-mobile-sheet-panel pos-pricelist-items-modal relative flex h-[calc(100dvh-1.5rem)] w-full max-w-[64rem] flex-col overflow-hidden rounded-2xl border border-[#D9E5F3] bg-white shadow-2xl shadow-slate-900/20 sm:h-[min(52rem,calc(100dvh-6rem))] sm:max-h-[calc(100dvh-2rem)]"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="pos-pricelist-items-modal-header -mx-px -mt-px flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-t-[17px] border-b border-[#143F73] bg-[#1A4E8D] px-4 py-2.5 sm:flex-nowrap sm:gap-3 sm:px-5">
+        <div className={['pos-pricelist-items-modal-header -mx-px -mt-px flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-t-[17px] px-4 py-2.5 text-[#0F172A] sm:flex-nowrap sm:gap-3 sm:px-5', POS_MODAL_HEADER_SURFACE_CLASS].join(' ')}>
           <div className="flex min-w-0 flex-1 items-center gap-2.5">
-            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white text-[#1A4E8D] shadow-sm ring-1 ring-[#C7DCF3]">
+            <div className={POS_MODAL_HEADER_ICON_CLASS}>
               <Tag className="h-4 w-4" aria-hidden="true" />
             </div>
             <div className="min-w-0">
-              <h2 id="pos-pricelist-items-modal-title" className="text-sm font-black text-white">
+              <h2 id="pos-pricelist-items-modal-title" className="text-sm font-black text-[#0F172A]">
                 Edit Pricelist Items
               </h2>
-              <p className="mt-0.5 max-w-full break-words text-[10px] leading-3 text-blue-100">
+              <p className="mt-0.5 max-w-full break-words text-[10px] leading-3 text-slate-600">
                 Configure item pricing, voucher prices, and discounts for {pricelist?.name || 'this pricelist'}
               </p>
             </div>
@@ -162,7 +163,7 @@ export default function PricelistItemsEditor({
             disabled={publishing}
             ref={editorCloseButtonRef}
             aria-label="Close Edit Pricelist Items"
-            className="ml-auto grid h-8 w-8 shrink-0 place-items-center rounded-lg text-blue-100 transition-colors hover:bg-white/15 hover:text-white focus-visible:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#1A4E8D] disabled:cursor-not-allowed disabled:opacity-60"
+            className="ml-auto grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-500 transition-colors hover:bg-white hover:text-slate-900 focus-visible:outline-none focus:ring-2 focus:ring-[#1A4E8D] focus:ring-offset-2 focus:ring-offset-[#EFF6FF] disabled:cursor-not-allowed disabled:opacity-60"
           >
             <X className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
@@ -343,7 +344,7 @@ export default function PricelistItemsEditor({
           )}
         </div>
 
-        <div className="pos-pricelist-items-modal-footer pos-items-modal-footer grid shrink-0 grid-cols-2 gap-2 border-t border-slate-200 bg-white px-3 py-2.5 sm:px-4">
+        <div className={['pos-pricelist-items-modal-footer pos-items-modal-footer grid shrink-0 grid-cols-2 gap-2 px-3 py-2.5 sm:px-4', POS_MODAL_FOOTER_SURFACE_CLASS].join(' ')}>
           <Button type="button" variant="outline" onClick={onBackToList} disabled={publishing} className="h-10 min-w-0 w-full rounded-lg border-[#1A4E8D] px-2 text-[11px] font-bold text-[#1A4E8D] hover:bg-blue-50">
             Cancel
           </Button>

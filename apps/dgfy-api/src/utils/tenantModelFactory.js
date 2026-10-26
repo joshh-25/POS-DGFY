@@ -89,6 +89,7 @@ export const NON_TENANT_MODEL_EXPORTS = new Set([
     'PlatformAdminSession',
     'PlatformAdminAuditLog',
     'ContactInquiryProviderConfig',
+    'PlatformStorefrontSupportContact',
     // Push diagnostics are landlord-only operator records (no tenant-scoped copy).
     'PushDispatchEvent',
     'PushDiagnosticDevice',

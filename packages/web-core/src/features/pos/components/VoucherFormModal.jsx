@@ -201,7 +201,7 @@ export default function VoucherFormModal({
                 <div className="pos-voucher-form-grid grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="pos-voucher-form-field space-y-1">
                     <div className="pos-voucher-form-label-row">
-                      <Label className="text-xs font-semibold text-[#0F172A]">Code <span className="text-rose-600" aria-hidden="true">*</span></Label>
+                      <Label htmlFor="pos-voucher-code" className="text-xs font-semibold text-[#0F172A]">Code <span className="text-rose-600" aria-hidden="true">*</span></Label>
                       {isEdit && !codeEditable ? (
                         <StorefrontSectionInfo label="Code" panelId="pos-vouchers-code-info" portal>
                           <p>Code is locked once a voucher leaves draft or has a redemption.</p>
@@ -214,6 +214,7 @@ export default function VoucherFormModal({
                       ) : null}
                     </div>
                     <Input
+                      id="pos-voucher-code"
                       className={`h-8 text-xs uppercase ${VOUCHER_FORM_PLACEHOLDER_CLASS}`}
                       value={form.code}
                       maxLength={40}
@@ -224,10 +225,11 @@ export default function VoucherFormModal({
                     <FieldError message={fieldErrors.code} />
                   </div>
                   <div className="pos-voucher-form-field space-y-1">
-                    <Label className="text-xs font-semibold text-[#0F172A]">
+                    <Label htmlFor="pos-voucher-campaign-name" className="text-xs font-semibold text-[#0F172A]">
                       {form.voucherKind === 'delivery_campaign' ? 'Campaign name' : 'Title'} <span className="text-rose-600" aria-hidden="true">*</span>
                     </Label>
                     <Input
+                      id="pos-voucher-campaign-name"
                       className={`h-8 text-xs ${VOUCHER_FORM_PLACEHOLDER_CLASS}`}
                       value={form.title}
                       placeholder={form.voucherKind === 'delivery_campaign' ? 'e.g. Free delivery over ₱500' : 'e.g. Summer Sale 15% Off'}
@@ -287,12 +289,12 @@ export default function VoucherFormModal({
                         <Label className="text-xs font-semibold text-[#0F172A]">Waiver amount <span className="text-rose-600" aria-hidden="true">*</span></Label>
                         <div className="flex flex-wrap gap-4">
                           <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                            <input type="radio" name="deliveryWaiverMode" checked={form.deliveryWaiverMode === 'whole'}
+                            <input type="radio" name="deliveryWaiverMode" aria-label="Waive the whole delivery fee" checked={form.deliveryWaiverMode === 'whole'}
                               onChange={() => setForm((current) => ({ ...current, deliveryWaiverMode: 'whole', deliveryAmountOffPesos: '' }))} />
                             Waive the whole delivery fee
                           </label>
                           <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                            <input type="radio" name="deliveryWaiverMode" checked={form.deliveryWaiverMode === 'partial'}
+                            <input type="radio" name="deliveryWaiverMode" aria-label="Waive up to a set amount" data-testid="voucher-delivery-waiver-partial" checked={form.deliveryWaiverMode === 'partial'}
                               onChange={() => setForm((current) => ({ ...current, deliveryWaiverMode: 'partial' }))} />
                             Waive up to a set amount
                           </label>
@@ -300,8 +302,8 @@ export default function VoucherFormModal({
                       </div>
                       {form.deliveryWaiverMode === 'partial' && (
                         <div className="pos-voucher-form-field space-y-1">
-                          <Label className="text-xs font-semibold text-[#0F172A]">Waive up to (₱) <span className="text-rose-600" aria-hidden="true">*</span></Label>
-                          <Input type="number" min="0.01" step="0.01" className={`h-8 text-xs ${VOUCHER_FORM_PLACEHOLDER_CLASS}`} value={form.deliveryAmountOffPesos}
+                          <Label htmlFor="pos-voucher-delivery-waiver-amount" className="text-xs font-semibold text-[#0F172A]">Waive up to (₱) <span className="text-rose-600" aria-hidden="true">*</span></Label>
+                          <Input id="pos-voucher-delivery-waiver-amount" type="number" min="0.01" step="0.01" className={`h-8 text-xs ${VOUCHER_FORM_PLACEHOLDER_CLASS}`} value={form.deliveryAmountOffPesos}
                             placeholder="e.g. 50.00"
                             onChange={(e) => setForm((current) => ({ ...current, deliveryAmountOffPesos: e.target.value }))} />
                           <FieldError message={fieldErrors.delivery_amount_off_centavos} />
@@ -312,7 +314,7 @@ export default function VoucherFormModal({
                     <div className="mt-3 rounded-lg border border-dashed border-slate-300 p-3">
                       <div className="flex items-center gap-1">
                         <label className="flex items-center gap-2 text-xs font-semibold text-[#0F172A]">
-                          <Checkbox className={VOUCHER_MODAL_CHECKBOX_CLASS} checked={form.autoApply} onCheckedChange={(checked) => setForm((current) => ({ ...current, autoApply: checked === true }))} />
+                          <Checkbox aria-label="Apply automatically" data-testid="voucher-auto-apply-toggle" className={VOUCHER_MODAL_CHECKBOX_CLASS} checked={form.autoApply} onCheckedChange={(checked) => setForm((current) => ({ ...current, autoApply: checked === true }))} />
                           Apply automatically -- shoppers get this without typing a code
                         </label>
                         <StorefrontSectionInfo label="Apply automatically" panelId="pos-vouchers-auto-apply-info" portal>

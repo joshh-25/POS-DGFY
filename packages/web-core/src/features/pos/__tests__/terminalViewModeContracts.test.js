@@ -14,6 +14,7 @@ const terminalOperationsWorkspacePath = path.resolve(__dirname, '../components/T
 const posItemsWorkspacePath = path.resolve(__dirname, '../components/PosItemsWorkspace.jsx');
 const adminBranchShiftMonitorPath = path.resolve(__dirname, '../components/AdminBranchShiftMonitor.jsx');
 const shiftSessionSummaryPath = path.resolve(__dirname, '../components/ShiftSessionSummary.jsx');
+const shiftSessionCloseoutPanelsPath = path.resolve(__dirname, '../components/ShiftSessionCloseoutPanels.jsx');
 const posSettingsWorkspacePath = path.resolve(__dirname, '../settings/PosSettingsWorkspace.jsx');
 const terminalLocalControlsPath = path.resolve(__dirname, '../settings/TerminalLocalControlsSection.jsx');
 const terminalOperationsPanelsPath = path.resolve(__dirname, '../components/TerminalOperationsPanels.jsx');
@@ -64,6 +65,7 @@ describe('POS terminal view-mode contracts', () => {
   let posItemsWorkspaceContent = '';
   let adminBranchShiftMonitorContent = '';
   let shiftSessionSummaryContent = '';
+  let shiftSessionCloseoutPanelsContent = '';
   let posSettingsWorkspaceContent = '';
   let terminalLocalControlsContent = '';
   let terminalOperationsPanelsContent = '';
@@ -73,6 +75,7 @@ describe('POS terminal view-mode contracts', () => {
   let posReportsAnalyticsWorkspaceContent = '';
   let posCheckoutTerminalContent = '';
   let incomingOrderCountContent = '';
+  let posTerminalViewModelContent = '';
   let posCheckoutTerminalReceiptDialogsContent = '';
   let posCheckoutWorkflowContent = '';
   let posHistoryVoidWorkflowContent = '';
@@ -100,6 +103,7 @@ describe('POS terminal view-mode contracts', () => {
     posItemsWorkspaceContent = readSourceForContract(posItemsWorkspacePath);
     adminBranchShiftMonitorContent = readSourceForContract(adminBranchShiftMonitorPath);
     shiftSessionSummaryContent = readSourceForContract(shiftSessionSummaryPath);
+    shiftSessionCloseoutPanelsContent = readSourceForContract(shiftSessionCloseoutPanelsPath);
     posSettingsWorkspaceContent = readSourceForContract(posSettingsWorkspacePath);
     terminalLocalControlsContent = readSourceForContract(terminalLocalControlsPath);
     terminalOperationsPanelsContent = [terminalOperationsPanelsPath, incomingQueueOrderActionsPath]
@@ -113,6 +117,7 @@ describe('POS terminal view-mode contracts', () => {
       .map((sourcePath) => readSourceForContract(sourcePath))
       .join('\n');
     incomingOrderCountContent = readSourceForContract(incomingOrderCountPath);
+    posTerminalViewModelContent = readSourceForContract(posTerminalViewModelPath);
     posCheckoutTerminalReceiptDialogsContent = readSourceForContract(posCheckoutTerminalReceiptDialogsPath);
     posCheckoutWorkflowContent = readSourceForContract(posCheckoutWorkflowPath);
     posHistoryVoidWorkflowContent = readSourceForContract(posHistoryVoidWorkflowPath);
@@ -166,6 +171,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(incomingOrderCountContent).toContain('adminLocationMonitorState?.orders');
     expect(incomingOrderCountContent).toContain('incomingOrdersState?.orders');
     expect(incomingOrderCountContent).toContain('return onlineOrders(source);');
+    expect(terminalSidebarPanelContent).toContain('Array.isArray(incomingOrdersState?.orders)');
     expect(terminalPageContent).toContain("const MSME_OPERATIONS_VIEW_MODES = ['incoming_queue'");
     expect(terminalWorkspaceSidebarContent).toContain('const shouldShowIncomingQueue = showIncomingQueue;');
     expect(terminalWorkspaceSidebarContent).not.toContain('const shouldShowIncomingQueue = showIncomingQueue && !isMsmeMode;');
@@ -227,7 +233,8 @@ describe('POS terminal view-mode contracts', () => {
 
   it('returns a signed-in cashier to terminal selection before opening a shift', () => {
     expect(terminalPageContent).toContain('Cashier signed in:');
-    expect(terminalPageContent).toContain("cashierAlreadyAuthenticated && terminalUnlockMode === 'shift_start'");
+    expect(terminalPageContent).toContain("!adminReauthUnlock && !cashierResumeUnlock && terminalUnlockMode === 'shift_start'");
+    expect(terminalPageContent).toContain('cashierAlreadyAuthenticated ? (');
     expect(terminalPageContent).toContain('const terminalSelectionLocked = isCashierRole');
     expect(terminalPageContent).toContain('const handleCancelTerminalUnlock = useCallback(() => {');
     expect(terminalPageContent).toContain('cashierResumeUnlock');
@@ -417,6 +424,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageLayoutContent).toContain('dgfy-pos-panel dgfy-pos-panel-strong sticky top-0');
     expect(terminalPageLayoutContent).not.toContain('sticky top-0 z-40 shrink-0 border-b border-pos px-4 py-2 backdrop-blur');
     expect(terminalPageLayoutContent).toContain('className={`${workspacePaneClassName} ${hidesWorkspaceScrollbar ?');
+    expect(terminalPageLayoutContent).toContain('className={`${workspacePaneClassName} ${hidesWorkspaceScrollbar');
     expect(terminalPageLayoutContent).toContain('className={`${workspaceContentClassName} ${lockedSurfaceClassName}`}');
     expect(terminalPageLayoutContent).toContain('data-testid="pos-terminal-lock-backdrop"');
     expect(terminalPageLayoutContent).toContain('bg-slate-950/70 backdrop-blur-none');
@@ -561,6 +569,11 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('Generate Z-reading');
     expect(terminalPageContent).toContain('Reprint Z-reading');
     expect(posCheckoutTerminalContent).toContain('const posActionsBlocked = Boolean(checkoutBlockedReason) || parkedSaleReleaseLoading;');
+    expect(shiftSessionCloseoutPanelsContent).toContain('dayCloseReadiness?.already_closed');
+    expect(shiftSessionCloseoutPanelsContent).toContain("'Print Z-reading'");
+    expect(shiftSessionCloseoutPanelsContent).toContain("'Close Day'");
+    expect(terminalOperationsWorkspaceContent).toContain('handleCloseDay');
+    expect(posTerminalViewModelContent).toContain('const posActionsBlocked = Boolean(checkoutBlockedReason) || parkedSaleReleaseLoading;');
     expect(posCheckoutTerminalContent).toContain('notifyPosActionBlocked');
     expect(posCheckoutTerminalContent).toContain('checkoutDisabled={posActionsBlocked || checkoutLoading || safeCart.length === 0}');
     expect(skupervisorCheckoutTerminalContent).toContain('const posActionsBlocked = Boolean(checkoutBlockedReason);');
@@ -623,13 +636,13 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('supports governed manual POS discounts with percentage or fixed amount entry', () => {
-    expect(posCheckoutTerminalContent).toContain("const [manualDiscountMode, setManualDiscountMode] = useState('none');");
-    expect(posCheckoutTerminalContent).toContain("const [manualDiscountAmountInput, setManualDiscountAmountInput] = useState('');");
+    expect(posTerminalViewModelContent).toContain("const [manualDiscountMode, setManualDiscountMode] = useState('none');");
+    expect(posTerminalViewModelContent).toContain("const [manualDiscountAmountInput, setManualDiscountAmountInput] = useState('');");
     expect(posCheckoutTerminalContent).toContain('Discount Type');
     expect(posCheckoutTerminalContent).toContain('<option value="percentage">Percentage</option>');
     expect(posCheckoutTerminalContent).toContain('<option value="fixed">Fixed Amount</option>');
     expect(posCheckoutTerminalContent).toContain("discountDraft.type === 'manual'");
-    expect(posCheckoutTerminalContent).toContain('resetDiscountState();');
+    expect(posTerminalViewModelContent).toContain('resetDiscountState();');
     expect(posCheckoutWorkflowContent).toContain('const resetDiscountState = useCallback');
     expect(posCheckoutWorkflowContent).toContain("discount_mode: appliedDiscount ? 'amount' : (selectedDiscount ? 'preset' : (manualDiscountAmount > 0 ? manualDiscountMode : 'none'))");
     expect(posCheckoutTerminalContent).toContain("discountDraft.method === 'fixed' ? 'Amount' : 'Rate (%)'");
@@ -787,7 +800,7 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('refreshes financial summaries after void mutations without a manual browser refresh', () => {
-    expect(posCheckoutTerminalContent).toContain('onFinancialMutationCompleted: onCheckoutCompleted');
+    expect(posTerminalViewModelContent).toContain('onFinancialMutationCompleted: onCheckoutCompleted');
     expect(posHistoryVoidWorkflowContent).toContain("await onFinancialMutationCompleted({ ...historyRow, ...(voidResult?.transaction || {}) });");
     expect(terminalPageContent).toContain('takeoverShiftContextRef.current = null;');
     expect(terminalPageContent).toContain('await refreshOperationalContext();');
@@ -863,6 +876,8 @@ describe('POS terminal view-mode contracts', () => {
   it('keeps checkout orchestration in the R6 workflow hook and the terminal as its compatibility shell', () => {
     expect(posCheckoutTerminalContent).toContain("import { usePosCheckoutWorkflow } from './usePosCheckoutWorkflow.js';");
     expect(posCheckoutTerminalContent).toContain('} = usePosCheckoutWorkflow({');
+    expect(posTerminalViewModelContent).toContain("import { usePosCheckoutWorkflow } from './usePosCheckoutWorkflow.js';");
+    expect(posTerminalViewModelContent).toContain('} = usePosCheckoutWorkflow({');
     expect(posCheckoutTerminalContent).not.toContain('const handleCheckout = ');
     expect(posCheckoutTerminalContent).not.toContain('const handleParkAndNewSale = ');
     expect(posCheckoutTerminalContent).not.toContain('const replayQueuedCheckouts = ');
@@ -928,8 +943,8 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalLockDrawerContent).toContain('Select accessible company');
     expect(terminalPageLayoutContent).toContain('normalizedActiveTerminalId');
     expect(terminalPageLayoutContent).not.toContain('Terminal identity: <span className="font-semibold text-slate-900">DGFY</span>');
-    expect(posCheckoutTerminalContent).toContain('terminalId = \'\'');
-    expect(posCheckoutTerminalContent).toContain("const normalizedTerminalId = String(terminalId || '').trim();");
+    expect(posTerminalViewModelContent).toContain('terminalId = \'\'');
+    expect(posTerminalViewModelContent).toContain("const normalizedTerminalId = String(terminalId || '').trim();");
     expect(posCheckoutWorkflowContent).toContain('if (!normalizedTerminalId) {');
     expect(posCheckoutWorkflowContent).toContain("toast.error('Select a terminal ID before checkout.');");
     expect(posCheckoutWorkflowContent).toContain('terminal_id: normalizedTerminalId || undefined');

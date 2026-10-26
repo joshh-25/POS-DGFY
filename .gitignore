@@ -120,6 +120,7 @@ htdocs/.htaccess
 /apps/dgfy-pos/dist/
 /apps/dgfy-pos/desktop-dist/
 /apps/dgfy-opis/dist/
+/apps/dgfy-admin/dist/
 
 nul
 

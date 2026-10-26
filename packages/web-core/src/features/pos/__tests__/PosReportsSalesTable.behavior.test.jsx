@@ -49,7 +49,7 @@ const rows = [
 describe('POS reports sales table', () => {
   afterEach(() => cleanup());
 
-  it('renders prioritized sales columns without an actions column', () => {
+  it('renders prioritized sales columns with the shared view action', () => {
     render(<PosReportsSalesTable rows={rows} />);
 
     const tableRegion = screen.getByRole('region', { name: 'Sales transactions table' });
@@ -60,7 +60,7 @@ describe('POS reports sales table', () => {
     ['Date/Time', 'Transaction/Invoice', 'Cashier', 'Payment Method', 'Sales Source', 'Net Sales (₱)', 'POS Profit/Loss (₱)'].forEach((label) => {
       expect(screen.getByRole('columnheader', { name: new RegExp(label.replace(/[()₱/]/g, '\\$&')) })).toBeTruthy();
     });
-    expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeTruthy();
     expect(screen.getAllByText('NFS-000125').length).toBeGreaterThan(0);
     expect(screen.getAllByText('John D.').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Cash').length).toBeGreaterThan(0);
@@ -73,6 +73,17 @@ describe('POS reports sales table', () => {
     expect(screen.getAllByText('₱30.00').length).toBeGreaterThan(0);
     expect(screen.getByText('Showing 1–3 of 3 sales transactions')).toBeTruthy();
 
+  });
+
+  it('opens transaction details from the row view action', () => {
+    render(<PosReportsSalesTable rows={rows} />);
+
+    const tableRegion = screen.getByRole('region', { name: 'Sales transactions table' });
+    fireEvent.click(within(tableRegion).getByRole('button', { name: 'View details for NFS-000125' }));
+
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Transaction Details')).toBeTruthy();
+    expect(within(dialog).getAllByText('NFS-000125').length).toBeGreaterThan(0);
   });
 
   it('keeps online dine-in orders separate from walk-in sales', () => {

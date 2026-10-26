@@ -41,12 +41,17 @@ describe('POS text-size integration contracts', () => {
         expect(terminalLayoutSource).toContain('data-testid="pos-desktop-terminal-indicator"');
         expect(terminalLayoutSource).toContain("className={posViewMode === 'checkout'");
         expect(terminalLayoutSource).toContain(": 'hidden'}");
+        expect(terminalLayoutSource.indexOf('data-testid="pos-header-park-slot"')).toBeLessThan(
+            terminalLayoutSource.indexOf('<PosTextSizeControl')
+        );
         expect(terminalLayoutSource.indexOf('<PosTextSizeControl')).toBeLessThan(
-            terminalLayoutSource.indexOf('data-testid="pos-header-park-slot"')
+            terminalLayoutSource.indexOf('{renderNotificationButton')
         );
+        expect(terminalLayoutSource).toContain('flex shrink-0 items-center gap-3 dgfy-pos-header-actions');
         expect(terminalLayoutSource).toContain(
-            'shrink-0 translate-x-2 items-center justify-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:h-10 lg:w-10 lg:translate-x-2.5'
+            'shrink-0 items-center justify-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:h-10 lg:w-10'
         );
+        expect(terminalLayoutSource).not.toContain('translate-x-2');
         expect(lockDrawerSource).toContain("import PosTextSizeControl from './PosTextSizeControl.jsx';");
         expect(lockDrawerSource).toContain('id="pos-text-size-lock-drawer"');
         expect(lockDrawerSource.indexOf('<PosTextSizeControl')).toBeLessThan(
@@ -66,12 +71,12 @@ describe('POS text-size integration contracts', () => {
         expect(appStylesSource).not.toMatch(/\.pos-text-size-control__trigger\s*\{[^}]*\bwidth\s*:/s);
     });
 
-    it('keeps the desktop terminal status beside the title at the POS desktop breakpoint', () => {
+    it('keeps the terminal status beside the title when the boxed badge is visible', () => {
         expect(terminalLayoutSource.indexOf('dgfy-pos-header-page-title-group')).toBeLessThan(
             terminalLayoutSource.indexOf('dgfy-pos-header-terminal-row')
         );
         expect(terminalLayoutSource).toContain('role="status"');
-        expect(appStylesSource).toContain('@media screen and (min-width: 1024px)');
+        expect(appStylesSource).toContain('@media screen and (min-width: 640px)');
         expect(appStylesSource).toContain('.dgfy-pos-topbar .dgfy-pos-header-page-title-group');
         expect(appStylesSource).toContain('.dgfy-pos-topbar .dgfy-pos-header-terminal-row');
     });

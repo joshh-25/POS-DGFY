@@ -3,6 +3,7 @@ import { BadgePercent, Edit3, Plus, Save, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { POS_MODAL_FOOTER_SURFACE_CLASS, POS_MODAL_HEADER_SURFACE_CLASS } from '../components/posModalStyles.js';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -341,8 +342,8 @@ export default function PosDiscountManagementPane({
       )}
 
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) closeDialog(); }} overlayClassName="bg-black/30 backdrop-blur-none">
-        <DialogContent className="w-[calc(100vw-1.5rem)] max-w-xl rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/20 sm:w-full">
-          <DialogHeader className="border-b border-slate-100 px-5 py-4 text-left sm:px-6">
+        <DialogContent className="w-[calc(100vw-1.5rem)] max-w-xl rounded-2xl border border-[#D9E5F3] bg-white p-0 shadow-2xl shadow-slate-950/15 sm:w-full">
+          <DialogHeader className={['rounded-t-2xl px-5 py-4 text-left sm:px-6', POS_MODAL_HEADER_SURFACE_CLASS].join(' ')}>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <DialogTitle className="text-[16px] font-extrabold text-[#0F172A]">
@@ -458,7 +459,7 @@ export default function PosDiscountManagementPane({
             </div>
           </div>
 
-          <DialogFooter className="flex-col-reverse items-stretch gap-2 border-t border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-6 sm:pt-4">
+          <DialogFooter className={['flex-col-reverse items-stretch gap-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-6 sm:pt-4', POS_MODAL_FOOTER_SURFACE_CLASS].join(' ')}>
             <Button
               type="button"
               variant="outline"

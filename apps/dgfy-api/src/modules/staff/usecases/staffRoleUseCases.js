@@ -2,12 +2,7 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { STAFF_CAPABILITIES, isKnownStaffCapability } from '../../shared/constants/staffCapabilities.js';
 import dbStore from '../../../utils/dbStore.js';
-import {
-  normalizePermissionArray,
-  normalizePermissionMode,
-  PERMISSION_MODES
-} from '../../../utils/userPermissions.js';
-import { plain } from '../repositories/staffRoleRepository.js';
+import { plain, applyStaffRoleAssignmentInTransaction } from '../repositories/staffRoleRepository.js';
 
 const errorMap = (error, fallback) => {
   if (error instanceof DomainError) return error;
@@ -65,47 +60,103 @@ export const buildUpdateStaffRoleUseCase = ({ repository, invalidateUserCache })
 }, 'Failed to update staff role', () => evictUsers(invalidateUserCache, tenantId, affectedUserIds));
 };
 
-export const buildSetStaffRoleStatusUseCase = ({ repository, invalidateUserCache }) => ({ staffRoleId, isActive, actorUserId }) => {
+export const buildSetStaffRoleStatusUseCase = ({
+  repository,
+  invalidateUserCache,
+  synchronizeInvitationCancellations,
+  logger = null
+}) => async ({ staffRoleId, isActive, actorUserId }) => {
   let affectedUserIds = [];
+  let cancelledInvitationCount = 0;
   const tenantId = dbStore.getStore()?.tenantId;
-  return run(repository, async (transaction) => {
-  const actor = id(actorUserId, 'actorUserId'); const role = await repository.findById(id(staffRoleId, 'staffRoleId'), { transaction, lock: true }); if (!role) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Staff role was not found', { statusCode: 404 });
-  await repository.update(role, { is_active: Boolean(isActive), updated_by: actor }, { transaction }); await audit(repository, actor, role.staff_role_id, 'UPDATE', { is_active: role.is_active }, transaction);
-  affectedUserIds = (await repository.findUsersByRoleId(role.staff_role_id, { transaction })).map((user) => user.user_id);
-  return { role: plain(role) };
-}, 'Failed to update staff role status', () => evictUsers(invalidateUserCache, tenantId, affectedUserIds));
+  const actor = id(actorUserId, 'actorUserId');
+  const normalizedRoleId = id(staffRoleId, 'staffRoleId');
+  const deactivating = !Boolean(isActive);
+  const cancelledAt = new Date();
+  const result = await run(repository, async (transaction) => {
+    const role = await repository.findById(normalizedRoleId, { transaction, lock: true });
+    if (!role) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Staff role was not found', { statusCode: 404 });
+
+    const previousIsActive = Boolean(role.is_active);
+    const statusChanged = previousIsActive !== Boolean(isActive);
+    if (statusChanged) {
+      await repository.update(role, { is_active: Boolean(isActive), updated_by: actor }, { transaction });
+    }
+
+    if (deactivating) {
+      const cancellation = await repository.cancelPendingInvitationsForRole(role.staff_role_id, {
+        actorUserId: actor,
+        cancelledAt,
+        transaction
+      });
+      cancelledInvitationCount = cancellation?.count || 0;
+    }
+
+    if (statusChanged) {
+      await audit(repository, actor, role.staff_role_id, 'UPDATE', {
+        is_active: Boolean(isActive),
+        previous_is_active: previousIsActive,
+        cancelled_pending_invitations_count: cancelledInvitationCount
+      }, transaction);
+    }
+
+    affectedUserIds = (await repository.findUsersByRoleId(role.staff_role_id, { transaction })).map((user) => user.user_id);
+    return { role: plain(role), cancelled_invitation_count: cancelledInvitationCount };
+  }, 'Failed to update staff role status', () => evictUsers(invalidateUserCache, tenantId, affectedUserIds));
+
+  if (!result.success || !deactivating) return result;
+
+  try {
+    const synchronization = await synchronizeInvitationCancellations?.({
+      tenantId,
+      staffRoleId: normalizedRoleId,
+      actorUserId: actor,
+      cancelledAt
+    });
+    return ok({
+      ...result.data,
+      invitation_sync_status: synchronizeInvitationCancellations ? 'complete' : 'not_configured',
+      cancelled_invitation_count: Math.max(cancelledInvitationCount, synchronization?.cancelled_count || 0)
+    });
+  } catch (error) {
+    logger?.error?.('[Staff roles] Invitation registry synchronization failed after role deactivation', {
+      tenant_id: tenantId,
+      staff_role_id: normalizedRoleId,
+      cancelled_invitation_count: cancelledInvitationCount,
+      error_name: error?.name || 'Error'
+    });
+    return ok({
+      ...result.data,
+      invitation_sync_status: 'retry_required',
+      cancelled_invitation_count: cancelledInvitationCount,
+      invitation_sync_message: 'Role deactivation and invitation cancellation were saved, but invitation registry synchronization needs retry.'
+    });
+  }
 };
 
 export const buildAssignStaffRoleToUserUseCase = ({ repository, invalidateUserCache }) => ({ userId, staffRoleId, actorUserId }) => {
   let affectedUserId = null;
   const tenantId = dbStore.getStore()?.tenantId;
   return run(repository, async (transaction) => {
-  const actor = id(actorUserId, 'actorUserId'); const target = await repository.findUserById(id(userId, 'userId'), { transaction, lock: true }); if (!target) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'User was not found', { statusCode: 404 });
-  let role = null; const normalizedRoleId = staffRoleId == null || staffRoleId === '' ? null : id(staffRoleId, 'staffRoleId'); if (normalizedRoleId) { role = await repository.findById(normalizedRoleId, { transaction }); if (!role) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Staff role was not found', { statusCode: 404 }); if (!role.is_active) throw new DomainError(DomainErrorCode.CONFLICT, 'Inactive staff roles cannot be assigned', { statusCode: 409 }); }
-  const previousPermissions = normalizePermissionArray(target.permissions);
-  const previousStaffRoleId = target.staff_role_id ?? null;
-  const previousPermissionMode = normalizePermissionMode(target.permission_mode);
-  const nextPermissionMode = normalizedRoleId ? PERMISSION_MODES.INHERIT : PERMISSION_MODES.CUSTOM;
-  const nextPermissions = [];
-  await target.update({ staff_role_id: normalizedRoleId, permissions: nextPermissions, permission_mode: nextPermissionMode }, { transaction });
-  await audit(repository, actor, target.user_id, 'UPDATE', {
-    previous_staff_role_id: previousStaffRoleId,
-    staff_role_id: normalizedRoleId,
-    previous_permissions: previousPermissions,
-    permissions: nextPermissions,
-    previous_permission_mode: previousPermissionMode,
-    permission_mode: nextPermissionMode,
-    permission_overrides_cleared: previousPermissions.length > 0 || previousPermissionMode === PERMISSION_MODES.CUSTOM
-  }, transaction, 'user');
+  const actor = id(actorUserId, 'actorUserId');
+  const normalizedRoleId = staffRoleId == null || staffRoleId === '' ? null : id(staffRoleId, 'staffRoleId');
+  let role = null;
+  if (normalizedRoleId) {
+    role = await repository.findById(normalizedRoleId, { transaction, lock: true });
+    if (!role) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Staff role was not found', { statusCode: 404 });
+    if (!role.is_active) throw new DomainError(DomainErrorCode.CONFLICT, 'Inactive staff roles cannot be assigned', { statusCode: 409 });
+  }
+  const target = await repository.findUserById(id(userId, 'userId'), { transaction, lock: true });
+  if (!target) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'User was not found', { statusCode: 404 });
+  const assignment = await applyStaffRoleAssignmentInTransaction({
+    repository,
+    target,
+    role,
+    actorUserId: actor,
+    transaction,
+    auditEntityType: 'user'
+  });
   affectedUserId = target.user_id;
-  return {
-    assignment: {
-      user_id: target.user_id,
-      staff_role_id: normalizedRoleId,
-      staff_role: role ? plain(role) : null,
-      permission_mode: nextPermissionMode,
-      effective_permissions: normalizedRoleId ? normalizePermissionArray(role?.capabilities) : []
-    }
-  };
+  return { assignment };
 }, 'Failed to assign staff role', () => evictUsers(invalidateUserCache, tenantId, affectedUserId ? [affectedUserId] : []));
 };

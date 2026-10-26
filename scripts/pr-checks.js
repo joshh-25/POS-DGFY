@@ -140,7 +140,7 @@ function splitLines(raw) {
 function parseArgs(argv) {
   const options = {
     tier: 'fast',
-    base: 'develop',
+    base: null,
     pr: null,
     post: false,
     report: null,
@@ -162,6 +162,16 @@ function parseArgs(argv) {
     throw new PrChecksError('INVALID_ARGS', '--tier must be fast or full');
   }
   return options;
+}
+
+function resolvePrBase(explicitBase, prJson) {
+  return explicitBase || (prJson && prJson.baseRefName) || 'develop';
+}
+
+function canPostLocalCi(base, verifiedPrBase) {
+  return Boolean(verifiedPrBase)
+    && base === verifiedPrBase
+    && (base === 'develop' || base === 'staging');
 }
 
 // --- changed-path detection -------------------------------------------------
@@ -548,7 +558,8 @@ async function main() {
   if (!options.pr) {
     options.pr = captureStdout('gh', ['pr', 'view', '--json', 'number', '-q', '.number']);
   }
-  const prJson = options.pr ? captureJson('gh', ['pr', 'view', String(options.pr), '--json', 'title,body,headRefOid,headRefName']) : null;
+  const prJson = options.pr ? captureJson('gh', ['pr', 'view', String(options.pr), '--json', 'title,body,headRefOid,headRefName,baseRefName']) : null;
+  options.base = resolvePrBase(options.base, prJson);
   options.prTitle = prJson && prJson.title;
   options.prBody = prJson && prJson.body;
   // #1560 PR #1562 review RF-1: an explicit --head always wins; otherwise fall back to
@@ -592,6 +603,15 @@ async function main() {
   console.log(`\n${comment}`);
 
   if (options.post) {
+    const verifiedPrBase = prJson && prJson.baseRefName;
+    if (!canPostLocalCi(options.base, verifiedPrBase)) {
+      const reason = verifiedPrBase
+        ? `base ${options.base} (live PR base: ${verifiedPrBase})`
+        : 'an unresolved PR base';
+      console.error(`[pr-checks] --post is limited to verified develop/staging PRs; refusing to post Local CI evidence for ${reason}.`);
+      process.exitCode = 1;
+      return;
+    }
     if (unavailability.reason === 'healthy') {
       console.error('[pr-checks] CI appears healthy — no override justified. Refusing to post (this tool is not a routine CI bypass).');
       process.exitCode = 1;
@@ -632,6 +652,8 @@ module.exports = {
   resolveAppVersionsCheckResult,
   buildCheckEnv,
   parseArgs,
+  resolvePrBase,
+  canPostLocalCi,
   detectComponents,
   classifyCiUnavailability,
   computeOverallResult,

@@ -44,23 +44,46 @@ export function usePosViewportMode() {
 
 export function usePosVisualViewportMetrics(enabled) {
   const [metrics, setMetrics] = useState(null);
+  const previousViewportRef = useRef(null);
 
   useEffect(() => {
     if (!enabled || typeof window === 'undefined') return undefined;
 
     const visualViewport = window.visualViewport;
-    const update = () => {
+    const update = (event) => {
       const visibleHeight = Math.max(0, Math.round(visualViewport?.height || window.innerHeight || 0));
+      const windowHeight = Math.max(0, Math.round(window.innerHeight || 0));
+      const windowWidth = Math.max(0, Math.round(window.innerWidth || 0));
       const offsetTop = Math.max(0, Math.round(visualViewport?.offsetTop || 0));
+      const previousViewport = previousViewportRef.current;
+      const focusedToggle = typeof document !== 'undefined'
+        && document.activeElement?.matches?.('input[type="checkbox"], input[type="radio"]');
+      const viewportWidthChanged = previousViewport && windowWidth !== previousViewport.windowWidth;
+
+      // Mobile browsers can report transient viewport movement after a toggle
+      // tap. Keep the sheet anchored until focus leaves the toggle; a width
+      // change still passes through so orientation changes can be applied.
+      if (event && focusedToggle && !viewportWidthChanged) return;
+
       const keyboardInset = visualViewport
         ? Math.max(0, Math.round(window.innerHeight - visibleHeight - offsetTop))
         : 0;
 
-      setMetrics({
+      const nextMetrics = {
         drawerMaxHeight: Math.max(180, visibleHeight - 8),
         formBodyMaxHeight: Math.max(120, visibleHeight - 160),
         keyboardInset
-      });
+      };
+      previousViewportRef.current = { visibleHeight, windowWidth };
+
+      setMetrics((currentMetrics) => (
+        currentMetrics
+          && currentMetrics.drawerMaxHeight === nextMetrics.drawerMaxHeight
+          && currentMetrics.formBodyMaxHeight === nextMetrics.formBodyMaxHeight
+          && currentMetrics.keyboardInset === nextMetrics.keyboardInset
+          ? currentMetrics
+          : nextMetrics
+      ));
     };
 
     update();
@@ -83,8 +106,17 @@ export function usePosFormFocusScroll(enabled) {
   const focusTimerRef = useRef(null);
 
   const scrollFocusedField = (target) => {
-    if (!target || typeof target.scrollIntoView !== 'function') return;
-    target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
+    const scrollContainer = formBodyRef.current;
+    if (!target || !scrollContainer?.contains(target)) return;
+    if (target.tagName === 'INPUT' && ['checkbox', 'radio'].includes(target.type)) return;
+
+    const containerRect = scrollContainer.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    if (targetRect.top < containerRect.top) {
+      scrollContainer.scrollTop = Math.max(0, scrollContainer.scrollTop - (containerRect.top - targetRect.top));
+    } else if (targetRect.bottom > containerRect.bottom) {
+      scrollContainer.scrollTop += targetRect.bottom - containerRect.bottom;
+    }
   };
 
   useEffect(() => {
@@ -116,6 +148,8 @@ export function usePosFormFocusScroll(enabled) {
     const target = event.target;
     if (!target || !formBodyRef.current?.contains(target)) return;
     if (focusTimerRef.current !== null && typeof window !== 'undefined') window.clearTimeout(focusTimerRef.current);
+    focusTimerRef.current = null;
+    if (target.tagName === 'INPUT' && ['checkbox', 'radio'].includes(target.type)) return;
 
     const scroll = () => scrollFocusedField(target);
     if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(scroll);
@@ -125,7 +159,7 @@ export function usePosFormFocusScroll(enabled) {
   return { formBodyRef, handleFocusCapture };
 }
 
-export function PosResponsiveFormDrawer({ children, onClose, viewportMode }) {
+export function PosResponsiveFormDrawer({ children, onClose, viewportMode, fillViewport = false }) {
   const [entered, setEntered] = useState(false);
   const viewportMetrics = usePosVisualViewportMetrics(true);
 
@@ -160,6 +194,13 @@ export function PosResponsiveFormDrawer({ children, onClose, viewportMode }) {
   if (typeof document === 'undefined') return null;
 
   const drawerWidth = viewportMode === 'tablet' ? 'w-[min(100%,42rem)]' : 'w-full';
+  const drawerStyle = viewportMetrics
+    ? {
+      bottom: `${viewportMetrics.keyboardInset}px`,
+      maxHeight: `${viewportMetrics.drawerMaxHeight}px`,
+      ...(fillViewport ? { height: `${viewportMetrics.drawerMaxHeight}px` } : {})
+    }
+    : undefined;
   const drawer = (
     <>
       <div
@@ -168,8 +209,8 @@ export function PosResponsiveFormDrawer({ children, onClose, viewportMode }) {
         onClick={onClose}
       />
       <div
-        style={viewportMetrics ? { bottom: `${viewportMetrics.keyboardInset}px`, maxHeight: `${viewportMetrics.drawerMaxHeight}px` } : undefined}
-        className={`fixed inset-x-0 bottom-0 z-[80] mx-auto flex h-auto max-h-[calc(100vh-1rem)] max-h-[calc(100dvh-1rem)] ${drawerWidth} flex-col overflow-hidden rounded-t-2xl border border-b-0 border-slate-200 bg-white shadow-[0_-12px_30px_rgba(0,0,0,0.16)] transition-transform duration-200 ease-out motion-reduce:transition-none ${entered ? 'translate-y-0' : 'translate-y-full'}`}
+        style={drawerStyle}
+        className={`fixed inset-x-0 bottom-0 z-[80] mx-auto flex ${fillViewport ? 'h-[calc(100vh-0.5rem)] h-[calc(100dvh-0.5rem)]' : 'h-auto'} max-h-[calc(100vh-1rem)] max-h-[calc(100dvh-1rem)] ${drawerWidth} flex-col overflow-hidden rounded-t-2xl border border-b-0 border-slate-200 bg-white shadow-[0_-12px_30px_rgba(0,0,0,0.16)] transition-transform duration-200 ease-out motion-reduce:transition-none ${entered ? 'translate-y-0' : 'translate-y-full'}`}
       >
         {children}
       </div>

@@ -9,7 +9,7 @@ import { buildExternalListingSnapshot } from '../../../services/storefrontDiscov
 import { bumpStorefrontDiscoveryCacheVersion } from '../../../services/storefrontDiscoveryCacheState.js';
 import { invalidateStorefrontDiscoverySharedSignatureCache } from '../../../services/storefrontDiscoveryFreshnessService.js';
 import { clearStorefrontDiscoveryRepositoryCache } from './storefrontDiscoveryRepository.js';
-import { EXTERNAL_REDIRECT_SITES } from '../domain/externalRedirectPolicy.js';
+import { EXTERNAL_REDIRECT_SITES, normalizeExternalSiteKey } from '../domain/externalRedirectPolicy.js';
 
 const refreshDiscovery = () => {
   bumpStorefrontDiscoveryCacheVersion();
@@ -32,6 +32,21 @@ const listingSummary = (row) => row ? {
   external_record_origin: row.external_record_origin,
   is_visible: row.is_visible
 } : null;
+
+export const getExternalListingEditableFields = (payload = {}) => {
+  const fields = [
+    'tenant_name', 'external_provider', 'external_reference_id', 'external_record_origin',
+    'external_storefront_url', 'workflow_mode'
+  ];
+  if (typeof payload.is_visible === 'boolean') fields.push('is_visible');
+  fields.push(
+    'storefront_open',
+    'latitude', 'longitude', 'address_line', 'storefront_tagline',
+    'supports_delivery', 'supports_pickup', 'supports_dine_in',
+    'source_updated_at', 'last_synced_at'
+  );
+  return fields;
+};
 
 export const externalRedirectRepository = {
   async listSites() {
@@ -64,6 +79,24 @@ export const externalRedirectRepository = {
     });
   },
 
+  async setSiteVisibility({ siteKey, showOnMap, admin }) {
+    const result = await sequelize.transaction(async (transaction) => {
+      const row = await ExternalRedirectSite.findOne({
+        where: { site_key: siteKey }, transaction, lock: transaction.LOCK.UPDATE
+      });
+      if (!row) return { status: 'not_found' };
+      if (row.show_on_map === showOnMap) return { status: 'unchanged', site: row.toJSON() };
+      const before = { site_key: row.site_key, show_on_map: row.show_on_map };
+      await row.update({ show_on_map: showOnMap, updated_by_admin_id: admin?.id || null }, { transaction });
+      await audit(admin, 'external_redirect_site_visibility_changed', before, {
+        site_key: siteKey, show_on_map: showOnMap
+      }, transaction);
+      return { status: 'updated', site: row.toJSON() };
+    });
+    if (result.status === 'updated') refreshDiscovery();
+    return result;
+  },
+
   async getVisibleListing(slug) {
     return StorefrontDiscoveryIndex.findOne({
       where: { slug, entity_type: 'external_listing', is_visible: true }
@@ -94,13 +127,7 @@ export const externalRedirectRepository = {
       if (duplicate) return { status: 'duplicate' };
       const before = listingSummary(existing);
       const snapshot = buildExternalListingSnapshot({ ...payload, slug });
-      const editableFields = [
-        'tenant_name', 'external_provider', 'external_reference_id', 'external_record_origin',
-        'external_storefront_url', 'workflow_mode', 'is_visible', 'storefront_open',
-        'latitude', 'longitude', 'address_line', 'storefront_tagline',
-        'supports_delivery', 'supports_pickup', 'supports_dine_in',
-        'source_updated_at', 'last_synced_at'
-      ];
+      const editableFields = getExternalListingEditableFields(payload);
       const row = existing
         ? await existing.update(Object.fromEntries(editableFields.map((field) => [field, snapshot[field]])), { transaction })
         : await StorefrontDiscoveryIndex.create(snapshot, { transaction });
@@ -108,6 +135,22 @@ export const externalRedirectRepository = {
       return { status: existing ? 'updated' : 'created', listing: row.toJSON() };
     });
     if (result.status === 'created' || result.status === 'updated') refreshDiscovery();
+    return result;
+  },
+
+  async setListingVisibility({ slug, isVisible, admin }) {
+    const result = await sequelize.transaction(async (transaction) => {
+      const row = await StorefrontDiscoveryIndex.findOne({
+        where: { slug, entity_type: 'external_listing' }, transaction, lock: transaction.LOCK.UPDATE
+      });
+      if (!row || !normalizeExternalSiteKey(row.external_provider)) return { status: 'not_found' };
+      if (row.is_visible === isVisible) return { status: 'unchanged', listing: row.toJSON() };
+      const before = listingSummary(row);
+      await row.update({ is_visible: isVisible }, { transaction });
+      await audit(admin, 'external_discovery_listing_visibility_changed', before, listingSummary(row), transaction);
+      return { status: 'updated', listing: row.toJSON() };
+    });
+    if (result.status === 'updated') refreshDiscovery();
     return result;
   },
 

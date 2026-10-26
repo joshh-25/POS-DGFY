@@ -62,7 +62,7 @@ export default function PosSingleDatePicker({
   const titleId = `${id}-title`;
   const descriptionId = `${id}-description`;
   const calendarToday = parseDateInput(todayDate) ? todayDate : getTodayInput();
-  const position = usePosReportsPopoverPosition({ open, anchorRef: triggerRef, maxWidth: 360 });
+  const position = usePosReportsPopoverPosition({ open, anchorRef: triggerRef, maxWidth: 360, fitContentHeight: true });
   const errorId = `${id}-error`;
   const displayValue = draftValue ?? formatDateInput(value);
 
@@ -140,6 +140,7 @@ export default function PosSingleDatePicker({
         onClose={() => setOpen(false)}
         mode="calendar"
         mobile={isMobileDialog}
+        fitContentHeight
         position={position}
         id={dialogId}
         ariaLabelledBy={titleId}

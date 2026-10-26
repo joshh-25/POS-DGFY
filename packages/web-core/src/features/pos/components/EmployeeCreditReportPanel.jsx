@@ -154,7 +154,6 @@ export default function EmployeeCreditReportPanel({
         emptyMessage={loading ? 'Loading Employee Credit activity...' : 'No Employee Credit activity for this period.'}
         searchEmptyMessage="No Employee Credit activity matches your search."
         resultLabel="activity entries"
-        showActions={false}
       />
     </div>
   );

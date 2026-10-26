@@ -28,7 +28,7 @@ import POSRefundWorkflowDialog from './POSRefundWorkflowDialog.jsx';
 import POSInlineVoidApprovalDialog from './POSInlineVoidApprovalDialog.jsx';
 import { formatPosTransactionPaymentMethods } from '../utils/posPaymentMethods.js';
 import { DELIVERY_PROVIDER_OPTIONS } from '../utils/posDeliveryProviders.js';
-import PosTableSurface, { POS_TABLE_HEADER_STANDARD_CLASS } from './PosTableSurface.jsx';
+import PosTableSurface, { POS_TABLE_HEADER_BLUE_TINT_CLASS, POS_TABLE_HEADER_STANDARD_CLASS } from './PosTableSurface.jsx';
 import PosTableActionButton from './PosTableActionButton.jsx';
 import PosTableDetailsDialog from './PosTableDetailsDialog.jsx';
 import PosCashierFilterControl from './PosCashierFilterControl.jsx';
@@ -45,7 +45,12 @@ import PosFilterDialogShell from './PosFilterDialogShell.jsx';
 import PosLineTabNavigation from './PosLineTabNavigation.jsx';
 import PosAppliedFilterChips from './PosAppliedFilterChips.jsx';
 import PosSearchField from './PosSearchField.jsx';
-import { POS_FILTER_TRIGGER_HEIGHT_CLASS, POS_TOOLBAR_CONTROL_HEIGHT_CLASS } from './posToolbarSizing.js';
+import {
+    POS_FILTER_TRIGGER_HEIGHT_CLASS,
+    POS_TOOLBAR_COMPACT_LABEL_CLASS,
+    POS_TOOLBAR_CONTROL_HEIGHT_CLASS,
+    POS_TOOLBAR_ICON_ACTION_CLASS
+} from './posToolbarSizing.js';
 import { formatPosDateRangeLabel } from './posFilterLabelUtils.js';
 
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
@@ -601,6 +606,8 @@ export default function POSTransactionHistoryPanel({
     const activeFilterCount = activeFilterChips.length;
     const hasActiveDateFilter = Boolean(historyDateFrom || historyDateTo);
     const isMobileViewport = Boolean(isMobileViewportProp) || detectedMobileViewport;
+    const isPhoneHistoryToolbar = isMobileViewport && !isTabletTableViewport;
+    const isCompactHistoryToolbar = isPhoneHistoryToolbar || isTabletTableViewport;
     const isLandscapeMobileViewport = (isMobileViewport && detectedLandscapeViewport)
         || isPosHistoryNarrowLandscapeMobileViewport()
         || detectedLandscapePanelViewport;
@@ -686,12 +693,15 @@ export default function POSTransactionHistoryPanel({
                 window.innerHeight - viewportPadding - minDialogHeight
             )
         );
+        const availableHeight = window.innerHeight - top - viewportPadding;
 
         setFilterDialogPosition({
             left,
             top,
             width: panelWidth,
-            maxHeight: Math.min(768, Math.max(240, window.innerHeight - top - viewportPadding))
+            maxHeight: mode === 'calendar' && availableHeight >= 560
+                ? null
+                : Math.min(768, Math.max(240, availableHeight))
         });
     }, [filterDialogMode]);
 
@@ -824,6 +834,7 @@ export default function POSTransactionHistoryPanel({
             ariaLabel="Transaction sources"
             idPrefix="pos-history-source-tab"
             panelId="pos-history-table-panel"
+            hideScrollbar
         />
     );
 
@@ -1018,7 +1029,11 @@ export default function POSTransactionHistoryPanel({
                     </div>
                 )}
 
-                <div data-testid="pos-history-toolbar" className={`${isMobileViewport ? 'flex flex-nowrap gap-2 flex-row w-full px-0 py-0' : 'flex flex-nowrap gap-2 lg:gap-3 items-center pb-4 pt-2'}`}>
+                <div data-testid="pos-history-toolbar" className={`pos-history-toolbar ${isPhoneHistoryToolbar ? 'flex w-full min-w-0 flex-col gap-2 px-0 py-0' : 'flex flex-nowrap items-center gap-2 pb-4 pt-2 min-[1024px]:gap-3'}`}>
+                    <div
+                        data-testid="pos-history-primary-actions"
+                        className={`${isPhoneHistoryToolbar ? 'w-full' : 'flex-1'} pos-history-primary-actions flex min-w-0 items-center gap-2`}
+                    >
                     <PosSearchField
                         ariaLabel="Search all transaction fields"
                         value={historySearch}
@@ -1026,9 +1041,9 @@ export default function POSTransactionHistoryPanel({
                         onClear={() => setHistorySearch('')}
                         placeholder="Search all transaction fields..."
                         inputClassName={POS_TOOLBAR_CONTROL_HEIGHT_CLASS}
-                        className={`flex-1 ${isMobileViewport ? 'basis-0' : 'basis-[18rem]'}`}
+                        className={`min-w-0 flex-1 ${isMobileViewport ? 'basis-0' : 'basis-[18rem]'}`}
                     />
-                    <div className="flex shrink-0 items-center gap-2">
+                    <div className="flex max-w-full shrink-0 items-center gap-2">
                             <Button
                                 type="button"
                                 data-testid="pos-history-filter-button"
@@ -1038,10 +1053,10 @@ export default function POSTransactionHistoryPanel({
                             aria-expanded={filterDialogOpen && filterDialogMode === 'filters'}
                             aria-controls="pos-history-filter-dialog"
                             variant="outline"
-                            className={`${isMobileViewport ? 'relative w-11 min-w-0 px-0' : 'relative min-w-[6.25rem] px-4'} ${POS_FILTER_TRIGGER_HEIGHT_CLASS} shrink-0 rounded-xl border-[#1A4E8D] bg-[#1A4E8D] text-[13px] font-extrabold text-white hover:bg-[#143F73] hover:text-white`}
+                            className={`relative ${POS_FILTER_TRIGGER_HEIGHT_CLASS} ${POS_TOOLBAR_ICON_ACTION_CLASS} gap-1 rounded-xl border-[#1A4E8D] bg-[#1A4E8D] text-[13px] font-extrabold text-white hover:bg-[#143F73] hover:text-white min-[1024px]:gap-1.5`}
                         >
-                            <Filter className={`${isMobileViewport ? '' : 'mr-2'} h-4 w-4`} aria-hidden="true" />
-                            {isMobileViewport ? <span className="sr-only">Filter</span> : 'Filter'}
+                            <Filter className="h-4 w-4" aria-hidden="true" />
+                            <span className={POS_TOOLBAR_COMPACT_LABEL_CLASS}>Filter</span>
                             <PosFilterCountBadge count={activeFilterCount} />
                         </Button>
                         <Button
@@ -1053,10 +1068,10 @@ export default function POSTransactionHistoryPanel({
                             aria-expanded={filterDialogOpen && filterDialogMode === 'calendar'}
                             aria-controls="pos-history-calendar-dialog"
                             variant="outline"
-                            className={`${isMobileViewport ? 'w-11 min-w-0 px-0' : 'min-w-[8.75rem] px-4'} ${POS_FILTER_TRIGGER_HEIGHT_CLASS} shrink-0 whitespace-nowrap rounded-xl border-[#1A4E8D] text-[13px] font-extrabold text-[#1A4E8D] hover:bg-blue-50 ${hasActiveDateFilter ? 'bg-blue-50' : 'bg-white'}`}
+                            className={`${POS_FILTER_TRIGGER_HEIGHT_CLASS} ${POS_TOOLBAR_ICON_ACTION_CLASS} gap-1 whitespace-nowrap rounded-xl border-[#1A4E8D] text-[13px] font-extrabold text-[#1A4E8D] hover:bg-blue-50 min-[1024px]:gap-1.5 ${hasActiveDateFilter ? 'bg-blue-50' : 'bg-white'}`}
                         >
-                            <CalendarDays className={`${isMobileViewport ? '' : 'mr-2'} h-4 w-4`} aria-hidden="true" />
-                            {isMobileViewport ? <span className="sr-only">Filter by Date</span> : 'Filter by Date'}
+                            <CalendarDays className="h-4 w-4" aria-hidden="true" />
+                            <span className={POS_TOOLBAR_COMPACT_LABEL_CLASS}>Filter by Date</span>
                         </Button>
                         <Button
                             type="button"
@@ -1066,30 +1081,36 @@ export default function POSTransactionHistoryPanel({
                             size="icon"
                             aria-label={pendingSyncLabel}
                             title={pendingSyncLabel}
-                            className={`${isMobileViewport ? 'w-11' : 'w-10'} ${POS_TOOLBAR_CONTROL_HEIGHT_CLASS} shrink-0 rounded-xl bg-[#1A4E8D] p-0 text-white shadow-lg shadow-blue-900/20 hover:bg-[#143F73] disabled:cursor-not-allowed disabled:opacity-60`}
+                            className={`${POS_TOOLBAR_CONTROL_HEIGHT_CLASS} w-11 shrink-0 rounded-xl bg-[#1A4E8D] p-0 text-white shadow-lg shadow-blue-900/20 hover:bg-[#143F73] disabled:cursor-not-allowed disabled:opacity-60`}
                         >
                             <RefreshCcw className={`h-4 w-4 ${syncingPendingTransactions ? 'animate-spin' : ''}`} aria-hidden="true" />
                         </Button>
-                        {inlineVoidApprovalEnabled && canReviewVoidApprovals ? (
+                    </div>
+                    </div>
+                    {inlineVoidApprovalEnabled && canReviewVoidApprovals ? (
+                        <div
+                            data-testid="pos-history-void-approval-row"
+                            className={`${isPhoneHistoryToolbar ? 'flex w-full justify-end' : 'flex shrink-0'}`}
+                        >
                             <Button
                                 type="button"
                                 data-testid="pos-history-void-approval-button"
                                 onClick={() => void openVoidApprovalQueue()}
-                                size={isMobileViewport ? 'icon' : 'default'}
+                                size={isTabletTableViewport ? 'icon' : 'default'}
                                 aria-label="Open POS approval requests"
                                 title="Open POS approval requests"
-                                className={`${isMobileViewport ? 'relative w-11 px-0' : 'min-w-[8.5rem] px-3'} ${POS_TOOLBAR_CONTROL_HEIGHT_CLASS} shrink-0 rounded-xl bg-amber-600 text-white shadow-lg shadow-amber-900/15 hover:bg-amber-700`}
+                                className={`${isTabletTableViewport ? 'relative w-11 px-0' : 'min-w-[8.5rem] px-3'} ${POS_TOOLBAR_CONTROL_HEIGHT_CLASS} shrink-0 rounded-xl bg-amber-600 text-white shadow-lg shadow-amber-900/15 hover:bg-amber-700`}
                             >
-                                <ClipboardCheck className={`${isMobileViewport ? '' : 'mr-2'} h-4 w-4`} aria-hidden="true" />
-                                {isMobileViewport ? <span className="sr-only">POS approvals</span> : 'POS approvals'}
+                                <ClipboardCheck className={`${isTabletTableViewport ? '' : 'mr-2'} h-4 w-4`} aria-hidden="true" />
+                                {isTabletTableViewport ? <span className="sr-only">POS approvals</span> : 'POS approvals'}
                                 {voidApprovalQueue.length > 0 ? (
-                                    <span className={`${isMobileViewport ? 'absolute -right-1 -top-1' : 'ml-1.5'} inline-flex min-w-5 items-center justify-center rounded-full bg-white px-1 text-[10px] font-black text-amber-700`}>
+                                    <span className={`${isTabletTableViewport ? 'absolute -right-1 -top-1' : 'ml-1.5'} inline-flex min-w-5 items-center justify-center rounded-full bg-white px-1 text-[10px] font-black text-amber-700`}>
                                         {voidApprovalQueue.length > 99 ? '99+' : voidApprovalQueue.length}
                                     </span>
                                 ) : null}
                             </Button>
-                        ) : null}
-                    </div>
+                        </div>
+                    ) : null}
                     <p className="sr-only" aria-live="polite">
                             {universalPendingSyncCount > 0
                                 ? `${universalPendingSyncCount} pending POS record${universalPendingSyncCount === 1 ? '' : 's'} waiting to sync`
@@ -1117,6 +1138,7 @@ export default function POSTransactionHistoryPanel({
                     onClose={closeFilterDialog}
                     mode={filterDialogMode}
                     mobile={isMobileDialog}
+                    fitContentHeight={filterDialogMode === 'calendar'}
                     tabletPortrait={isTabletPortraitDialog}
                     landscapeMobile={isLandscapeMobileViewport}
                     position={filterDialogPosition}
@@ -1337,7 +1359,7 @@ export default function POSTransactionHistoryPanel({
                                 )}
                             </colgroup>
                             <thead className={POS_TABLE_HEADER_STANDARD_CLASS}>
-                                <tr className="border-b border-slate-200 bg-white text-[#0F172A] whitespace-nowrap">
+                                <tr className={`${POS_TABLE_HEADER_BLUE_TINT_CLASS} whitespace-nowrap`}>
                                     <th scope="col" className="dgfy-pos-history-header-cell px-2.5 text-left text-[13px] font-black">Invoice</th>
                                     <th scope="col" className="dgfy-pos-history-header-cell px-2.5 text-left text-[13px] font-black">Date &amp; Time</th>
                                     <th scope="col" className="dgfy-pos-history-header-cell px-2.5 text-left text-[13px] font-black">Source</th>
