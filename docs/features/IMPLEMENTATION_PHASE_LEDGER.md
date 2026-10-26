@@ -32996,7 +32996,8 @@ of this phase.
 ### Status
 
 `in_progress` — implementation and local feature validation are complete on the `develop`-based
-worker branch; app-version policy resolution and PR review remain outstanding.
+worker branch; PR review and merge remain outstanding. App versions stay unchanged on this
+`develop` PR per Pat's explicit direction in #2048; the conflicting ADR wording is recorded below.
 
 ### Dependencies
 
@@ -33033,7 +33034,7 @@ prose and this phase ledger.
   current feature/API prose; stable `proventus` keys and links are unchanged.
 - [x] No schema, migration, dependency, or public API-shape change is introduced.
 - [x] Focused Storefront, Admin, and API tests; Storefront/Admin builds; API syntax; architecture,
-  docs, compliance, and diff checks are recorded below. Version-policy resolution remains pending.
+  docs, compliance, version-policy, and diff checks are recorded below.
 - [x] Local rendered desktop and mobile discovery QA is recorded; no cloud or deployment action is
   performed.
 
@@ -33045,7 +33046,7 @@ prose and this phase ledger.
 - Builds: `npm --prefix apps/dgfy-storefront run build:store` and `npm --prefix apps/dgfy-admin run build:admin` — **PASS**. Storefront emitted the existing large-chunk advisory.
 - Changed-source lint — **PASS, 0 errors**. Storefront full lint exits 0 with 140 warnings; Admin full lint exits 0 with 2 warnings. API full lint has 3 errors in untouched `dgfyAccountRepository.js` and `staffRoleUseCases.js`; the changed API source files lint cleanly.
 - Governance: `npm run check:architecture` **PASS** (63 modules / 802 code files; 116 controller files); `npm run lint:docs` **PASS** (36 governed docs / 106 ADRs); `npm run check:compliance` **PASS** (no compliance-sensitive changes); `git diff --check` **PASS**.
-- Version policy: `GITHUB_BASE_REF=develop GITHUB_HEAD_REF=feat/2833-discovery-native-only-defaults npm run check:app-versions -- --staged` **PASS** for unchanged API, Storefront, and Admin floors under the checker’s `unchanged` mode. This conflicts with ADR 0081 Decision 6, which requires a version increase for changed apps on a normal `develop` PR. The implement skill and checker require unchanged floors. The package metadata decision is pending operator direction; no app versions have been changed.
+- Version policy: no app package or lockfile versions change in this PR. Pat's 2026-09-27 direction in [#2048](https://github.com/Sieitzz/dgfy-platform/issues/2048#issuecomment-5855120969) says develop work does not bump versions and promotion handles the bump. After restoring the original app floors, `GITHUB_BASE_REF=develop GITHUB_HEAD_REF=feat/2833-discovery-native-only-defaults npm run check:app-versions` **PASSes** for API `1.51.0`, Storefront `1.44.0`, and Admin `1.15.1` under the checker's `unchanged` mode. ADR 0081 Decision 6 still says ordinary `develop` PRs require any increase, so the ADR conflicts with the explicit operator direction, current checker, and implement skill. The related open [#1568](https://github.com/Sieitzz/dgfy-platform/issues/1568) tracks the Worker version-bump obligation and needs reconciliation; no global policy or tooling change is part of #2833.
 - Local rendered QA: desktop `/map-dgfy` synthetic-fixture captures show two native pins/cards by default, only the mapped Proventous row after explicit Job selection, and native-only results after free-text search. Mobile `/map-dgfy` at 390×844 shows populated content and native-only pins/cards; partner, unknown-provider, and unclassified rows are absent, with no page errors. Screenshots are local-only under `.tmp/qa-2833/`; requests to non-local origins were blocked. No cloud or deployment action was performed.
 
 ### Risks and non-goals
