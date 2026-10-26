@@ -2,13 +2,40 @@
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { unlinkSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 const ACTIONS = new Set(["inspect", "prepare", "apply", "verify", "rollback"]);
-const manifestPath = resolve(process.env.DGLAUNDRY_CONNECTION_MANIFEST || "docs/integrations/dglaundry-connection-manifest.json");
 const args = process.argv.slice(2);
+const manifestPath = resolve(option("manifest") || process.env.DGLAUNDRY_CONNECTION_MANIFEST || "docs/integrations/dglaundry-connection-manifest.json");
 const action = args[0] || "inspect";
 const environment = option("environment") || "staging";
+const approvedEnvironmentTargets = {
+  development: {
+    issuer: "https://api.dev.dgfy.ph/oidc",
+    partnerApiOrigin: "https://api.dev.dgfy.ph",
+    staffOrigin: "https://laundry.surebizcorp.com",
+    apiOrigin: "https://laundry.surebizcorp.com",
+    callback: "https://laundry.surebizcorp.com/api/v1/session/dgfy/callback",
+    storefrontOrigin: "https://dev.dgfy.ph"
+  },
+  staging: {
+    issuer: "https://api.stage.dgfy.ph/oidc",
+    partnerApiOrigin: "https://api.stage.dgfy.ph",
+    staffOrigin: "https://dglaundry.stage.dgfy.ph",
+    apiOrigin: "https://dglaundry.stage.dgfy.ph",
+    callback: "https://dglaundry.stage.dgfy.ph/api/v1/session/dgfy/callback",
+    storefrontOrigin: "https://stage.dgfy.ph"
+  },
+  production: {
+    issuer: "https://api.dgfy.ph/oidc",
+    partnerApiOrigin: "https://api.dgfy.ph",
+    staffOrigin: "https://dglaundry.dgfy.ph",
+    apiOrigin: "https://dglaundry.dgfy.ph",
+    callback: "https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback",
+    storefrontOrigin: "https://dgfy.ph"
+  }
+};
+const deployEnvironmentLabels = { development: "dev", staging: "staging", production: "prod" };
 const configDir = option("config-dir") || process.env.DGLAUNDRY_CONNECTION_CONFIG_DIR || "";
 // Optional: the host's actual Compose .env file (e.g. /opt/dgfy-stage/.env). When set, `apply`
 // also merges its generated connection variables into this file, using the same preserve-unmanaged
@@ -21,8 +48,8 @@ const composeEnvFile = option("compose-env-file") || process.env.DGLAUNDRY_CONNE
 const composeEnvPath = composeEnvFile ? resolve(composeEnvFile) : null;
 
 if (!ACTIONS.has(action)) fail("SETUP_ACTION_INVALID", `Use one of: ${[...ACTIONS].join(", ")}`);
-if (!["staging", "production"].includes(environment)) fail("SETUP_ENVIRONMENT_INVALID", "Use staging or production.");
-if (environment === "production" && ["prepare", "apply", "rollback"].includes(action)) fail("PRODUCTION_APPLY_FORBIDDEN", "This package can prepare, apply, or roll back staging only.");
+if (!["development", "staging", "production"].includes(environment)) fail("SETUP_ENVIRONMENT_INVALID", "Use development, staging, or production.");
+if (environment === "production" && ["prepare", "apply", "rollback"].includes(action)) fail("PRODUCTION_APPLY_FORBIDDEN", "This package can prepare, apply, or roll back development and staging only.");
 
 const manifest = await loadJson(manifestPath, "MANIFEST_UNREADABLE");
 validateManifest(manifest);
@@ -75,7 +102,8 @@ if (root && ["prepare", "apply", "rollback"].includes(action)) {
 }
 
 if (action === "inspect") {
-  const report = { action, environment, manifestVersion: manifest.manifestVersion, manifestSha256: manifestDigest, contractHashes: manifest.contractHashes, registrationStatus: target.registrationStatus, target: { issuer: target.issuer, partnerApiOrigin: target.partnerApiOrigin, apiOrigin: target.apiOrigin, storefrontOrigin: target.storefrontOrigin, staffOrigin: environmentOrigins(manifest, target).staffOrigin, callback: environmentOrigins(manifest, target).callback, paymentMode: target.paymentMode, clientIds: { browser: target.dglaundryBrowserClientId, machine: target.dglaundryMachineClientId, service: target.dglaundryServiceClientId, partnerApp: target.dglaundryPartnerAppId }, keyIds: target.keyIds }, configDir: root ? root : null, registrationInputsConfigured: Object.fromEntries(Object.entries(setupInputs).map(([name, value]) => [name, Boolean(value)])), prerequisites: { ...(await prerequisites(root)), browserClientSecretFile: root ? await privateFileReady(join(root, "dglaundry-oidc-client-secret")) : false }, privateValues: "not-read" };
+  const origins = environmentOrigins(manifest, target);
+  const report = { action, environment, manifestVersion: manifest.manifestVersion, manifestSha256: manifestDigest, contractHashes: manifest.contractHashes, registrationStatus: target.registrationStatus, target: { issuer: target.issuer, partnerApiOrigin: target.partnerApiOrigin, apiOrigin: target.apiOrigin, storefrontOrigin: target.storefrontOrigin, staffOrigin: origins.staffOrigin, callback: origins.callback, paymentMode: target.paymentMode, clientIds: { browser: target.dglaundryBrowserClientId, machine: target.dglaundryMachineClientId, service: target.dglaundryServiceClientId, partnerApp: target.dglaundryPartnerAppId }, keyIds: target.keyIds }, configDir: root ? root : null, registrationInputsConfigured: Object.fromEntries(Object.entries(setupInputs).map(([name, value]) => [name, Boolean(value)])), prerequisites: { ...(await prerequisites(root)), browserClientSecretFile: root ? await privateFileReady(join(root, "dglaundry-oidc-client-secret")) : false }, privateValues: "not-read" };
   console.log(JSON.stringify(report, null, 2));
 } else if (action === "prepare") {
   await mkdir(join(root, "keys"), { recursive: true });
@@ -87,8 +115,9 @@ if (action === "inspect") {
   await ensureExternalPublicKey(root, manifest.keyRoles.dglaundryRequestSigning);
   await ensureExternalPublicKey(root, manifest.keyRoles.dglaundryEventSigning);
   const previous = await readManagedEnv(envPath);
-  const candidate = await renderEnv(root, manifest, target, previous);
-  const candidateWithPreserved = mergeEnv(previous, candidate);
+  const generatedEnv = await renderEnv(root, manifest, target, previous);
+  const managedKeys = [...new Set([...String(generatedEnv).split(/\r?\n/).filter(Boolean).map((line) => line.slice(0, line.indexOf("="))), "DGFY_OIDC_JWKS_KEYS_JSON"])];
+  const candidateWithPreserved = mergeEnv(previous, generatedEnv);
   const previousExisted = await exists(envPath);
   const candidateSha256 = digest(candidateWithPreserved);
   const existingState = await loadState();
@@ -100,26 +129,39 @@ if (action === "inspect") {
   if (existingState?.status === "applying") fail("INTERRUPTED_APPLY_RECOVERY_REQUIRED", "An earlier apply was interrupted; rerun apply to recover its recorded transaction before preparing again.");
   if (!alreadyApplied) {
     await writeAtomic(candidatePath, candidateWithPreserved, 0o600);
-    await writeState({ status: "prepared", environment, manifestSha256: manifestDigest, generated, registrationIds: setupInputs, candidateSha256, previousSha256: digest(previous), previousExisted, previous: null });
+    await writeState({ status: "prepared", environment, manifestSha256: manifestDigest, generated, registrationIds: setupInputs, managedKeys, candidateSha256, previousSha256: digest(previous), previousExisted, previous: null });
   }
   console.log(JSON.stringify({ action, environment, manifestSha256: manifestDigest, generated, publicKeys: await publicKeyMetadata(root, manifest, target), candidate: "dglaundry-connection.env.candidate", preservedUnmanagedSettings: true, alreadyApplied, privateValues: "not-reported" }, null, 2));
 } else if (action === "apply") {
   if (!args.includes("--confirm")) fail("APPLY_CONFIRMATION_REQUIRED", "Re-run apply with --confirm after reviewing the prepared configuration.");
-  if (target.registrationStatus !== "registered" || !String(target.registrationEvidence || "").trim()) fail("PROVIDER_REGISTRATION_UNCONFIRMED", "Staging apply is blocked until DGFY records the registered client identities and evidence in the reviewed manifest.");
+  if (target.registrationStatus !== "registered" || !String(target.registrationEvidence || "").trim()) fail("PROVIDER_REGISTRATION_UNCONFIRMED", `${environment} apply is blocked until DGFY records the registered client identities and evidence in the reviewed manifest.`);
   if (!(await privateFileReady(join(root, "dglaundry-oidc-client-secret")))) fail("BROWSER_CLIENT_SECRET_REQUIRED", "Install the browser-client secret through the approved secret manager with owner-only file permissions before apply.");
   for (const role of Object.keys(manifest.keyRoles)) {
-    if (!/^[a-f0-9]{64}$/i.test(String(target.keyFingerprintsSha256[role] || ""))) fail("PUBLIC_KEY_FINGERPRINT_REQUIRED", `Staging apply is blocked until the reviewed manifest records the ${role} public-key fingerprint.`);
+    if (!/^[a-f0-9]{64}$/i.test(String(target.keyFingerprintsSha256[role] || ""))) fail("PUBLIC_KEY_FINGERPRINT_REQUIRED", `${environment} apply is blocked until the reviewed manifest records the ${role} public-key fingerprint.`);
   }
   const prepared = await loadState();
   if (!prepared || prepared.manifestSha256 !== manifestDigest || prepared.environment !== environment || !["prepared", "applying", "applied"].includes(prepared.status)) fail("PREPARED_STATE_INVALID", "Run prepare and review its manifest-bound output first.");
+  if (!Array.isArray(prepared.managedKeys)) fail("PREPARED_STATE_INVALID", "The prepared state does not record its managed key set; run prepare again.");
   await ensureFile(candidatePath, "PREPARED_CONFIGURATION_MISSING");
   const candidate = await readText(candidatePath);
   if (digest(candidate) !== prepared.candidateSha256) fail("PREPARED_CONFIGURATION_CHANGED", "The prepared configuration changed after review; run prepare again.");
+  let composeEnvSync = prepared.composeEnvSync || null;
+  if (composeEnvPath) {
+    if (composeEnvSync && composeEnvSync.path !== composeEnvPath) fail("COMPOSE_ENV_FILE_MISMATCH", "The prepared transaction is bound to a different --compose-env-file path.");
+    if (!composeEnvSync) {
+      if (prepared.status === "applied") fail("COMPOSE_ENV_ROLLBACK_STATE_MISSING", "This applied state predates Compose rollback tracking; run prepare again before synchronizing another Compose env file.");
+      composeEnvSync = await prepareComposeEnvSync(composeEnvPath, candidate, prepared.managedKeys);
+    }
+  }
   const previous = await readManagedEnv(envPath);
   const currentExisted = await exists(envPath);
   if (prepared.status === "applied") {
     if (currentExisted && digest(previous) === prepared.envSha256 && digest(candidate) === prepared.envSha256) {
-      console.log(JSON.stringify({ action, environment, status: "already-applied", manifestSha256: manifestDigest, privateValues: "not-reported" }, null, 2));
+      if (composeEnvSync) {
+        await syncComposeEnv(composeEnvSync, candidate);
+        if (composeEnvSync.status !== "applied") await writeState({ ...prepared, composeEnvSync: { ...composeEnvSync, status: "applied" } });
+      }
+      console.log(JSON.stringify({ action, environment, status: "already-applied", manifestSha256: manifestDigest, composeEnvFile: composeEnvSync?.path || null, composeEnvSynced: Boolean(composeEnvSync), privateValues: "not-reported" }, null, 2));
       exitSetup();
     }
     fail("APPLIED_CONFIGURATION_DRIFT", "The applied configuration changed after success; inspect the diff and prepare a new reviewed change.");
@@ -128,7 +170,11 @@ if (action === "inspect") {
   if (isAlreadyApplied) {
     const applied = { ...prepared, status: "applied", envSha256: prepared.candidateSha256, recoveredAfterInterruptedApply: true };
     await writeState(applied);
-    console.log(JSON.stringify({ action, environment, status: "applied", recoveredAfterInterruptedApply: true, manifestSha256: manifestDigest, privateValues: "not-reported" }, null, 2));
+    if (composeEnvSync) {
+      await syncComposeEnv(composeEnvSync, candidate);
+      await writeState({ ...applied, composeEnvSync: { ...composeEnvSync, status: "applied" } });
+    }
+    console.log(JSON.stringify({ action, environment, status: "applied", recoveredAfterInterruptedApply: true, manifestSha256: manifestDigest, composeEnvFile: composeEnvSync?.path || null, composeEnvSynced: Boolean(composeEnvSync), privateValues: "not-reported" }, null, 2));
     exitSetup();
   }
   if (prepared.status === "prepared" && (currentExisted !== Boolean(prepared.previousExisted) || digest(previous) !== prepared.previousSha256)) fail("APPLIED_CONFIGURATION_DRIFT", "The managed configuration changed after prepare; inspect the difference and prepare again.");
@@ -142,21 +188,25 @@ if (action === "inspect") {
       const snapshot = await readManagedEnv(join(root, prepared.previous));
       if (digest(snapshot) !== prepared.previousSha256) fail("ROLLBACK_SNAPSHOT_INVALID", "The interrupted apply rollback snapshot changed; refusing recovery.");
     }
-    applying = prepared;
+    applying = { ...prepared, ...(composeEnvSync ? { composeEnvSync: { ...composeEnvSync, status: "prepared" } } : {}) };
   } else {
     let previousReference = "absent";
     if (currentExisted) {
       previousReference = `dglaundry-connection.env.previous.${randomUUID()}`;
       await writeAtomic(join(root, previousReference), previous, 0o600);
     }
-    applying = { ...prepared, status: "applying", previous: previousReference, previousSha256: digest(previous), previousExisted: currentExisted };
+    applying = { ...prepared, ...(composeEnvSync ? { composeEnvSync: { ...composeEnvSync, status: "prepared" } } : {}), status: "applying", previous: previousReference, previousSha256: digest(previous), previousExisted: currentExisted };
   }
   await writeState(applying);
   await writeAtomic(envPath, candidate, 0o600);
-  const applied = { ...applying, status: "applied", envSha256: digest(candidate) };
+  let applied = { ...applying, status: "applied", envSha256: digest(candidate) };
   await writeState(applied);
-  const composeEnvSynced = composeEnvPath ? await syncComposeEnv(composeEnvPath, candidate) : false;
-  console.log(JSON.stringify({ action, environment, status: "applied", manifestSha256: manifestDigest, previous: applied.previous, composeEnvFile: composeEnvPath, composeEnvSynced, privateValues: "not-reported" }, null, 2));
+  if (composeEnvSync) {
+    await syncComposeEnv(composeEnvSync, candidate);
+    applied = { ...applied, composeEnvSync: { ...composeEnvSync, status: "applied" } };
+    await writeState(applied);
+  }
+  console.log(JSON.stringify({ action, environment, status: "applied", manifestSha256: manifestDigest, previous: applied.previous, composeEnvFile: composeEnvSync?.path || null, composeEnvSynced: Boolean(composeEnvSync), privateValues: "not-reported" }, null, 2));
 } else if (action === "verify") {
   const state = await loadState();
   const appliedEnv = await readText(envPath);
@@ -166,6 +216,17 @@ if (action === "inspect") {
   checks.push(check("provider-registration-evidence", target.registrationStatus === "registered" && Boolean(String(target.registrationEvidence || "").trim())));
   checks.push(check("configuration", Boolean(root && await exists(envPath))));
   checks.push(check("configuration-digest", Boolean(state?.envSha256 && digest(appliedEnv) === state.envSha256)));
+  if (state?.composeEnvSync) checks.push(check("compose-env-sync", await composeEnvMatches(state.composeEnvSync)));
+  const expectedPaymentMode = target.paymentMode === "sandbox" ? "test" : "live";
+  checks.push(check("hosted-runtime-and-payment-mode", envValue(appliedEnv, "DGLAUNDRY_INTEGRATION_ENABLED") === "true"
+    && envValue(appliedEnv, "NODE_ENV") === "production"
+    && envValue(appliedEnv, "DEPLOY_ENV_LABEL") === deployEnvironmentLabels[environment]
+    && envValue(appliedEnv, "PAYMONGO_MODE") === expectedPaymentMode));
+  checks.push(check("issuer-and-callback", envValue(appliedEnv, "DGFY_OIDC_ISSUER") === target.issuer
+    && envValue(appliedEnv, "DGFY_DGLAUNDRY_REDIRECT_URI") === target.callback));
+  checks.push(check("connection-environment", envValue(appliedEnv, "DGLAUNDRY_CONNECTION_ENVIRONMENT") === environment
+    && envValue(appliedEnv, "DGLAUNDRY_CONNECTION_CONFIG_DIR") === root
+    && envValue(appliedEnv, "DGLAUNDRY_CONNECTION_SECRET_SOURCE_DIR") === "/run/dgfy-connection-source"));
   checks.push(check("client-registration-ids", Boolean(state?.registrationIds
     && envValue(appliedEnv, "DGFY_DGLAUNDRY_CLIENT_ID") === state.registrationIds.browserClientId
     && envValue(appliedEnv, "DGFY_DGLAUNDRY_MACHINE_CLIENT_ID") === state.registrationIds.machineClientId
@@ -194,8 +255,13 @@ if (action === "inspect") {
   console.log(JSON.stringify({ action, environment, manifestSha256: manifestDigest, passed, checks, privateValues: "not-read" }, null, 2));
   if (!passed) process.exitCode = 2;
 } else {
-  const state = await loadState();
+  let state = await loadState();
   if (!state || state.status !== "applied" || !Object.hasOwn(state, "previous")) fail("ROLLBACK_UNAVAILABLE", "No applied configuration snapshot is recorded for rollback.");
+  if (state.composeEnvSync && state.composeEnvSync.status !== "rolled-back") {
+    await restoreComposeEnv(state.composeEnvSync);
+    state = { ...state, composeEnvSync: { ...state.composeEnvSync, status: "rolled-back" } };
+    await writeState(state);
+  }
   const current = await readManagedEnv(envPath);
   const currentExisted = await exists(envPath);
   const alreadyRestored = state.previous === "absent" ? !currentExisted && state.previousSha256 === digest("") : currentExisted && digest(current) === state.previousSha256;
@@ -254,13 +320,82 @@ function mergeEnv(previous, generated) {
   const kept = preserved.join("\n").replace(/\n+$/, "");
   return (kept ? `${kept}\n` : "") + generatedLines.join("\n") + "\n";
 }
-async function syncComposeEnv(targetPath, candidate) {
+async function prepareComposeEnvSync(targetPath, candidate, managedKeyNames) {
   if (!(await exists(targetPath))) fail("COMPOSE_ENV_FILE_MISSING", `--compose-env-file does not exist: ${targetPath}. Refusing to create the deploy-owned Compose environment file from scratch.`);
   const existingMode = (await stat(targetPath)).mode & 0o777;
   const existing = await readManagedEnv(targetPath);
-  const merged = mergeEnv(existing, candidate);
-  await writeAtomic(targetPath, merged, existingMode);
+  const managedNames = [...new Set(managedKeyNames)];
+  const managed = new Set(managedNames);
+  const generatedLines = String(candidate || "").split(/\r?\n/).filter((line) => {
+    const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=/);
+    return match && managed.has(match[1]);
+  });
+  const generated = generatedLines.join("\n") + (generatedLines.length ? "\n" : "");
+  const previousManagedLines = [];
+  const seen = new Set();
+  for (const line of String(existing || "").split(/\r?\n/)) {
+    const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=/);
+    if (!match || !managed.has(match[1])) continue;
+    if (seen.has(match[1])) fail("MANAGED_CONFIGURATION_AMBIGUOUS", `The existing Compose environment defines ${match[1]} more than once.`);
+    seen.add(match[1]);
+    if (/(?:SECRET|TOKEN|PRIVATE_KEY)/i.test(match[1]) && !match[1].endsWith("_FILE") && line.slice(match[0].length).trim()) {
+      fail("COMPOSE_ENV_SECRET_SOURCE_UNSAFE", `The existing Compose environment stores ${match[1]} inline; move it through the approved secret manager before synchronizing connection settings.`);
+    }
+    previousManagedLines.push(line);
+  }
+  const merged = mergeEnv(existing, generated);
+  const rollback = restoreManagedEnv(merged, managed, previousManagedLines);
+  return {
+    path: targetPath,
+    mode: existingMode,
+    managedNames,
+    previousManagedLines,
+    previousSha256: digest(existing),
+    appliedSha256: digest(merged),
+    rollbackSha256: digest(rollback)
+  };
+}
+async function syncComposeEnv(snapshot, candidate) {
+  if (!(await exists(snapshot.path))) fail("COMPOSE_ENV_FILE_MISSING", `--compose-env-file does not exist: ${snapshot.path}. Refusing to create the deploy-owned Compose environment file from scratch.`);
+  const existing = await readManagedEnv(snapshot.path);
+  const currentDigest = digest(existing);
+  if (currentDigest === snapshot.appliedSha256) return true;
+  if (currentDigest !== snapshot.previousSha256) fail("COMPOSE_ENV_DRIFT", "The Compose environment changed after prepare/apply; refusing to overwrite it.");
+  const generatedLines = String(candidate || "").split(/\r?\n/).filter((line) => {
+    const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=/);
+    return match && snapshot.managedNames.includes(match[1]);
+  });
+  const generated = generatedLines.join("\n") + (generatedLines.length ? "\n" : "");
+  const merged = mergeEnv(existing, generated);
+  if (digest(merged) !== snapshot.appliedSha256) fail("COMPOSE_ENV_CANDIDATE_CHANGED", "The Compose environment candidate differs from its prepared rollback record.");
+  await writeAtomic(snapshot.path, merged, snapshot.mode);
   return true;
+}
+async function restoreComposeEnv(snapshot) {
+  if (!(await exists(snapshot.path))) fail("COMPOSE_ENV_FILE_MISSING", `The recorded Compose environment is missing: ${snapshot.path}.`);
+  const current = await readManagedEnv(snapshot.path);
+  const currentDigest = digest(current);
+  if (currentDigest === snapshot.rollbackSha256) return true;
+  if (currentDigest !== snapshot.appliedSha256) fail("COMPOSE_ENV_DRIFT", "The Compose environment changed after apply; refusing to overwrite it during rollback.");
+  const restored = restoreManagedEnv(current, new Set(snapshot.managedNames), snapshot.previousManagedLines);
+  if (digest(restored) !== snapshot.rollbackSha256) fail("COMPOSE_ENV_ROLLBACK_STATE_INVALID", "The recorded Compose rollback values do not match their reviewed digest.");
+  await writeAtomic(snapshot.path, restored, snapshot.mode);
+  return true;
+}
+async function composeEnvMatches(snapshot) {
+  if (snapshot.status !== "applied" || !(await exists(snapshot.path))) return false;
+  return digest(await readManagedEnv(snapshot.path)) === snapshot.appliedSha256;
+}
+function restoreManagedEnv(source, managed, replacementLines) {
+  const preserved = [];
+  for (const line of String(source || "").split(/\r?\n/)) {
+    const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=/);
+    if (match && managed.has(match[1])) continue;
+    preserved.push(line);
+  }
+  const kept = preserved.join("\n").replace(/\n+$/, "");
+  const restored = (kept ? `${kept}\n` : "") + replacementLines.join("\n");
+  return restored ? `${restored}\n` : "";
 }
 function envValue(source, name) {
   const prefix = `${name}=`;
@@ -279,20 +414,48 @@ function environmentOrigins(value, entry) {
 function exitSetup() { if (operationLockPath) { try { unlinkSync(operationLockPath); } catch { /* exit handler retries lock cleanup */ } operationLockPath = undefined; } }
 function validateManifest(value) {
   const requiredHashes = ["dgfyPartnerContractSha256", "dgfyPartnerOpenApiSha256", "dglaundryPartnerOpenApiSha256", "dglaundryConnectionFixtureSha256", "dglaundryIntegrationContractSha256"];
-  if (!value || value.manifestVersion !== "1.1.0" || !value.contractVersion || !value.staffOrigin || !value.callback || !value.environments?.staging || !value.environments?.production || !value.keyRoles || !requiredHashes.every((name) => /^[a-f0-9]{64}$/.test(String(value.contractHashes?.[name] || "")))) fail("MANIFEST_INVALID", "The v1.1 manifest must include both environment registrations, key roles, and SHA-256 contract hashes.");
-  for (const name of ["staging", "production"]) {
+  if (!value || value.manifestVersion !== "1.2.0" || !value.contractVersion || !value.environments?.development || !value.environments?.staging || !value.environments?.production || !value.keyRoles || !requiredHashes.every((name) => /^[a-f0-9]{64}$/.test(String(value.contractHashes?.[name] || "")))) fail("MANIFEST_INVALID", "The v1.2 manifest must include development, staging, and production registrations, key roles, and SHA-256 contract hashes.");
+  for (const name of ["development", "staging", "production"]) {
     const entry = value.environments[name];
-    if (!entry?.issuer || !entry?.partnerApiOrigin || !entry?.apiOrigin || !entry?.storefrontOrigin
+    const approved = approvedEnvironmentTargets[name];
+    if (!entry?.issuer || !entry?.partnerApiOrigin || !entry?.staffOrigin || !entry?.apiOrigin || !entry?.callback || !entry?.storefrontOrigin
       || !entry?.dglaundryBrowserClientId || !entry?.dglaundryMachineClientId || !entry?.dglaundryServiceClientId || !entry?.dglaundryPartnerAppId
       || !["proposed", "registered", "not-authorized"].includes(entry?.registrationStatus)
       || !entry?.keyIds || !entry?.keyFingerprintsSha256) fail("MANIFEST_INVALID", `The ${name} environment is missing explicit origins, client identities, registration status, or key evidence fields.`);
+    if (["issuer", "partnerApiOrigin", "staffOrigin", "apiOrigin", "callback", "storefrontOrigin"].some((field) => entry[field] !== approved[field])) fail("MANIFEST_ENVIRONMENT_TARGET_INVALID", `The ${name} environment must use its approved DGFY and DGLaundry endpoint tuple.`);
+    for (const [label, raw] of [["staffOrigin", entry.staffOrigin], ["apiOrigin", entry.apiOrigin], ["partnerApiOrigin", entry.partnerApiOrigin], ["storefrontOrigin", entry.storefrontOrigin]]) {
+      try {
+        const url = new URL(raw);
+        if (url.protocol !== "https:" || url.origin !== raw) throw new Error();
+      } catch { fail("MANIFEST_ENDPOINT_INVALID", `The ${name} ${label} must be an exact HTTPS origin.`); }
+    }
+    let callback;
+    try { callback = new URL(entry.callback); }
+    catch { fail("CALLBACK_INVALID", `The ${name} callback must be an absolute HTTPS URL.`); }
+    if (callback.protocol !== "https:" || callback.origin !== entry.staffOrigin || callback.pathname !== "/api/v1/session/dgfy/callback" || callback.search || callback.hash || callback.username || callback.password) fail("CALLBACK_INVALID", `The ${name} callback must use its exact HTTPS staff origin and approved callback path.`);
+    if (entry.apiOrigin !== entry.staffOrigin) fail("INBOUND_AUDIENCE_INVALID", `The ${name} API and staff origins must match for this DGLaundry deployment.`);
+    try {
+      if (new URL(entry.partnerApiOrigin).origin !== new URL(entry.issuer).origin) throw new Error();
+    } catch { fail("PARTNER_API_ORIGIN_INVALID", `The ${name} partner API origin must match its OIDC issuer origin.`); }
     for (const role of ["dglaundryMachineAssertion", "dglaundryRequestSigning", "dglaundryEventSigning", "dgfyOidcSigning", "dgfyRequestSigning", "dgfyEventSigning"]) {
       if (!/^[A-Za-z0-9._:-]{3,96}$/.test(String(entry.keyIds[role] || ""))) fail("MANIFEST_KEY_ID_INVALID", `The ${name} environment is missing a valid ${role} key ID.`);
       const fingerprint = String(entry.keyFingerprintsSha256[role] || "");
       if (fingerprint && !/^[a-f0-9]{64}$/i.test(fingerprint)) fail("MANIFEST_KEY_FINGERPRINT_INVALID", `The ${name} environment has an invalid ${role} SHA-256 fingerprint.`);
     }
   }
-  if (value.environments.staging.storefrontOrigin !== "https://stage.dgfy.ph" || value.environments.production.storefrontOrigin !== "https://dgfy.ph") fail("STOREFRONT_ORIGIN_INVALID", "Staging and production must use their distinct approved storefront origins.");
+  const development = value.environments.development;
+  if (development.dglaundryBrowserClientId !== "dglaundry-web-dev" || development.dglaundryMachineClientId !== "dglaundry-machine-dev" || development.dglaundryServiceClientId !== "dglaundry-service-dev" || development.dglaundryPartnerAppId !== "dglaundry") fail("DEVELOPMENT_REGISTRATION_INVALID", "Development must use its separate browser, machine, and service client IDs and the existing DGLaundry app ID.");
+  for (const field of ["dglaundryBrowserClientId", "dglaundryMachineClientId", "dglaundryServiceClientId"]) {
+    if ([value.environments.staging, value.environments.production].some((entry) => entry[field] === development[field])) fail("DEVELOPMENT_REGISTRATION_REUSED", `The development ${field} must not reuse a staging or production registration.`);
+  }
+  for (const role of Object.keys(development.keyIds)) {
+    if ([value.environments.staging, value.environments.production].some((entry) => entry.keyIds[role] === development.keyIds[role])) fail("DEVELOPMENT_KEY_ID_REUSED", `The development ${role} key ID must be independent from staging and production.`);
+  }
+  if (development.registrationStatus === "proposed"
+    && (String(development.registrationEvidence || "").trim() || Object.values(development.keyFingerprintsSha256).some((fingerprint) => String(fingerprint || "").trim()))) {
+    fail("DEVELOPMENT_PROOF_PREMATURE", "Proposed development registration must not claim registration evidence or installed-key fingerprints.");
+  }
+  if (value.environments.development.paymentMode !== "sandbox") fail("DEVELOPMENT_PAYMENT_MODE_INVALID", "Development must use sandbox payments.");
   if (value.environments.staging.paymentMode !== "sandbox") fail("STAGING_PAYMENT_MODE_INVALID", "Staging must use sandbox payments.");
   for (const name of ["staging", "production"]) {
     const { staffOrigin, callback } = environmentOrigins(value, value.environments[name]);
@@ -302,6 +465,7 @@ function validateManifest(value) {
     // DGFY_DGLAUNDRY_REDIRECT_URI, which DGFY's boot validator also pins by exact string.
     if (origin.protocol !== "https:" || origin.origin !== staffOrigin || callback !== `${staffOrigin}/api/v1/session/dgfy/callback`) fail("CALLBACK_INVALID", `The ${name} callback must be exactly <staffOrigin>/api/v1/session/dgfy/callback over HTTPS.`);
   }
+  if (value.environments.production.paymentMode !== "live-authorized-separately") fail("PRODUCTION_PAYMENT_MODE_INVALID", "Production payment activation requires its separate authorization.");
 }
 async function prerequisites(rootDir) {
   const output = { configDirectory: rootDir ? await exists(rootDir) : false, manifest: true, registrations: Object.fromEntries(Object.entries(setupInputs).map(([name, value]) => [name, Boolean(value)])), keys: {} };
@@ -310,11 +474,15 @@ async function prerequisites(rootDir) {
 }
 async function renderEnv(rootDir, value, targetConfig, previousEnv) {
   const eventKeys = await renderDglaundryEventRegistry(rootDir, value, targetConfig, previousEnv);
+  const deployEnvironmentLabel = deployEnvironmentLabels[environment];
+  const paymentMode = targetConfig.paymentMode === "sandbox" ? "test" : "live";
   const lines = [
     `DGLAUNDRY_CONNECTION_CONFIG_DIR=${rootDir}`,
     "DGLAUNDRY_CONNECTION_SECRET_SOURCE_DIR=/run/dgfy-connection-source",
     "DGLAUNDRY_INTEGRATION_ENABLED=true",
-    "PAYMONGO_MODE=test",
+    "NODE_ENV=production",
+    `DEPLOY_ENV_LABEL=${deployEnvironmentLabel}`,
+    `PAYMONGO_MODE=${paymentMode}`,
     `DGLAUNDRY_CONNECTION_MANIFEST_SHA256=${manifestDigest}`,
     `DGLAUNDRY_CONNECTION_ENVIRONMENT=${environment}`,
     `DGFY_OIDC_ISSUER=${targetConfig.issuer}`,
