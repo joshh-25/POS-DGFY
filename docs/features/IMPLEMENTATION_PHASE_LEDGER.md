@@ -32495,3 +32495,96 @@ Not complete. Record only after merge and implementation validation pass.
 ### Next phase number
 
 Phase 555. No explicit dependency.
+
+## Phase 555 - Repair storefront-mode integration test email mock (#2767)
+
+### Initiative and release
+
+API integration-test reliability / STAGING Promotion Quality Gate triage.
+
+### Objective and scope
+
+Expose the existing `sendStorefrontOrderConfirmationEmail` production export from the
+`emailService.js` mock used by `adminTenantLifecycle.integration.test.js`, allowing the API server
+to load before the test assertions run. Preserve existing assertions, mocks, fixtures, setup, and
+cleanup. This phase does not change production email behavior, schema, migrations, quality-gate
+policy, or the independent POS, evidence-storage, fast-tier, and dependency findings tracked under
+#2767 and their existing owners.
+
+### Status
+
+`in_progress` — the mock and ledger entry are on a fresh `origin/develop` branch; implementation
+validation and merge remain pending.
+
+### Dependencies
+
+None. Phase 554's custom staff-role invitation work is independent. The production export already
+exists; this test-only repair makes the mock match its consumer.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0054](../architecture/adr/0054-outbound-email-delivery-log-and-bounce-capture.md),
+[Backend Test Matrix Gate](../testing/README.md#backend-test-matrix-gate),
+[Issue #2767](https://github.com/Sieitzz/dgfy-platform/issues/2767), and
+[Issue #2577](https://github.com/Sieitzz/dgfy-platform/issues/2577). Classification:
+`no-architecture-impact`; production email delivery and its existing test seam are unchanged.
+
+### Implementation targets
+
+[adminTenantLifecycle.integration.test.js](../../apps/dgfy-api/tests/adminTenantLifecycle.integration.test.js),
+[emailService.js](../../apps/dgfy-api/src/services/emailService.js), and
+[dgfyOrderConfirmationEmail.js](../../apps/dgfy-api/src/modules/dgfy/services/dgfyOrderConfirmationEmail.js).
+
+### Acceptance and validation evidence
+
+- [x] The ESM test mock exposes `sendStorefrontOrderConfirmationEmail` before the server's dynamic
+  import, without changing existing test assertions or setup/cleanup.
+- [ ] `tenant_storefront_modes` DB group passes, including `adminTenantLifecycle.integration.test.js`.
+  Not established: the matrix runner stops during its inventory preflight on the unrelated,
+  unlisted Phase 554 test `tests/staffRoleInvitationPersistence.phase554.db.integration.test.js`;
+  a direct Jest attempt then could not connect to the local test MySQL service.
+- [x] `npm run test:backend:matrix` outcome is recorded with unrelated failures kept separate; it
+  exits before running suites for the same Phase 554 manifest gap.
+- [x] Changed-file syntax, architecture, docs lint, app-version floor, and `git diff --check` pass.
+
+### Validation evidence (2026-10-26)
+
+- `node --check apps/dgfy-api/tests/adminTenantLifecycle.integration.test.js` passed.
+- `npm run check:architecture` passed (63 modules / 802 code files; 116 controller files).
+- `npm run lint:docs` passed (36 governed docs / 106 ADRs).
+- `node scripts/check-app-version-bump.js` reported no requirement because no app or fan-out
+  package changed. `git diff --check` passed.
+- `npm run test:backend:db -- --group tenant_storefront_modes` and
+  `npm run test:backend:matrix` both exited before test execution because
+  `tests/staffRoleInvitationPersistence.phase554.db.integration.test.js` is not listed in
+  `scripts/backend-db-dependent-tests.js`. The disposable testing-agent run on code commit
+  `59fd9fe9cc207ec1adf5f2f7f122bf6dc7797f67` reported a failed backend matrix gate (focused
+  advisory run: 1 failed / 16 skipped; MySQL 8 and Redis 7 test containers healthy). The direct
+  matrix invocation above reports the missing manifest entry.
+- A direct Jest run with `DB_HOST=127.0.0.1` and `DB_NAME_TEST=sku_test` passed the module/server
+  import stage, so the missing named-export error is gone, then failed in the shared `beforeAll`
+  hook and cleanup with `ECONNREFUSED 127.0.0.1:3306`; no test assertions ran. No local MySQL
+  service was available.
+
+### Risks and non-goals
+
+The DB group and full backend matrix require the repository's configured disposable MySQL test
+environment. Any environment limitation or unrelated matrix failure must be reported without
+weakening assertions or changing the test selection. No production email delivery or real mailbox
+is involved.
+
+### Completion date
+
+Not complete. Record only after merge and implementation validation pass.
+
+### Post-merge verification
+
+- [ ] **operational** — confirm the backend DB-matrix CI result for the merged `develop` SHA includes
+  and passes `tenant_storefront_modes`, including this integration suite. Owner: Worker / PR CI;
+  blocks closure of this scoped repair under #2767.
+
+### Next phase number
+
+Phase 556. No explicit dependency.
