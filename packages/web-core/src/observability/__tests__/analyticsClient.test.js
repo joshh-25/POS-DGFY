@@ -246,7 +246,7 @@ describe('PostHog before_send initialization', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const beforeSend = init.mock.calls[0][1].before_send;
-    expect(beforeSend).toBe(sanitizePostHogEventUrls);
+    expect(beforeSend).toBe(freshModule.sanitizePostHogEventUrls);
     const sent = beforeSend({
       event: '$pageview',
       properties: {

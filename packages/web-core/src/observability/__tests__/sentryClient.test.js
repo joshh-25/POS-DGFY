@@ -77,16 +77,17 @@ describe('surface-aware Sentry URL redaction', () => {
 
     const sanitized = sanitizeSentryEventForSurface(event, 'admin');
 
-    expect(sanitized.request.url).toBe('https://admin.example.test/admin/tenants#overview');
+    expect(sanitized.request.url).toBe('https://admin.example.test/admin/tenants');
     expect(sanitized.request.headers).toBeUndefined();
     expect(sanitized.request.data).toBeUndefined();
     expect(sanitized.user).toEqual({ id: 'admin-1', username: undefined, email: undefined, ip_address: undefined });
     expect(sanitized.message).toBe('Authorization: Bearer [redacted]');
   });
 
-  it('preserves request URLs on non-Admin surfaces', () => {
+  it('preserves non-sensitive query values on non-Admin surfaces and removes fragments', () => {
     const url = 'https://store.example.test/catalog?campaign=summer#item';
-    expect(sanitizeSentryEventForSurface({ request: { url } }, 'store').request.url).toBe(url);
+    expect(sanitizeSentryEventForSurface({ request: { url } }, 'store').request.url)
+      .toBe('https://store.example.test/catalog?campaign=summer');
   });
 });
 
