@@ -45,9 +45,9 @@ if (!summary.configured || placeholderFindings.length) {
 if (sendTo) {
   const result = await sendEmail({
     to: sendTo,
-    subject: 'SKUpervisor email delivery verification',
-    html: '<p>This is a SKUpervisor email delivery verification message.</p>',
-    text: 'This is a SKUpervisor email delivery verification message.'
+    subject: 'DGFY email delivery verification',
+    html: '<p>This is a DGFY email delivery verification message.</p>',
+    text: 'This is a DGFY email delivery verification message.'
   });
   console.log(JSON.stringify({
     sent: true,

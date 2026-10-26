@@ -7338,13 +7338,13 @@ SMTP_SECURE=false
 SMTP_USER=your-email@gmail.com
 SMTP_PASS=your-app-password
 EMAIL_FROM=your-email@gmail.com
-EMAIL_FROM_NAME=SKUpervisor
+EMAIL_FROM_NAME=DGFY
 APP_URL=https://your-domain.com
 ```
 
 Run `npm run verify:email` from the repo root before enabling OTP enforcement in a new environment. Use `npm run verify:email -- --send-to operator@example.com` for an end-to-end provider send test. The check fails when placeholder SMTP credentials are still present.
 
-OTP email sends use `sendEmailOtpCode()` and explicitly set the sender display name to `DGFY`. Generic lifecycle email sends keep the configured `EMAIL_FROM_NAME` value, defaulting to `SKUpervisor`.
+OTP email sends use `sendEmailOtpCode()` and explicitly set the sender display name to `DGFY`. Generic lifecycle email sends keep the configured `EMAIL_FROM_NAME` value, defaulting to `DGFY`.
 
 <details>
 <summary>Superseded `2026-05-17` entry (Brevo relay, pre-#135 cutover, pre-#279 removal)</summary>
