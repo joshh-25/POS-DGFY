@@ -88,7 +88,9 @@ test("setup package is safe, repeatable, and rollback-capable", () => {
     assert.match(candidate, /DGLAUNDRY_CUSTOM_SETTING=keep-this-value/);
     assert.match(candidate, /DGFY_OIDC_KEY_ID=dgfy-oidc-stage-2026-10/);
     assert.match(candidate, /DGLAUNDRY_PARTNER_SIGNING_KEY_ID=dgfy-request-stage-p256/);
-    assert.match(candidate, /DGLAUNDRY_PARTNER_AUDIENCE=https:\/\/laundry\.surebizcorp\.com/);
+    assert.match(candidate, /DGLAUNDRY_PARTNER_AUDIENCE=https:\/\/dglaundry\.stage\.dgfy\.ph/);
+    assert.match(candidate, /DGLAUNDRY_PARTNER_BASE_URL=https:\/\/dglaundry\.stage\.dgfy\.ph/);
+    assert.match(candidate, /DGFY_DGLAUNDRY_REDIRECT_URI=https:\/\/dglaundry\.stage\.dgfy\.ph\/api\/v1\/session\/dgfy\/callback/);
     assert.match(candidate, /DGLAUNDRY_SIGNATURE_PROFILE=http-message-signatures-v1/);
     assert.equal(run("apply", root).status, 2);
     assert.equal(run("apply", root, ["--confirm"]).status, 0);
@@ -306,4 +308,72 @@ test("container stages key files from staging or SOPS mounts into app-owned tmpf
   assert.match(entrypoint, /install -o app -g app -m 0400/);
   assert.match(entrypoint, /chmod 0500 "\$connection_secret_dest"/);
   assert.doesNotMatch(compose, /^\s+DGFY_OIDC_PRIVATE_KEY_FILE:/m, "the reviewed env file must own integration key paths because Compose environment overrides env_file");
+});
+
+function inspectManifest(mutate, environmentName) {
+  const dir = mkdtempSync(join(tmpdir(), "dglaundry-origins-"));
+  try {
+    const value = JSON.parse(readFileSync(defaultManifest, "utf8"));
+    mutate(value);
+    const path = join(dir, "manifest.json");
+    writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+    try {
+      return { status: 0, output: execFileSync(process.execPath, [script, "inspect", "--environment", environmentName, "--config-dir", dir], { encoding: "utf8", env: { ...process.env, DGLAUNDRY_CONNECTION_MANIFEST: path } }) };
+    } catch (error) { return { status: error.status ?? 1, output: String(error.stdout ?? "") + String(error.stderr ?? "") }; }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}
+
+test("each environment reports its own DGLaundry origin and callback (#2513)", () => {
+  const staging = JSON.parse(inspectManifest(() => {}, "staging").output).target;
+  assert.equal(staging.staffOrigin, "https://dglaundry.stage.dgfy.ph");
+  assert.equal(staging.callback, "https://dglaundry.stage.dgfy.ph/api/v1/session/dgfy/callback");
+  const production = JSON.parse(inspectManifest(() => {}, "production").output).target;
+  assert.equal(production.staffOrigin, "https://dglaundry.dgfy.ph");
+  assert.equal(production.callback, "https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback");
+  assert.equal(production.apiOrigin, "https://dglaundry.dgfy.ph");
+});
+
+test("a manifest without per-environment origins falls back to the top-level pair (hand-managed v1.1.0 copies)", () => {
+  const legacy = inspectManifest((value) => { for (const entry of Object.values(value.environments)) { delete entry.staffOrigin; delete entry.callback; } }, "staging");
+  assert.equal(legacy.status, 0);
+  const target = JSON.parse(legacy.output).target;
+  assert.equal(target.staffOrigin, "https://laundry.surebizcorp.com");
+  assert.equal(target.callback, "https://laundry.surebizcorp.com/api/v1/session/dgfy/callback");
+});
+
+test("a callback that is not the HTTPS session callback on its staffOrigin is rejected", () => {
+  for (const mutate of [
+    (value) => { value.environments.production.callback = "https://evil.example/api/v1/session/dgfy/callback"; },
+    (value) => { value.environments.production.callback = "http://dglaundry.dgfy.ph/api/v1/session/dgfy/callback"; },
+    (value) => { value.environments.staging.callback = "https://dglaundry.stage.dgfy.ph/somewhere/else"; },
+    (value) => { value.environments.production.staffOrigin = "https://dglaundry.dgfy.ph/path"; },
+    (value) => { value.environments.staging.staffOrigin = "not a url"; },
+    // Parsed-equivalent but not byte-identical to the pinned redirect URI: rejected, because the raw string is rendered.
+    (value) => { value.environments.production.callback = "https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback?"; },
+    (value) => { value.environments.production.callback = "https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback#x"; },
+    (value) => { value.environments.production.callback = "https://DGLAUNDRY.dgfy.ph/api/v1/session/dgfy/callback"; },
+    (value) => { value.environments.production.callback = "https://dglaundry.dgfy.ph:443/api/v1/session/dgfy/callback"; },
+    (value) => { value.environments.production.callback = "https://user@dglaundry.dgfy.ph/api/v1/session/dgfy/callback"; },
+    (value) => { value.environments.production.callback = "https://dglaundry.dgfy.ph\\api/v1/session/dgfy/callback"; },
+    (value) => { value.environments.production.callback = "https://dglaundry.dgfy.ph/api/v1/./session/dgfy/callback"; },
+    (value) => { value.environments.production.callback = " https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback"; },
+    (value) => { value.environments.production.staffOrigin = "https://dglaundry.dgfy.ph/"; },
+  ]) {
+    const result = inspectManifest(mutate, "staging");
+    assert.notEqual(result.status, 0);
+    assert.match(result.output, /CALLBACK_INVALID/);
+  }
+});
+
+test("a blank or null per-environment origin fails validation instead of falling back to the top-level pair", () => {
+  for (const mutate of [
+    (value) => { value.environments.production.staffOrigin = ""; value.environments.production.callback = ""; },
+    (value) => { value.environments.production.staffOrigin = null; value.environments.production.callback = null; },
+    (value) => { value.environments.staging.staffOrigin = ""; },
+    (value) => { value.environments.staging.callback = null; },
+  ]) {
+    const result = inspectManifest(mutate, "production");
+    assert.notEqual(result.status, 0);
+    assert.match(result.output, /CALLBACK_INVALID/);
+  }
 });

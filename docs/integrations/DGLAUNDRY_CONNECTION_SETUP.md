@@ -26,9 +26,28 @@ copy synthetic values from a test fixture into either hosted environment.
 The qualification environment must use:
 
 - issuer `https://api.stage.dgfy.ph/oidc`;
-- callback `https://laundry.surebizcorp.com/api/v1/session/dgfy/callback`;
-- the protected `https://laundry.surebizcorp.com` staff origin; and
+- callback `https://dglaundry.stage.dgfy.ph/api/v1/session/dgfy/callback`;
+- the DGFY-hosted `https://dglaundry.stage.dgfy.ph` staff origin; and
 - sandbox payments only.
+
+Origins are per environment (#2513): each `environments.<name>` entry carries
+its own `staffOrigin` and `callback`, and `apiOrigin`
+(staging `dglaundry.stage.dgfy.ph`, production `dglaundry.dgfy.ph`). The
+top-level `staffOrigin`/`callback` remain as the default for a manifest that
+predates the per-environment fields (the hand-managed v1.1.0 copies on the
+hosts) and as the DGFY DEV / Surebiz demo target. Validation requires each
+effective callback to be the HTTPS `/api/v1/session/dgfy/callback` on the same
+origin as its `staffOrigin`, and the rendered `DGFY_DGLAUNDRY_REDIRECT_URI`,
+`DGLAUNDRY_PARTNER_BASE_URL` and `DGLAUNDRY_PARTNER_AUDIENCE` follow it.
+
+The callback must equal `<staffOrigin>/api/v1/session/dgfy/callback` byte for
+byte (it is rendered verbatim and DGFY's boot validator pins it by exact
+string), and a blank or `null` per-environment value is an error, not a
+fallback. `verify` checks the partner origin and audience but not
+`DGFY_DGLAUNDRY_REDIRECT_URI` itself. A host that still holds the older
+v1.1.0 manifest copy (top-level pair only) keeps rendering the Surebiz
+callback: replace that copy with this manifest, then re-run `prepare` and
+`apply`, before re-running the installer on that host.
 
 The utility refuses to prepare or apply production configuration. Production
 requires a separately reviewed manifest/configuration and explicit release
@@ -191,7 +210,7 @@ restricted to synthetic testers. Discovery must advertise the staging issuer
 active public key and any intentionally overlapping previous public key.
 
 Then exchange public fingerprints with DGLaundry, run the six-suite acceptance
-runner against `https://laundry.surebizcorp.com` and DGFY staging, and complete
+runner against `https://dglaundry.stage.dgfy.ph` and DGFY staging, and complete
 human UAT before any production preparation. A `verify` pass alone is never
 staging qualification.
 
