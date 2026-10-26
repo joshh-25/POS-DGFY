@@ -89,6 +89,9 @@ echo "=== Preflight ==="
 for f in "$DGFY_COMPOSE" "$DGFY_AGE_KEY_FILE" "$CACHE" "$DGL_SOPS_BIN" "$DGL_AGE_KEY_FILE" "$SOPS_BIN" "$AGE_KEYGEN"; do
   [[ -e "$f" ]] || { echo "Missing: $f" >&2; exit 1; }
 done
+for f in "$DGL_SOPS_BIN" "$SOPS_BIN" "$AGE_KEYGEN"; do
+  [[ -x "$f" ]] || { echo "Not executable: $f" >&2; exit 1; }
+done
 for tool in openssl python3; do
   command -v "$tool" >/dev/null 2>&1 || { echo "Missing tool: $tool" >&2; exit 1; }
 done

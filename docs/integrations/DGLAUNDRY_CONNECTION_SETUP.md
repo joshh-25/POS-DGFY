@@ -40,6 +40,15 @@ effective callback to be the HTTPS `/api/v1/session/dgfy/callback` on the same
 origin as its `staffOrigin`, and the rendered `DGFY_DGLAUNDRY_REDIRECT_URI`,
 `DGLAUNDRY_PARTNER_BASE_URL` and `DGLAUNDRY_PARTNER_AUDIENCE` follow it.
 
+The callback must equal `<staffOrigin>/api/v1/session/dgfy/callback` byte for
+byte (it is rendered verbatim and DGFY's boot validator pins it by exact
+string), and a blank or `null` per-environment value is an error, not a
+fallback. `verify` checks the partner origin and audience but not
+`DGFY_DGLAUNDRY_REDIRECT_URI` itself. A host that still holds the older
+v1.1.0 manifest copy (top-level pair only) keeps rendering the Surebiz
+callback: replace that copy with this manifest, then re-run `prepare` and
+`apply`, before re-running the installer on that host.
+
 The utility refuses to prepare or apply production configuration. Production
 requires a separately reviewed manifest/configuration and explicit release
 authorization.
@@ -201,7 +210,7 @@ restricted to synthetic testers. Discovery must advertise the staging issuer
 active public key and any intentionally overlapping previous public key.
 
 Then exchange public fingerprints with DGLaundry, run the six-suite acceptance
-runner against `https://laundry.surebizcorp.com` and DGFY staging, and complete
+runner against `https://dglaundry.stage.dgfy.ph` and DGFY staging, and complete
 human UAT before any production preparation. A `verify` pass alone is never
 staging qualification.
 

@@ -272,7 +272,9 @@ function check(name, passed) { return { name, passed: Boolean(passed) }; }
 // that predates them (the hand-managed v1.1.0 copies on the hosts) falls back to the top-level pair, which
 // is the DGFY DEV / Surebiz demo target.
 function environmentOrigins(value, entry) {
-  return { staffOrigin: entry?.staffOrigin || value.staffOrigin, callback: entry?.callback || value.callback };
+  // Presence, not truthiness: a blank or null per-environment value must fail validation, never fall back.
+  const pick = (key) => (entry && Object.hasOwn(entry, key) ? entry[key] : value[key]);
+  return { staffOrigin: pick("staffOrigin"), callback: pick("callback") };
 }
 function exitSetup() { if (operationLockPath) { try { unlinkSync(operationLockPath); } catch { /* exit handler retries lock cleanup */ } operationLockPath = undefined; } }
 function validateManifest(value) {
@@ -294,9 +296,11 @@ function validateManifest(value) {
   if (value.environments.staging.paymentMode !== "sandbox") fail("STAGING_PAYMENT_MODE_INVALID", "Staging must use sandbox payments.");
   for (const name of ["staging", "production"]) {
     const { staffOrigin, callback } = environmentOrigins(value, value.environments[name]);
-    let origin; let redirect;
-    try { origin = new URL(staffOrigin); redirect = new URL(callback); } catch { fail("CALLBACK_INVALID", `The ${name} staffOrigin and callback must be absolute URLs.`); }
-    if (origin.protocol !== "https:" || origin.origin !== staffOrigin || redirect.origin !== origin.origin || redirect.pathname !== "/api/v1/session/dgfy/callback" || redirect.search || redirect.hash) fail("CALLBACK_INVALID", `The ${name} callback must be the HTTPS DGLaundry session callback on the same origin as its staffOrigin.`);
+    let origin;
+    try { origin = new URL(staffOrigin); } catch { fail("CALLBACK_INVALID", `The ${name} staffOrigin must be an absolute URL.`); }
+    // The callback is compared as an exact string because renderEnv writes the raw value into
+    // DGFY_DGLAUNDRY_REDIRECT_URI, which DGFY's boot validator also pins by exact string.
+    if (origin.protocol !== "https:" || origin.origin !== staffOrigin || callback !== `${staffOrigin}/api/v1/session/dgfy/callback`) fail("CALLBACK_INVALID", `The ${name} callback must be exactly <staffOrigin>/api/v1/session/dgfy/callback over HTTPS.`);
   }
 }
 async function prerequisites(rootDir) {

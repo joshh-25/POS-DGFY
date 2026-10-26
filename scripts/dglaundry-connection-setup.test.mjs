@@ -348,8 +348,31 @@ test("a callback that is not the HTTPS session callback on its staffOrigin is re
     (value) => { value.environments.staging.callback = "https://dglaundry.stage.dgfy.ph/somewhere/else"; },
     (value) => { value.environments.production.staffOrigin = "https://dglaundry.dgfy.ph/path"; },
     (value) => { value.environments.staging.staffOrigin = "not a url"; },
+    // Parsed-equivalent but not byte-identical to the pinned redirect URI: rejected, because the raw string is rendered.
+    (value) => { value.environments.production.callback = "https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback?"; },
+    (value) => { value.environments.production.callback = "https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback#x"; },
+    (value) => { value.environments.production.callback = "https://DGLAUNDRY.dgfy.ph/api/v1/session/dgfy/callback"; },
+    (value) => { value.environments.production.callback = "https://dglaundry.dgfy.ph:443/api/v1/session/dgfy/callback"; },
+    (value) => { value.environments.production.callback = "https://user@dglaundry.dgfy.ph/api/v1/session/dgfy/callback"; },
+    (value) => { value.environments.production.callback = "https://dglaundry.dgfy.ph\\api/v1/session/dgfy/callback"; },
+    (value) => { value.environments.production.callback = "https://dglaundry.dgfy.ph/api/v1/./session/dgfy/callback"; },
+    (value) => { value.environments.production.callback = " https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback"; },
+    (value) => { value.environments.production.staffOrigin = "https://dglaundry.dgfy.ph/"; },
   ]) {
     const result = inspectManifest(mutate, "staging");
+    assert.notEqual(result.status, 0);
+    assert.match(result.output, /CALLBACK_INVALID/);
+  }
+});
+
+test("a blank or null per-environment origin fails validation instead of falling back to the top-level pair", () => {
+  for (const mutate of [
+    (value) => { value.environments.production.staffOrigin = ""; value.environments.production.callback = ""; },
+    (value) => { value.environments.production.staffOrigin = null; value.environments.production.callback = null; },
+    (value) => { value.environments.staging.staffOrigin = ""; },
+    (value) => { value.environments.staging.callback = null; },
+  ]) {
+    const result = inspectManifest(mutate, "production");
     assert.notEqual(result.status, 0);
     assert.match(result.output, /CALLBACK_INVALID/);
   }

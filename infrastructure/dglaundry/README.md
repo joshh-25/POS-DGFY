@@ -271,8 +271,8 @@ Hosting DGLaundry is not the same as connecting it to DGFY. While `DGLAUNDRY_DGF
   missing is DGLaundry's half, and `connect-dgfy-prod.sh` supplies it. Run on `ssh dgfy`, in this order:
   1. `sudo bash connect-dgfy-prod.sh --check` — changes nothing; proves every DGFY secret
      decrypts and has the right key type, DGLaundry's cache decrypts, and nothing is overwritten.
-  2. `sudo bash connect-dgfy-prod.sh` — (falls back to the system `sops` when `$DGL_SOPS_BIN` /
-     `/opt/dglaundry/bin/sops` is not executable, as on prod) generates DGLaundry's three prod keypairs; adds the five
+  2. `sudo bash connect-dgfy-prod.sh` — (uses the system `sops` when `DGL_SOPS_BIN` is unset and
+     `/opt/dglaundry/bin/sops` is not executable, as on prod; an explicit `DGL_SOPS_BIN` is never replaced) generates DGLaundry's three prod keypairs; adds the five
      DGFY secrets to `/opt/dglaundry/dgfy-secrets-cache/prod-dglaundry-secrets.env` (the client
      secret goes root-to-SOPS and is never printed); encrypts DGLaundry's machine-assertion,
      request-signing and event **public** keys into `/opt/dgfy-platform/secrets/` in the existing
