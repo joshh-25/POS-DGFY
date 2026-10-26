@@ -32970,3 +32970,106 @@ validation passes; retain hosted verification in the checklist below.
 ### Next phase number
 
 Phase 559. No explicit dependency.
+
+## Phase 559 - Make external partner listings opt-in in Storefront discovery (#2833)
+
+### Initiative and release
+
+Storefront external discovery defaults, issue #2833. Planner handoff: [`.tmp/plan-2833.md`](../../.tmp/plan-2833.md).
+Branch: `feat/2833-discovery-native-only-defaults`, targeting `develop`.
+
+### Objective and scope
+
+Keep customer discovery focused on DGFY native listings by default while preserving explicit
+category-based access to supported partner listings. **All** and native categories include only
+`entity_type = dgfy_native`; Hotel maps exclusively to Synqcore, Real Estate to MapViu, Taxi to
+Eytitu, and Job to Proventous (`external_provider = proventus`). Provider identity and entity type
+determine eligibility; category text, workflow mode, free-text searches, missing entity type, and
+unknown providers do not opt a listing in. Apply the eligibility rule to result cards, map pins,
+hero/fallback pins, remembered pins, cluster counts, and selected cluster content. Correct the
+customer-facing Proventous label while preserving the stable `proventus` identifier and public
+links.
+
+No schema, migration, dependency, or API-shape change is in scope. No deployment or merge is part
+of this phase.
+
+### Status
+
+`in_progress` — implementation and local feature validation are complete on the `develop`-based
+worker branch; app-version policy resolution and PR review remain outstanding.
+
+### Dependencies
+
+No blocking dependencies. This phase uses the existing external listing entity/provider fields and
+the existing Storefront discovery filter and map surfaces.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0010](../architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md),
+[ADR 0071](../architecture/adr/0071-independently-deployable-frontend-apps.md),
+[ADR 0089](../architecture/adr/0089-dedicated-back-office-application.md),
+[External Discovery Redirect Foundation](EXTERNAL_DISCOVERY_REDIRECT_FOUNDATION.md),
+[API specification](../api/specification.md), and [testing guide](../testing/README.md).
+Classification: snapshot implementation within the existing discovery and external-listing
+contracts; no cross-boundary architecture change or exception/allowlist is introduced.
+
+### Implementation targets
+
+Storefront discovery eligibility, category options, result/pin/cluster state, and focused tests under
+`apps/dgfy-storefront/src/discovery/` and `apps/dgfy-storefront/src/__tests__/`; Proventous display
+labels and focused tests in `apps/dgfy-api/`, `apps/dgfy-admin/`, and Storefront; current feature/API
+prose and this phase ledger.
+
+### Acceptance and validation evidence
+
+- [x] All and native categories show only native listings. Free-text search does not expose partner
+  listings. Selecting each partner category shows only rows whose entity type and provider match
+  its explicit mapping; unknown or unclassified rows stay hidden.
+- [x] Map pins, result cards, hero/fallback and remembered pins, cluster counts/cards, and selected
+  content follow the same eligibility rule when filters change.
+- [x] Proventous is the customer-facing name across Storefront, API-backed Admin responses, and
+  current feature/API prose; stable `proventus` keys and links are unchanged.
+- [x] No schema, migration, dependency, or public API-shape change is introduced.
+- [x] Focused Storefront, Admin, and API tests; Storefront/Admin builds; API syntax; architecture,
+  docs, compliance, and diff checks are recorded below. Version-policy resolution remains pending.
+- [x] Local rendered desktop and mobile discovery QA is recorded; no cloud or deployment action is
+  performed.
+
+### Validation evidence (2026-10-26)
+
+- Storefront: `npm --prefix apps/dgfy-storefront test -- src/__tests__/discoveryStoreResultsModel.test.js src/__tests__/discoveryFlow.integration.test.jsx src/__tests__/discoveryCategoryStage.test.jsx src/__tests__/externalDiscoveryPresentation.test.js src/__tests__/discoveryMapLayers.test.js src/__tests__/discoveryFilterState.test.js` — **PASS, 85/85 across 6 files**.
+- Admin: `npm --prefix apps/dgfy-admin test -- src/pages/__tests__/ExternalDiscoveryManager.visibility.integration.test.jsx` — **PASS, 3/3**.
+- API: `npm --prefix apps/dgfy-api test -- --runTestsByPath tests/externalRedirectFoundation.test.js tests/externalEventSeedMapping.test.js` — **PASS, 27/27**. `node --check` passed for both modified API domain files.
+- Builds: `npm --prefix apps/dgfy-storefront run build:store` and `npm --prefix apps/dgfy-admin run build:admin` — **PASS**. Storefront emitted the existing large-chunk advisory.
+- Changed-source lint — **PASS, 0 errors**. Storefront full lint exits 0 with 140 warnings; Admin full lint exits 0 with 2 warnings. API full lint has 3 errors in untouched `dgfyAccountRepository.js` and `staffRoleUseCases.js`; the changed API source files lint cleanly.
+- Governance: `npm run check:architecture` **PASS** (63 modules / 802 code files; 116 controller files); `npm run lint:docs` **PASS** (36 governed docs / 106 ADRs); `npm run check:compliance` **PASS** (no compliance-sensitive changes); `git diff --check` **PASS**.
+- Version policy: `GITHUB_BASE_REF=develop GITHUB_HEAD_REF=feat/2833-discovery-native-only-defaults npm run check:app-versions -- --staged` **PASS** for unchanged API, Storefront, and Admin floors under the checker’s `unchanged` mode. This conflicts with ADR 0081 Decision 6, which requires a version increase for changed apps on a normal `develop` PR. The implement skill and checker require unchanged floors. The package metadata decision is pending operator direction; no app versions have been changed.
+- Local rendered QA: desktop `/map-dgfy` synthetic-fixture captures show two native pins/cards by default, only the mapped Proventous row after explicit Job selection, and native-only results after free-text search. Mobile `/map-dgfy` at 390×844 shows populated content and native-only pins/cards; partner, unknown-provider, and unclassified rows are absent, with no page errors. Screenshots are local-only under `.tmp/qa-2833/`; requests to non-local origins were blocked. No cloud or deployment action was performed.
+
+### Risks and non-goals
+
+Eligibility is intentionally fail-closed: a partner row lacking an exact supported provider or
+`external_listing` entity type is not shown. Partner category selection is explicit opt-in; free-text
+query and legacy category/workflow values cannot grant it. API response shape, migrations, external
+provider configuration, and deployed-environment verification are outside this phase.
+
+### Completion date
+
+Not complete. Record only after the scoped implementation is merged and implementation validation
+passes.
+
+### Post-merge verification
+
+- [ ] **release** — through the approved Storefront release process, verify the merged SHA is the
+  deployed source and record the deployment evidence. Owner: DGFY release operator.
+- [ ] **discovery behavior** — on the deployed Storefront, confirm All and free-text searches show
+  native listings only, each partner category shows only its mapped provider, and changing filters
+  clears stale partner pins/cards/selections. Owner: Storefront verifier.
+- [ ] **partner labels** — confirm Admin/API-backed listing labels render as Proventous while
+  provider identity remains `proventus`. Owner: Storefront verifier.
+
+### Next phase number
+
+Phase 560. No explicit dependency.
