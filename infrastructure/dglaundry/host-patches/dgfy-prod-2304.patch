@@ -1,10 +1,9 @@
 --- a/docker-compose.api.yml
 +++ b/docker-compose.api.yml
-@@ -125,13 +125,14 @@
-       TENANT_PAYOUT_ENCRYPTION_KEY: ${TENANT_PAYOUT_ENCRYPTION_KEY}
-       SMS_PHONE_HASH_SECRET: ${SMS_PHONE_HASH_SECRET}
--
-+
+@@ -128,13 +128,14 @@
+       EXPO_ACCESS_TOKEN: ${EXPO_ACCESS_TOKEN:-}
+       PUSH_TOKEN_HASH_SECRET: ${PUSH_TOKEN_HASH_SECRET}
+ 
 -      # --- #2303: DGLaundry OIDC/partner identity (inert while
 -      # DGLAUNDRY_INTEGRATION_ENABLED stays false -- see entrypoint.sh's
 -      # root branch, which gates the entire secret-copy step on this flag).
@@ -23,7 +22,7 @@
        DGLAUNDRY_CONNECTION_SECRET_SOURCE_DIR: /run/secrets
        DGFY_OIDC_ISSUER: https://api.dgfy.ph/oidc
        DGFY_OIDC_PRIVATE_KEY_FILE: /run/dgfy-secrets/dgfy-oidc-private.pem
-@@ -140,18 +141,26 @@
+@@ -143,18 +144,26 @@
        DGFY_DGLAUNDRY_CLIENT_ID: dglaundry-web
        DGFY_DGLAUNDRY_CLIENT_SECRET_FILE: /run/dgfy-secrets/dglaundry-oidc-client-secret
        DGFY_DGLAUNDRY_MACHINE_CLIENT_ID: dglaundry-machine
@@ -54,7 +53,7 @@
      tmpfs:
        - /run/dgfy-secrets
      secrets:
-@@ -165,6 +174,10 @@
+@@ -168,6 +177,10 @@
          target: dgfy-event-signing.pem
        - source: dgfy-request-signing-key
          target: dgfy-request-signing.pem
@@ -65,7 +64,7 @@
      volumes:
        - ./data/dgfy-api/uploads:/app/uploads
        - ./data/dgfy-api/storage:/app/storage
-@@ -195,3 +208,7 @@
+@@ -198,3 +211,7 @@
      environment: DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY
    dgfy-request-signing-key:
      environment: DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY
