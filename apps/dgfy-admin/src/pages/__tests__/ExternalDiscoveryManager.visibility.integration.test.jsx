@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/services/adminService', () => mocks);
 
 const makeSites = () => [
-  { site_key: 'proventus', display_name: 'Proventus', type_label: 'Job', url_template: 'https://proventus.example/company/{id}', enabled: true, show_on_map: true, pin_count: 1, visible_pin_count: 1 },
+  { site_key: 'proventus', display_name: 'Proventous', type_label: 'Job', url_template: 'https://proventus.example/company/{id}', enabled: true, show_on_map: true, pin_count: 1, visible_pin_count: 1 },
   { site_key: 'mapviu', display_name: 'Mapviu', type_label: 'Real Estate', url_template: 'https://mapviu.example/property/{id}', enabled: false, show_on_map: true, pin_count: 0, visible_pin_count: 0 },
   { site_key: 'synqcore', display_name: 'Synqcore', type_label: 'Hotel', url_template: '', enabled: false, show_on_map: true, pin_count: 0, visible_pin_count: 0 },
   { site_key: 'eytitu', display_name: 'Eytitu', type_label: 'Taxi', url_template: '', enabled: false, show_on_map: true, pin_count: 0, visible_pin_count: 0 }
@@ -62,13 +62,13 @@ describe('ExternalDiscoveryManager visibility controls', () => {
   it('toggles partner and pin visibility and refreshes the returned state', async () => {
     render(<ExternalDiscoveryManager />);
 
-    const partnerSwitch = await screen.findByRole('switch', { name: 'Show Proventus on discovery map' });
-    expect(screen.getByText('Proventus · Job')).toBeTruthy();
+    const partnerSwitch = await screen.findByRole('switch', { name: 'Show Proventous on discovery map' });
+    expect(screen.getByText('Proventous · Job')).toBeTruthy();
     expect(screen.getByText('1 of 1 pins visible')).toBeTruthy();
     fireEvent.click(partnerSwitch);
 
     await waitFor(() => expect(mocks.setExternalSiteVisibility).toHaveBeenCalledWith('proventus', false));
-    await waitFor(() => expect(screen.getByRole('switch', { name: 'Show Proventus on discovery map' }).checked).toBe(false));
+    await waitFor(() => expect(screen.getByRole('switch', { name: 'Show Proventous on discovery map' }).checked).toBe(false));
     expect(screen.getByText('Hidden on the map; its /e/ links are unavailable.')).toBeTruthy();
     expect(screen.getByText('0 of 1 pins visible')).toBeTruthy();
     expect(screen.getByText('Hidden by type')).toBeTruthy();
@@ -87,14 +87,14 @@ describe('ExternalDiscoveryManager visibility controls', () => {
 
   it('preserves unsaved destination drafts when a type switch refreshes data', async () => {
     render(<ExternalDiscoveryManager />);
-    const proventusCard = await screen.findByText('Proventus · Job').then((node) => node.closest('div.rounded-xl'));
+    const proventusCard = await screen.findByText('Proventous · Job').then((node) => node.closest('div.rounded-xl'));
     const mapviuCard = screen.getByText('Mapviu · Real Estate').closest('div.rounded-xl');
     const proventusInput = within(proventusCard).getByLabelText('HTTPS destination template');
     const mapviuInput = within(mapviuCard).getByLabelText('HTTPS destination template');
     fireEvent.change(proventusInput, { target: { value: 'https://draft.example/proventus/{id}' } });
     fireEvent.change(mapviuInput, { target: { value: 'https://draft.example/mapviu/{id}' } });
 
-    fireEvent.click(screen.getByRole('switch', { name: 'Show Proventus on discovery map' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Show Proventous on discovery map' }));
 
     await waitFor(() => expect(mocks.setExternalSiteVisibility).toHaveBeenCalledWith('proventus', false));
     await waitFor(() => expect(proventusInput.value).toBe('https://draft.example/proventus/{id}'));

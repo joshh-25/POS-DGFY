@@ -1,5 +1,5 @@
 const PARTNERS = Object.freeze({
-  proventus: { name: 'Proventus', action: 'View Job', pinMode: 'external_jobs', allowImage: false },
+  proventus: { name: 'Proventous', action: 'View Job', pinMode: 'external_jobs', allowImage: false },
   eytitu: { name: 'Eytitu', action: 'Book This Taxi', pinMode: 'external_taxis', allowImage: false },
   mapviu: { name: 'Mapviu', action: 'Inquire', pinMode: 'external_real_estate', allowImage: true },
   synqcore: { name: 'Synqcore', action: 'Book Stay', pinMode: 'external_hotels', allowImage: true }

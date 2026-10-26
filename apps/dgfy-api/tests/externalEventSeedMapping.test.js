@@ -189,7 +189,7 @@ describe('external event seed allow-list', () => {
     expect(() => extractExternalEventSeed({ mapviuExports: [] }))
       .toThrow('At least one MapViu export is required');
     expect(() => extractExternalEventSeed({ proventusExports: { companies: 'invalid' } }))
-      .toThrow('Proventus companies array is required');
+      .toThrow('Proventous companies array is required');
   });
 
   it('dry-runs, saves, and reports disabled Proventus sites through the existing apply use case', async () => {
