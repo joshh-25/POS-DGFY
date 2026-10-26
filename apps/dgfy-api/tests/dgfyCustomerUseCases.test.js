@@ -1162,14 +1162,13 @@ describe('dgfyCustomerUseCases', () => {
     it('sends generic tracking recovery responses and returns dev code only outside production on send failure', async () => {
         const originalNodeEnv = process.env.NODE_ENV;
         process.env.NODE_ENV = 'test';
+        const sendEmail = jest.fn().mockRejectedValue(new Error('SMTP unavailable'));
         const useCase = buildRequestDgfyTrackingRecoveryUseCase({
             repository: {
                 listActivitiesByLookup: jest.fn().mockResolvedValue([{ customer_email: 'ada@example.com' }]),
                 createRecoveryCode: jest.fn().mockResolvedValue({})
             },
-            sender: {
-                sendEmail: jest.fn().mockRejectedValue(new Error('SMTP unavailable'))
-            }
+            sender: { sendEmail }
         });
 
         const result = await useCase({ body: { email: 'ada@example.com' } });
@@ -1179,6 +1178,11 @@ describe('dgfyCustomerUseCases', () => {
         expect(result.data.message).toMatch(/If matching orders exist/);
         expect(result.data.delivery_status).toBe('failed');
         expect(result.data.dev_recovery_code).toMatch(/^\d{6}$/);
+        expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+            subject: 'Your DGFY order recovery code',
+            html: expect.stringContaining('Your DGFY order recovery code is'),
+            text: expect.stringMatching(/^Your DGFY order recovery code is \d{6}\./)
+        }));
     });
 
     it('does not expose tracking recovery match or delivery status in production responses', async () => {

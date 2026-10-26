@@ -54,7 +54,7 @@ let _transporter = null;
 const getAppUrl = () => process.env.APP_URL || 'http://localhost:5173';
 const stripHtml = (html = '') => String(html).replace(/<[^>]*>/g, '');
 const getFromIdentity = ({ fromName, fromEmail } = {}) => ({
-  fromName: fromName || process.env.EMAIL_FROM_NAME || 'SKUpervisor',
+  fromName: fromName || process.env.EMAIL_FROM_NAME || 'DGFY',
   fromEmail: fromEmail || process.env.EMAIL_FROM || process.env.SMTP_USER
 });
 
@@ -370,7 +370,7 @@ export const sendInvitationEmail = async ({ email, inviterName, role, invitation
 
   return sendEmail({
     to: email,
-    subject: `You've been invited to join ${tenantName} on SKUpervisor`,
+    subject: `You've been invited to join ${tenantName} on DGFY`,
     html
   });
 };
@@ -417,7 +417,7 @@ export const sendWelcomeEmail = async ({ email, username, role, tenantName }) =>
 
   return sendEmail({
     to: email,
-    subject: `Welcome to ${tenantName} on SKUpervisor`,
+    subject: `Welcome to ${tenantName} on DGFY`,
     html
   });
 };

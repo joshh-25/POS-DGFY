@@ -78,7 +78,7 @@ export const getInvitationTemplate = ({ inviterName, role, invitationToken, tena
           <tr>
             <td style="background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); padding: 30px 40px; border-radius: 12px 12px 0 0; text-align: center;">
               <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">
-                SKUpervisor
+                DGFY
               </h1>
             </td>
           </tr>
@@ -145,7 +145,7 @@ export const getInvitationTemplate = ({ inviterName, role, invitationToken, tena
                 If you didn't expect this invitation, you can safely ignore this email.
               </p>
               <p style="margin: 0; color: #9ca3af; font-size: 12px;">
-                &copy; ${new Date().getFullYear()} SKUpervisor. All rights reserved.
+                &copy; ${new Date().getFullYear()} DGFY. All rights reserved.
               </p>
             </td>
           </tr>
@@ -344,7 +344,7 @@ export const getWelcomeTemplate = ({ username, role, tenantName, appUrl }) => {
               </h2>
 
               <p style="margin: 0 0 24px; color: #4b5563; font-size: 16px;">
-                Your account has been successfully created. You now have access to SKUpervisor as a <strong>${safeRole}</strong>.
+                Your account has been successfully created. You now have access to DGFY as a <strong>${safeRole}</strong>.
               </p>
 
               <p style="margin: 0 0 32px; color: #4b5563; font-size: 16px;">
@@ -363,7 +363,7 @@ export const getWelcomeTemplate = ({ username, role, tenantName, appUrl }) => {
           <tr>
             <td style="padding: 24px; text-align: center;">
               <p style="margin: 0; color: #9ca3af; font-size: 12px;">
-                &copy; ${new Date().getFullYear()} SKUpervisor. All rights reserved.
+                &copy; ${new Date().getFullYear()} DGFY. All rights reserved.
               </p>
             </td>
           </tr>
@@ -492,7 +492,7 @@ export const getCompanyApprovedTemplate = ({ companyName, adminEmail, appUrl, st
           <tr>
             <td style="background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); padding: 30px 40px; border-radius: 12px 12px 0 0; text-align: center;">
               <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">
-                SKU Inventory Manager
+                DGFY
               </h1>
             </td>
           </tr>
@@ -546,7 +546,7 @@ export const getCompanyApprovedTemplate = ({ companyName, adminEmail, appUrl, st
           <tr>
             <td style="padding: 24px; text-align: center;">
               <p style="margin: 0; color: #9ca3af; font-size: 12px;">
-                &copy; ${new Date().getFullYear()} SKU Inventory Manager. All rights reserved.
+                &copy; ${new Date().getFullYear()} DGFY. All rights reserved.
               </p>
             </td>
           </tr>
@@ -599,7 +599,7 @@ export const getCompanyRejectedTemplate = ({ companyName, rejectionReason, statu
           <tr>
             <td style="background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); padding: 30px 40px; border-radius: 12px 12px 0 0; text-align: center;">
               <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">
-                SKU Inventory Manager
+                DGFY
               </h1>
             </td>
           </tr>
@@ -649,7 +649,7 @@ ${reasonSection}
           <tr>
             <td style="padding: 24px; text-align: center;">
               <p style="margin: 0; color: #9ca3af; font-size: 12px;">
-                &copy; ${new Date().getFullYear()} SKU Inventory Manager. All rights reserved.
+                &copy; ${new Date().getFullYear()} DGFY. All rights reserved.
               </p>
             </td>
           </tr>
@@ -689,7 +689,7 @@ export const getSubscriptionExpiringTemplate = ({ companyName, expiryDate, appUr
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%;">
           <tr>
             <td style="background: #0f172a; padding: 30px 40px; border-radius: 12px 12px 0 0; text-align: center;">
-              <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">SKU Inventory Manager</h1>
+              <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">DGFY</h1>
             </td>
           </tr>
           <tr>
@@ -734,7 +734,7 @@ export const getSubscriptionCancelledTemplate = ({ companyName, downgradeDate })
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%;">
           <tr>
             <td style="background: #334155; padding: 30px 40px; border-radius: 12px 12px 0 0; text-align: center;">
-              <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">SKU Inventory Manager</h1>
+              <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">DGFY</h1>
             </td>
           </tr>
           <tr>
@@ -774,7 +774,7 @@ export const getPaymentFailedTemplate = ({ companyName, retryDate }) => {
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%;">
           <tr>
             <td style="background: #991b1b; padding: 30px 40px; border-radius: 12px 12px 0 0; text-align: center;">
-              <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">SKU Inventory Manager</h1>
+              <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">DGFY</h1>
             </td>
           </tr>
           <tr>
@@ -812,7 +812,7 @@ export const getPaymentFailedGracePeriodTemplate = ({ companyName, gracePeriodEn
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%;">
           <tr>
             <td style="background: #f59e0b; padding: 30px 40px; border-radius: 12px 12px 0 0; text-align: center;">
-              <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">SKU Inventory Manager</h1>
+              <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">DGFY</h1>
             </td>
           </tr>
           <tr>
@@ -855,7 +855,7 @@ const emailWrap = (headerBg, headerText, bodyContent) => `
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width:600px;width:100%;">
           <tr>
             <td style="background:${headerBg};padding:30px 40px;border-radius:12px 12px 0 0;text-align:center;">
-              <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:600;">SKUpervisor</h1>
+              <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:600;">DGFY</h1>
               ${headerText ? `<p style="margin:8px 0 0;color:rgba(255,255,255,0.85);font-size:14px;">${headerText}</p>` : ''}
             </td>
           </tr>
@@ -866,7 +866,7 @@ const emailWrap = (headerBg, headerText, bodyContent) => `
           </tr>
           <tr>
             <td style="padding:24px;text-align:center;">
-              <p style="margin:0;color:#9ca3af;font-size:12px;">&copy; ${new Date().getFullYear()} SKUpervisor. All rights reserved.</p>
+              <p style="margin:0;color:#9ca3af;font-size:12px;">&copy; ${new Date().getFullYear()} DGFY. All rights reserved.</p>
             </td>
           </tr>
         </table>
@@ -922,7 +922,7 @@ export const getPayMongoSetupTemplate = ({ companyName, checkoutLink, expiresAt,
   const body = `
     <h2 style="margin:0 0 16px;color:#1f2937;font-size:22px;">Set Up PayMongo Recurring Billing</h2>
     <p style="margin:0 0 16px;color:#4b5563;font-size:16px;">
-      Your SKUpervisor administrator has initiated PayMongo recurring billing for <strong>${companyName}</strong>.
+      Your DGFY administrator has initiated PayMongo recurring billing for <strong>${companyName}</strong>.
     </p>
     <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:16px;margin-bottom:24px;">
       <p style="margin:0;color:#166534;font-size:14px;"><strong>Plan:</strong> ${planName}</p>
@@ -993,7 +993,7 @@ export const getPlanChangeAppliedTemplate = ({ companyName, oldPlan, newPlan }) 
   return emailWrap('#166534', 'Plan Updated', body);
 };
 
-/** Sent to the SKUpervisor admin when an inactive user requests reactivation */
+/** Sent to the DGFY admin when an inactive user requests reactivation */
 export const getReactivationRequestTemplate = ({ companyName, requestedAt }) => {
   const body = `
     <h2 style="margin:0 0 16px;color:#1f2937;font-size:22px;">Reactivation Request Received</h2>
