@@ -243,7 +243,7 @@ SMTP_SECURE=false
 SMTP_USER=your-email@gmail.com
 SMTP_PASS=your-app-password
 EMAIL_FROM=your-email@gmail.com
-EMAIL_FROM_NAME=SKUpervisor
+EMAIL_FROM_NAME=DGFY
 
 # Production delivery currently depends on resolving Brevo SMTP connectivity
 # or adding Brevo HTTPS API delivery. Local invites can still be validated with
