@@ -2,7 +2,7 @@
 // runs before any other module code (including bundled deps like
 // maplibre-gl). See ADR 0067 / #666.
 import '../../../packages/web-core/src/compat/chrome80Runtime.js';
-import React, { useEffect } from 'react';
+import React, { useLayoutEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { Toaster } from 'sonner';
@@ -14,6 +14,8 @@ import StorefrontRegisterPage from './auth/pages/StorefrontRegisterPage.jsx';
 import StorefrontAffiliateAcceptPage from './auth/pages/StorefrontAffiliateAcceptPage.jsx';
 import StorefrontResetPasswordPage from './auth/pages/StorefrontResetPasswordPage.jsx';
 import StorefrontBusinessGrowPage from './business/pages/StorefrontBusinessGrowPage.jsx';
+import StorefrontOidcInteractionPage from './oidc/StorefrontOidcInteractionPage.jsx';
+import StorefrontOidcErrorPage from './oidc/StorefrontOidcErrorPage.jsx';
 import BusinessRegistrationSubmissionPage from './business/pages/BusinessRegistrationSubmissionPage.jsx';
 import ContactUsPage from './discovery/pages/ContactUsPage.jsx';
 import ExternalRedirectPage from './discovery/pages/ExternalRedirectPage.jsx';
@@ -24,7 +26,8 @@ import VersionBadge from '../../../packages/web-core/src/components/common/Versi
 import {
   capturePageview,
   getStoredAnalyticsConsent,
-  initBrowserAnalytics
+  initBrowserAnalytics,
+  updateAnalyticsRoutePrivacy
 } from '../../../packages/web-core/src/observability/analyticsClient.js';
 import { ConsentBanner } from './Components/ConsentBanner.jsx';
 import {
@@ -49,19 +52,22 @@ const handleConsentChange = (granted) => {
 function AnalyticsRouteTracker() {
   const location = useLocation();
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    updateAnalyticsRoutePrivacy(location.pathname);
+    const oidcRoute = /^\/oidc\/(interaction|error)\/[^/]+\/?$/.exec(location.pathname);
+    const safePath = oidcRoute ? `/oidc/${oidcRoute[1]}/:id` : location.pathname;
     // The storefront's real routing is a second, window.location-based layer
     // on top of react-router (see app/routing/storefrontRouting.js) — a
     // custom merchant domain collapses everything to `/`, `/order`, etc, so
     // react-router's location.pathname alone under-describes the page.
     // Reading the routing helpers here captures what page this actually is.
     capturePageview({
-      path: location.pathname,
-      route_slug: readRouteSlug(),
+      path: safePath,
+      route_slug: oidcRoute ? `oidc_${oidcRoute[1]}` : readRouteSlug(),
       route_subpage: readStoreSubpage(),
       is_custom_domain: Boolean(getCustomStorefrontRouteContext())
     });
-    setSentryRoute(location.pathname);
+    setSentryRoute(safePath);
   }, [location.pathname]);
 
   return null;
@@ -104,6 +110,8 @@ function StoreRoot() {
       <RouteConsentBanner />
       <Routes>
         <Route path="/e/:slug" element={<ExternalRedirectPage />} />
+        <Route path="/oidc/interaction/:id" element={<StorefrontOidcInteractionPage />} />
+        <Route path="/oidc/error/:id" element={<StorefrontOidcErrorPage />} />
         <Route
           path="/login"
           element={(

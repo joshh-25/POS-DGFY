@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   identifyAnalyticsUser,
-  resolvePostHogBrowserConfig
+  isSensitiveAnalyticsPath,
+  resolvePostHogBrowserConfig,
+  sanitizePostHogEventUrls
 } from '../analyticsClient.js';
 
 describe('browser PostHog config', () => {
@@ -80,15 +82,40 @@ describe('browser PostHog config', () => {
     expect(config.surface).toBe('skupervisor');
   });
 
-  it('scopes autocapture to interactive elements on the pos surface, leaves it unrestricted elsewhere', () => {
+  it('ignores credential and OIDC routes while retaining each surface autocapture policy', () => {
     const posConfig = resolvePostHogBrowserConfig({}, 'pos');
     const storeConfig = resolvePostHogBrowserConfig({}, 'store');
 
-    expect(posConfig.autocapture).toEqual({
-      element_allowlist: ['button', 'a', 'input', 'select'],
-      css_selector_ignorelist: ['.ph-no-capture', '[data-ph-no-capture]']
+    expect(posConfig.autocapture.element_allowlist).toEqual(['button', 'a', 'input', 'select']);
+    expect(posConfig.autocapture.css_selector_ignorelist).toContain('.ph-no-autocapture');
+    expect(storeConfig.autocapture.url_ignorelist[0].test('https://dev.dgfy.ph/login?oidc_interaction_id=secret')).toBe(true);
+    expect(storeConfig.autocapture.url_ignorelist[0].test('https://dev.dgfy.ph/oidc/interaction/secret')).toBe(true);
+    expect(storeConfig.autocapture.url_ignorelist[0].test('https://dev.dgfy.ph/map-dgfy/account')).toBe(false);
+  });
+
+  it('strips query and fragment data from automatic page URL and referrer properties', () => {
+    const event = sanitizePostHogEventUrls({
+      event: '$pageview',
+      properties: {
+        $current_url: 'https://dev.dgfy.ph/login?oidc_interaction_id=secret#ticket=secret',
+        $referrer: 'https://laundry.surebizcorp.com/callback?code=secret#state=secret',
+        href: 'https://api.dev.dgfy.ph/oidc/complete#ticket=secret',
+        $pathname: '/login'
+      }
     });
-    expect(storeConfig.autocapture).toBe(true);
+    expect(event.properties.$current_url).toBe('https://dev.dgfy.ph/login');
+    expect(event.properties.$referrer).toBe('https://laundry.surebizcorp.com/callback');
+    expect(event.properties.href).toBe('https://api.dev.dgfy.ph/oidc/complete');
+    expect(event.properties.$pathname).toBe('/login');
+  });
+
+  it('marks authentication and OIDC routes as sensitive for session replay', () => {
+    expect(isSensitiveAnalyticsPath('/login?oidc_interaction_id=secret')).toBe(true);
+    expect(isSensitiveAnalyticsPath('/register')).toBe(true);
+    expect(isSensitiveAnalyticsPath('/reset-password')).toBe(true);
+    expect(isSensitiveAnalyticsPath('/oidc/interaction/secret')).toBe(true);
+    expect(isSensitiveAnalyticsPath('/oidc/error/secret')).toBe(true);
+    expect(isSensitiveAnalyticsPath('/map-dgfy/account')).toBe(false);
   });
 
   it('resolves session replay per-surface, falling back to the shared flag, defaulting off', () => {
