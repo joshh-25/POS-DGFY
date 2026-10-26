@@ -27,7 +27,7 @@
     {
       "path": "docs/compliance/impact-declarations/2026-10-25-admin-tenant-directory-billing-phase-547.md",
       "decision": "combine",
-      "reason": "The #2776 regulatory declaration and its no_breach preflight evidence are retained at docs/compliance/impact-declarations/2026-10-25-admin-tenant-directory-billing-phase-558.md. The path, declaration ID, and body phase reference were updated as concurrent develop phase claims were reconciled; the preflight run reference and timestamp remain unchanged."
+      "reason": "The #2776 regulatory declaration and its no_breach preflight evidence are retained at docs/compliance/impact-declarations/2026-10-25-admin-tenant-directory-billing-phase-561.md. The path, declaration ID, and body phase reference were updated as concurrent develop phase claims were reconciled; the preflight run reference and timestamp remain unchanged."
     }
   ]
 }
