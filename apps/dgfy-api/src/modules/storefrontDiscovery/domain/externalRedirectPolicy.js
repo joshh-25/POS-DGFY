@@ -1,7 +1,7 @@
 import { isIP } from 'node:net';
 
 export const EXTERNAL_REDIRECT_SITES = Object.freeze({
-  proventus: { label: 'Proventus', action: 'View job', category: 'Job' },
+  proventus: { label: 'Proventous', action: 'View job', category: 'Job' },
   eytitu: { label: 'Eytitu', action: 'Book ride', category: 'Taxi' },
   mapviu: { label: 'Mapviu', action: 'Inquire', category: 'Real Estate' },
   synqcore: { label: 'Synqcore', action: 'Book stay', category: 'Hotel' }
