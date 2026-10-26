@@ -32866,6 +32866,220 @@ Not complete. Record only after merge and implementation validation pass.
 
 Phase 555. No explicit dependency.
 
+## Phase 555 - Repair storefront-mode integration test email mock (#2767)
+
+### Initiative and release
+
+API integration-test reliability / STAGING Promotion Quality Gate triage.
+
+### Objective and scope
+
+Expose the existing `sendStorefrontOrderConfirmationEmail` production export from the
+`emailService.js` mock used by `adminTenantLifecycle.integration.test.js`, allowing the API server
+to load before the test assertions run. Preserve existing assertions, mocks, fixtures, setup, and
+cleanup. This phase does not change production email behavior, schema, migrations, quality-gate
+policy, or the independent POS, evidence-storage, fast-tier, and dependency findings tracked under
+#2767 and their existing owners.
+
+### Status
+
+`in_progress` — the mock and ledger entry are on a fresh `origin/develop` branch; implementation
+validation and merge remain pending.
+
+### Dependencies
+
+None. Phase 554's custom staff-role invitation work is independent. The production export already
+exists; this test-only repair makes the mock match its consumer.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0054](../architecture/adr/0054-outbound-email-delivery-log-and-bounce-capture.md),
+[Backend Test Matrix Gate](../testing/README.md#backend-test-matrix-gate),
+[Issue #2767](https://github.com/Sieitzz/dgfy-platform/issues/2767), and
+[Issue #2577](https://github.com/Sieitzz/dgfy-platform/issues/2577). Classification:
+`no-architecture-impact`; production email delivery and its existing test seam are unchanged.
+
+### Implementation targets
+
+[adminTenantLifecycle.integration.test.js](../../apps/dgfy-api/tests/adminTenantLifecycle.integration.test.js),
+[emailService.js](../../apps/dgfy-api/src/services/emailService.js), and
+[dgfyOrderConfirmationEmail.js](../../apps/dgfy-api/src/modules/dgfy/services/dgfyOrderConfirmationEmail.js).
+
+### Acceptance and validation evidence
+
+- [x] The ESM test mock exposes `sendStorefrontOrderConfirmationEmail` before the server's dynamic
+  import, without changing existing test assertions or setup/cleanup.
+- [ ] `tenant_storefront_modes` DB group passes, including `adminTenantLifecycle.integration.test.js`.
+  Not established: the matrix runner stops during its inventory preflight on the unrelated,
+  unlisted Phase 554 test `tests/staffRoleInvitationPersistence.phase554.db.integration.test.js`;
+  a direct Jest attempt then could not connect to the local test MySQL service.
+- [x] `npm run test:backend:matrix` outcome is recorded with unrelated failures kept separate; it
+  exits before running suites for the same Phase 554 manifest gap.
+- [x] Changed-file syntax, architecture, docs lint, app-version floor, and `git diff --check` pass.
+
+### Validation evidence (2026-10-26)
+
+- `node --check apps/dgfy-api/tests/adminTenantLifecycle.integration.test.js` passed.
+- `npm run check:architecture` passed (63 modules / 802 code files; 116 controller files).
+- `npm run lint:docs` passed (36 governed docs / 106 ADRs).
+- `node scripts/check-app-version-bump.js` reported no requirement because no app or fan-out
+  package changed. `git diff --check` passed.
+- `npm run test:backend:db -- --group tenant_storefront_modes` and
+  `npm run test:backend:matrix` both exited before test execution because
+  `tests/staffRoleInvitationPersistence.phase554.db.integration.test.js` is not listed in
+  `scripts/backend-db-dependent-tests.js`. The disposable testing-agent run on code commit
+  `59fd9fe9cc207ec1adf5f2f7f122bf6dc7797f67` reported a failed backend matrix gate (focused
+  advisory run: 1 failed / 16 skipped; MySQL 8 and Redis 7 test containers healthy). The direct
+  matrix invocation above reports the missing manifest entry.
+- A direct Jest run with `DB_HOST=127.0.0.1` and `DB_NAME_TEST=sku_test` passed the module/server
+  import stage, so the missing named-export error is gone, then failed in the shared `beforeAll`
+  hook and cleanup with `ECONNREFUSED 127.0.0.1:3306`; no test assertions ran. No local MySQL
+  service was available.
+
+### Risks and non-goals
+
+The DB group and full backend matrix require the repository's configured disposable MySQL test
+environment. Any environment limitation or unrelated matrix failure must be reported without
+weakening assertions or changing the test selection. No production email delivery or real mailbox
+is involved.
+
+### Completion date
+
+Not complete. Record only after merge and implementation validation pass.
+
+### Post-merge verification
+
+- [ ] **operational** — confirm the backend DB-matrix CI result for the merged `develop` SHA includes
+  and passes `tenant_storefront_modes`, including this integration suite. Owner: Worker / PR CI;
+  blocks closure of this scoped repair under #2767.
+
+### Next phase number
+
+Phase 556. No explicit dependency.
+
+## Phase 556 - Connect independently hosted Surebiz DGLaundry to DGFY DEV (#2387)
+
+### Initiative and release
+
+DGLaundry provider integration, DEV source/configuration slice for epic #2387. Branch:
+`feat/2387-surebiz-dev-connection`, targeting `develop`.
+
+### Objective and scope
+
+Enable DGFY's source and setup tooling to accept a DEV connection from the existing
+`https://laundry.surebizcorp.com` DGLaundry deployment at
+`https://api.dev.dgfy.ph`. Surebiz stays on its own host and communicates over HTTPS. Add an
+independent DEV registration tuple, exact callback and service-token audience, asymmetric key
+support, production-mode runtime validation, and sandbox-only payment checks. Keep STAGE and PROD
+bound to their own DGLaundry hosts and credentials. This phase does not migrate Surebiz runtime or
+data, configure the Surebiz server, deploy either side, change DNS, or activate PROD.
+
+### Status
+
+`in_progress` — DGFY source, tests, contract, and runbook have passed the available source checks;
+no host mutation or hosted qualification has been recorded.
+
+### Dependencies
+
+No dependency blocks the DGFY source PR. Hosted joint qualification depends on Albert's separate
+DGLaundry profile/installer/configuration update, a retained demo backup, fresh connected-DEV data
+and credentials, verified DGFY registrations/key installation, and approved synthetic mappings.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0060](../architecture/adr/0060-sops-age-encrypted-secrets-at-rest.md),
+[ADR 0079](../architecture/adr/0079-dglaundry-external-runtime-and-provider-contract.md),
+[DGFY Partner Integration Contract](../api/PARTNER_INTEGRATION_CONTRACT.md),
+[Connection Manifest](../integrations/dglaundry-connection-manifest.json),
+[Connection Setup Runbook](../integrations/DGLAUNDRY_CONNECTION_SETUP.md),
+[Issue #2387 latest access/runbook evidence](https://github.com/Sieitzz/dgfy-platform/issues/2387#issuecomment-6413091805).
+Classification: cross-boundary environment/profile contract amendment under ADR 0039's default
+clause path. No exception or allowlist is introduced.
+
+### Implementation targets
+
+[Setup utility](../../scripts/dglaundry-connection-setup.mjs),
+[setup tests](../../scripts/dglaundry-connection-setup.test.mjs),
+[connection manifest](../../docs/integrations/dglaundry-connection-manifest.json),
+[environment validation](../../apps/dgfy-api/src/config/productionEnvValidation.cjs),
+[startup guard](../../apps/dgfy-api/src/server.js),
+[partner service-token issuer](../../apps/dgfy-api/src/modules/dgfyLaundryOrders/services/dglaundryPartnerAccessToken.js),
+[validation tests](../../apps/dgfy-api/tests/productionEnvValidation.test.js),
+[startup-guard tests](../../apps/dgfy-api/tests/productionEnvGuard.test.js),
+[token tests](../../apps/dgfy-api/tests/dglaundryPartnerAccessToken.test.js),
+[DGFY contract](../../docs/api/PARTNER_INTEGRATION_CONTRACT.md),
+[key provisioning runbook](../../docs/ops/dglaundry-oidc-key-provisioning.md).
+
+### Acceptance and validation evidence
+
+- [ ] The v1.2 manifest binds Surebiz only to DGFY DEV, with independent proposed client/key IDs,
+  blank registration proof and fingerprints, exact callback/audience, and sandbox payment mode.
+- [ ] Setup inspect/prepare/apply/verify/rollback support DEV, bind state to the manifest digest,
+  preserve existing unmanaged settings, synchronize the existing host `.env`, and restore managed
+  Compose values safely on rollback; STAGE remains on its own DGLaundry host and PROD mutation
+  remains prohibited.
+- [ ] Enabled hosted DEV cannot start outside `NODE_ENV=production`; the exact DEV issuer,
+  callback, Surebiz audience, Redis-backed replay protections, asymmetric signatures, and test-mode
+  payment requirements are validated.
+- [ ] Focused setup, environment-validation, startup-guard, and service-token tests pass; relevant
+  architecture, compliance, docs, syntax, and diff checks are recorded below.
+- [ ] DGFY source readiness is reported separately from Albert's DGLaundry changes and hosted
+  authentication/tenant-isolation qualification.
+
+### Validation evidence (2026-10-26)
+
+- `npm run test:dglaundry-connection-setup` — PASS, 19/19.
+- `npm run check:production-env` — PASS (existing fixture warnings note empty `DEPLOY_ENV_LABEL`
+  in generic fixtures).
+- `npm run check:architecture` — PASS (63 modules, 802 code files, 116 controllers).
+- `npm run lint:docs` — PASS (36 governed docs, 106 ADRs).
+- `npm run check:compliance` — PASS; no compliance-sensitive declaration was required.
+- `npm run check:app-versions` — PASS; no version bump applies on this `develop`-targeted branch.
+- `node --check` on changed API/setup JavaScript and the manifest-to-contract SHA-256 check — PASS.
+- `git diff --check` and the pre-commit marker scan — PASS.
+- Focused API Jest tests were attempted but could not run: this checkout has no
+  `apps/dgfy-api/node_modules/jest`; no assertions ran.
+
+Hosted DEV discovery/JWKS, Surebiz configuration, secret installation, and authenticated joint
+qualification have not been performed by this phase.
+
+### Risks and non-goals
+
+Changing DEV `NODE_ENV` to `production` affects the whole DGFY DEV API and activates full hosting
+preflight requirements; the host operator must validate the complete effective configuration
+before applying. The setup tool keeps registration proposed until independent evidence and actual
+public-key fingerprints are recorded. No credentials, private keys, DNS changes, host migration,
+staging/prod retargeting, or production activation belong in this phase.
+
+### Completion date
+
+Not complete. Record only after the scoped source implementation is merged and implementation
+validation passes.
+
+### Post-merge verification
+
+- [ ] **deployment** — through the approved DGFY DEV release process, record the exact source SHA,
+  image digest, config revision, production-mode runtime label, sandbox payment setting, and rollback
+  reference. Owner: DGFY release operator.
+- [ ] **provider** — verify DEV discovery advertises only `https://api.dev.dgfy.ph/oidc`, JWKS is
+  HTTP 200 with the registered DEV key ID, and the login/browser session, machine/service
+  authorization, and signed traffic work. Owner: DGFY release operator and DGLaundry owner.
+- [ ] **Surebiz** — Albert supplies the reviewed connected-DEV profile/configuration on Surebiz's
+  existing host, fresh database/credentials, retained demo backup, exact DGLaundry SHA/image and
+  config revision. Owner: Albert / DGLaundry.
+- [ ] **qualification** — with synthetic mappings and sandbox payments, prove replay and
+  wrong-company/location denial, then record both SHAs, key fingerprints, evidence URLs, and rollback
+  target. Owner: DGFY + DGLaundry; blocks connected-DEV acceptance and epic closure.
+
+### Next phase number
+
+Phase 557. No explicit dependency.
+
 ---
 
 **Dated note, 2026-10-26 — Phase-number collision between the #2696 tenant-management epic branch and `develop`, resolved per the Phase Sequencing and Lifecycle Rules (the `develop` reservation wins; unmerged collisions move to the next free number):**
@@ -32880,7 +33094,20 @@ The shared base ended at Phase 551. `develop` now reserves Phases 552–554 for 
 | 555 | Tenant-console integration cleanup and URL privacy (#2757, #2748, #2750) | **moved from 552** |
 | 556 | Efficient tenant directory and Billing workspace (#2776) | **moved from 553** |
 
-## Phase 555 - Tenant-console integration cleanup and URL privacy (#2757, #2748, #2750)
+---
+
+**Dated note, 2026-10-26 (second develop sync) — the #2696 epic phase reservations collided again with new entries on `develop`:**
+
+The preceding note records the first sync, which moved the epic's unmerged phases to 555 and 556 after develop had reserved 552–554. Before the epic entries landed on `develop`, develop added Phase 555 for the POS branch-entry integration-test mock (#2767) and Phase 556 for connecting independently hosted Surebiz DGLaundry to DGFY DEV (#2387). Per the ledger rule, those develop entries keep their numbers. The epic's tenant-console integration cleanup moves from Phase 555 to **Phase 557**; its efficient tenant directory and Billing workspace moves from Phase 556 to **Phase 558**. Epic phases 542–544 remain unchanged.
+
+| Phase | Owner | Disposition |
+|---:|---|---|
+| 555 | POS branch entry and shared contracts (#2767) | unchanged — reserved on `develop` |
+| 556 | Connect independently hosted Surebiz DGLaundry to DGFY DEV (#2387) | unchanged — reserved on `develop` |
+| 557 | Tenant-console integration cleanup and URL privacy (#2757, #2748, #2750) | **moved from 555**; originally assigned 552 in the first sync |
+| 558 | Efficient tenant directory and Billing workspace (#2776) | **moved from 556**; originally assigned 553 in the first sync |
+
+## Phase 557 - Tenant-console integration cleanup and URL privacy (#2757, #2748, #2750)
 
 ### Initiative and release
 
@@ -33026,10 +33253,10 @@ Failure origin was not baseline-compared. Full logs and `local_readiness.json` a
 
 ### Next phase number
 
-Phase 556. Phase 555 depends on integrated Phases 543 and 544; no other explicit dependency blocks
+Phase 558. Phase 557 depends on integrated Phases 543 and 544; no other explicit dependency blocks
 implementation.
 
-## Phase 556 - Efficient tenant directory and Billing workspace (#2776)
+## Phase 558 - Efficient tenant directory and Billing workspace (#2776)
 
 ### Initiative and release
 
@@ -33053,10 +33280,10 @@ remain tracked below and do not change implementation completion.
 
 ### Dependencies
 
-- Phases 543–544 and 555 / Waves 2–4 are present on the registered epic base; the route foundation,
+- Phases 543–544 and 557 / Waves 2–4 are present on the registered epic base; the route foundation,
   sections, and integration cleanup are available to this wave.
-- This entry moved from Phase 553 to Phase 556 under the dated 2026-10-26 collision note above;
-  `develop` already reserves Phases 552–554.
+- This entry moved from Phase 553 to Phase 558 across the dated 2026-10-26 collision notes above;
+  `develop` already reserves Phases 552–556.
 - Phase 546 (#2769) is already recorded on `origin/develop`; it is unrelated and does not block this
   issue. No explicit dependency on #2769 exists. #1923 STAGING persistence/publication checks,
   #2633/#2639 deployed capability evidence, and PROD capability-read recovery remain
@@ -33184,5 +33411,5 @@ deployment, production data access, or financial mutation occurred in this Worke
 
 ### Next phase number
 
-Phase 557. Phase 556 depends on the Wave 2–4 routes integrated on the epic branch; Phase 546 on
+Phase 559. Phase 558 depends on the Wave 2–4 routes integrated on the epic branch; Phase 546 on
 `origin/develop` is unrelated and creates no additional dependency.
