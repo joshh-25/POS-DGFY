@@ -712,8 +712,15 @@ paths:
                 currency: { type: string }
                 publicStorefrontHandle: { type: string }
       responses:
-        "201":
-          description: Intent created
+        "200":
+          description: Intent created or replayed; pending responses have no company, location, or membership IDs
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegistrationIntentResponse' }
+        "403":
+          description: The exact DGFY issuer and subject do not resolve to an active account
+        "422":
+          description: The issuer or subject is missing or does not match this DGFY environment
   /api/v1/partners/dglaundry/registration-intents/{intentId}:
     get:
       tags: [partner-provider]
@@ -726,7 +733,10 @@ paths:
           schema: { type: string }
       responses:
         "200":
-          description: Intent status
+          description: Intent status and current authoritative DGFY approval records
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegistrationIntentResponse' }
         "404":
           description: Not found
   /api/v1/partners/dglaundry/location-intents:
@@ -949,6 +959,44 @@ components:
       name: Signature-Input
       description: RFC 9421 Ed25519 event signature, tag dglaundry-dgfy-v1
   schemas:
+    RegistrationIntentResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, const: true }
+        data: { $ref: '#/components/schemas/RegistrationIntentStatus' }
+    RegistrationIntentStatus:
+      type: object
+      required: [intentId, intentType, status, reason, companyId, locationId, membershipId, issuer, subject, membershipStatus, companyStatus, businessMode, connectionStatus, statusVersion, companyAccessVersion]
+      properties:
+        intentId: { type: string, format: uuid }
+        intentType: { type: string, const: registration }
+        status:
+          type: string
+          enum: [pending, approved, rejected, correction_required, expired, consumed]
+        reason:
+          oneOf:
+            - type: string
+            - type: 'null'
+        companyId: { type: [string, 'null'], format: uuid }
+        locationId: { type: [string, 'null'], description: DGFY-generated provider location ID; never a DGLaundry branch ID }
+        membershipId: { type: [string, 'null'] }
+        issuer: { type: [string, 'null'], format: uri }
+        subject: { type: [string, 'null'], description: Exact DGFY OIDC subject }
+        membershipStatus:
+          type: string
+          enum: [accepted, pending, rejected, removed, not_created]
+        companyStatus:
+          type: string
+          enum: [active, suspended, pending, rejected, not_created]
+        businessMode: { type: string, minLength: 1 }
+        connectionStatus:
+          type: string
+          enum: [active, pending, inactive, suspended, revoked, unavailable]
+        statusVersion: { type: integer, minimum: 1 }
+        companyAccessVersion: { type: integer, minimum: 0 }
+        applicationId: { type: [string, 'null'] }
+        expiresAt: { type: [string, 'null'], format: date-time, description: Registration review does not use the short-lived partner-intent expiry }
     Error:
       type: object
       properties:

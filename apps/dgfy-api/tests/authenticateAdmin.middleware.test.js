@@ -96,7 +96,7 @@ describe('authenticateAdmin middleware', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('allows the tenant detail route for an active cookie-session authority with admin.tenants', async () => {
+  it('allows the DGLaundry registration decision route for an active cookie-session authority with admin.tenants', async () => {
     mockIsTokenBlacklisted.mockResolvedValue(false);
     mockVerifyToken.mockReturnValue({
       type: 'platform_admin',
@@ -112,7 +112,7 @@ describe('authenticateAdmin middleware', () => {
 
     const req = {
       headers: { cookie: 'admin_session=session-token' },
-      originalUrl: '/api/v1/admin/tenants/tenant-42'
+      originalUrl: '/api/v1/admin/tenants/dglaundry-registration-intents/intent-42/decision'
     };
     const res = createRes();
     const next = jest.fn();
@@ -129,7 +129,7 @@ describe('authenticateAdmin middleware', () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
-  it('rejects tenant detail access when the active session lacks admin.tenants', async () => {
+  it('rejects DGLaundry registration review when the active session lacks admin.tenants', async () => {
     mockIsTokenBlacklisted.mockResolvedValue(false);
     mockVerifyToken.mockReturnValue({
       type: 'platform_admin',
@@ -145,7 +145,7 @@ describe('authenticateAdmin middleware', () => {
 
     const req = {
       headers: { cookie: 'admin_session=session-token' },
-      originalUrl: '/api/v1/admin/tenants/tenant-42'
+      originalUrl: '/api/v1/admin/tenants/dglaundry-registration-intents/intent-42'
     };
     const res = createRes();
     const next = jest.fn();
