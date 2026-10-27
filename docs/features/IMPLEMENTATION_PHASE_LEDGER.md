@@ -33542,7 +33542,8 @@ dependency, shared-package, or provider-eligibility changes are in scope.
 ### Status
 
 `in_progress` — implementation and local validation are complete on
-`fix/2833-clear-discovery-search`; the Worker PR is pending. No merge or deployment has occurred.
+`fix/2833-clear-discovery-search`; review and merge remain outstanding. No merge or deployment has
+occurred.
 
 ### Dependencies
 
