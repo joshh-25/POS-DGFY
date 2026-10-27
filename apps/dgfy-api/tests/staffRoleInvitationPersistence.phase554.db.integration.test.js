@@ -132,7 +132,7 @@ describe('Phase 554 staff-role invitation persistence on a disposable migrated t
       permissions: []
     });
     const audit = await models.AuditLog.findOne({
-      where: { entity_type: 'staff_role', entity_id: user.user_id },
+      where: { entity_type: 'user', entity_id: user.user_id },
       order: [['log_id', 'DESC']]
     });
     expect(audit.changes).toMatchObject({

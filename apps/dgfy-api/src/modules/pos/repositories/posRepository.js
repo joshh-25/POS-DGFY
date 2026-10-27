@@ -8001,12 +8001,13 @@ export const posRepository = {
         return toPlain(row);
     },
 
-    async findOpenTerminalShift({ terminalId = null, cashierId = null, locationId = null } = {}, options = {}) {
+    async findOpenTerminalShift({ terminalId = null, cashierId = null, locationId = null, shiftId = null } = {}, options = {}) {
         const PosTerminalShift = dbStore.get('PosTerminalShift');
         const where = { status: 'open' };
         if (terminalId) where.terminal_id = terminalId;
         if (cashierId) where.cashier_id = cashierId;
         if (locationId) where.location_id = locationId;
+        if (shiftId) where.pos_terminal_shift_id = shiftId;
         return PosTerminalShift.findOne({
             where,
             include: [

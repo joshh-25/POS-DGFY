@@ -40,6 +40,7 @@ import {
 import { evaluateFulfillmentLeadTime } from '@/src/features/settings/fulfillmentLeadTime.js';
 import { normalizeDeliveryRadiusKm } from '@/src/features/settings/deliveryRadius.js';
 import { normalizeCoverPhotoTransform } from '@sieitzz/shared-constants/coverPhotoTransform';
+import { resolveTaxpayerType } from '@sieitzz/pos-receipt';
 import UserInvitationModal from '@/components/users/UserInvitationModal.jsx';
 import { fetchPosSetupCashiers, updatePosCashierPin } from '../services/posService.js';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
@@ -1419,6 +1420,12 @@ export default function PosSettingsWorkspace({
     const effectivePosForm = nextPosForm && typeof nextPosForm === 'object' ? nextPosForm : posForm;
     setSavingTab('pos_setup');
     try {
+      const taxpayerType = String(effectivePosForm.taxpayerType || '').trim();
+      if (taxpayerType && !resolveTaxpayerType(taxpayerType)) {
+        toast.error('Choose VAT registered or Non-VAT registered before saving POS setup.');
+        return false;
+      }
+
       const posDiscountProfiles = (Array.isArray(effectivePosForm.discountProfiles) ? effectivePosForm.discountProfiles : [])
         .map(sanitizeDiscountProfile)
         .filter((profile) => profile.name.length > 0);

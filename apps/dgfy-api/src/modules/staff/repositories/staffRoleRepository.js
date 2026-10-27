@@ -1,5 +1,9 @@
 import dbStore from '../../../utils/dbStore.js';
-import { normalizePermissionArray } from '../../../utils/userPermissions.js';
+import {
+  normalizePermissionArray,
+  normalizePermissionMode,
+  PERMISSION_MODES
+} from '../../../utils/userPermissions.js';
 import { Op } from 'sequelize';
 
 const options = (query = {}) => ({
@@ -169,33 +173,37 @@ export const applyStaffRoleAssignmentInTransaction = async ({
   role,
   actorUserId = null,
   transaction,
-  auditChanges = {}
+  auditChanges = {},
+  auditEntityType = 'staff_role'
 }) => {
   const staffRoleId = role?.staff_role_id ?? null;
   const previousPermissions = normalizePermissionArray(target.permissions);
-  const previousStaffRoleId = target.staff_role_id || null;
-  const previousPermissionMode = target.permission_mode || 'inherit';
+  const previousStaffRoleId = target.staff_role_id ?? null;
+  const previousPermissionMode = normalizePermissionMode(target.permission_mode);
+  const nextPermissionMode = staffRoleId !== null
+    ? PERMISSION_MODES.INHERIT
+    : PERMISSION_MODES.CUSTOM;
   const updates = {
     staff_role_id: staffRoleId,
-    permissions: []
+    permissions: [],
+    permission_mode: nextPermissionMode
   };
-
-  if (staffRoleId !== null) updates.permission_mode = 'inherit';
 
   await target.update(updates, { transaction });
   await repository.createAuditLog({
     user_id: actorUserId,
-    entity_type: 'staff_role',
+    entity_type: auditEntityType,
     entity_id: target.user_id,
     action: 'UPDATE',
     changes: {
       staff_role_id: staffRoleId,
       previous_staff_role_id: previousStaffRoleId,
-      permission_mode: staffRoleId !== null ? 'inherit' : previousPermissionMode,
+      permission_mode: nextPermissionMode,
       previous_permission_mode: previousPermissionMode,
       previous_permissions: previousPermissions,
       permissions: [],
-      permission_overrides_cleared: previousPermissions.length > 0,
+      permission_overrides_cleared: previousPermissions.length > 0
+        || previousPermissionMode === PERMISSION_MODES.CUSTOM,
       ...auditChanges
     }
   }, { transaction });
@@ -203,7 +211,11 @@ export const applyStaffRoleAssignmentInTransaction = async ({
   return {
     user_id: target.user_id,
     staff_role_id: staffRoleId,
-    staff_role: role?.get ? role.get({ plain: true }) : role
+    staff_role: role?.get ? role.get({ plain: true }) : role,
+    permission_mode: nextPermissionMode,
+    effective_permissions: staffRoleId === null
+      ? []
+      : normalizePermissionArray(role?.capabilities)
   };
 };
 

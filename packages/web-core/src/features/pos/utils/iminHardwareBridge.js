@@ -1,5 +1,6 @@
 import { emitPosHardwareMessage } from './posHardwareMessageBus.js';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
+import { resolveTaxpayerType } from '@sieitzz/pos-receipt';
 import {
     getDailySalesCheckCashSummary,
     getDailySalesCheckVoidActivity,
@@ -526,8 +527,19 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
     const governedDiscount = transaction?.discount && typeof transaction.discount === 'object' ? transaction.discount : null;
     const showSeniorPwdReceiptFields = isStatutorySeniorPwdDiscount(governedDiscount);
     const receiptRows = [];
-    const taxpayerType = safeText(businessSettings.pos_taxpayer_type).toLowerCase();
-    const vatRegistered = !taxpayerType.includes('non');
+    const taxpayerType = resolveTaxpayerType(businessSettings.pos_taxpayer_type);
+    const vatRegistered = taxpayerType === 'vat_registered';
+
+    if (isFiscal && !taxpayerType) {
+        receiptRows.push(
+            line(),
+            center('FISCAL SETUP INCOMPLETE')
+        );
+        pushCenteredWrapped(receiptRows, 'A recognized taxpayer type is required before a fiscal invoice can be printed.');
+        pushCenteredWrapped(receiptRows, 'Set the business taxpayer type to VAT or non-VAT, then try again.');
+        receiptRows.push(line());
+        return fitRows(receiptRows).join('\n');
+    }
 
     if (businessSettings.pos_registered_name) {
         receiptRows.push(center(String(businessSettings.pos_registered_name).toUpperCase()));
@@ -749,6 +761,23 @@ export const printReceiptWithIminBridge = ({ transaction, businessSettings = {},
         'printReceipt'
     ].some((methodName) => typeof bridge[methodName] === 'function')) {
         return { handled: false };
+    }
+
+    const documentType = resolveDocumentType(transaction, receiptContract);
+    if (documentType === 'fiscal_invoice' && !resolveTaxpayerType(businessSettings.pos_taxpayer_type)) {
+        const result = {
+            success: false,
+            reasonCode: 'FISCAL_SETUP_INCOMPLETE',
+            message: 'Fiscal setup is incomplete. Set the taxpayer type to VAT or non-VAT before printing.'
+        };
+        emitPosHardwareMessage({
+            title: 'iMin receipt printer',
+            message: result.message,
+            tone: 'error',
+            source: 'iMin hardware',
+            details: { reasonCode: result.reasonCode }
+        });
+        return { handled: true, result };
     }
 
     const receiptText = formatIminReceiptText({ transaction, businessSettings, receiptContract, paperWidth });

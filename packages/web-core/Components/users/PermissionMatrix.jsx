@@ -336,7 +336,7 @@ export default function PermissionMatrix({
                     className="border-teal-200 text-teal-600 hover:bg-teal-50"
                 >
                     <ShieldCheck className="mr-1 h-4 w-4" />
-                    Grant All
+                    Grant Visible
                 </Button>
                 <Button
                     variant="outline"

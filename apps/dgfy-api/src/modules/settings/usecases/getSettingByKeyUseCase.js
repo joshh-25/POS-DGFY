@@ -2,6 +2,7 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { mapSettingsUseCaseError } from './settingsUseCaseError.js';
 import { sanitizeSingleSettingForRead } from './posTerminalRegistrySecrets.js';
+import { buildSinglePosTaxpayerTypeReadProjection } from './posTaxpayerTypePolicy.js';
 
 export const buildGetSettingByKeyUseCase = ({ settingsRepository }) => {
     return async ({ key }) => {
@@ -14,7 +15,10 @@ export const buildGetSettingByKeyUseCase = ({ settingsRepository }) => {
 
         try {
             const setting = await settingsRepository.getSettingByKey(key);
-            return ok(sanitizeSingleSettingForRead({ key, setting }));
+            const sanitizedSetting = sanitizeSingleSettingForRead({ key, setting });
+            return ok(key === 'pos_taxpayer_type'
+                ? { ...sanitizedSetting, ...buildSinglePosTaxpayerTypeReadProjection(setting) }
+                : sanitizedSetting);
         } catch (error) {
             return fail(mapSettingsUseCaseError(error, 'Failed to retrieve setting'));
         }

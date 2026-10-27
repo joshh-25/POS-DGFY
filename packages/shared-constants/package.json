@@ -76,6 +76,10 @@
     "./deliveryFee": {
       "import": "./src/deliveryFee.js",
       "default": "./src/deliveryFee.js"
+    },
+    "./posTaxpayerType": {
+      "import": "./src/posTaxpayerType.js",
+      "default": "./src/posTaxpayerType.js"
     }
   },
   "files": [

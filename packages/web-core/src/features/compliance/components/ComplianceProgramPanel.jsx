@@ -391,7 +391,7 @@ const PROFILE_ERROR_FIELD_ORDER = [
   'readiness.tests_passed'
 ];
 
-export default function ComplianceProgramPanel({ isMasterAdmin = false }) {
+export default function ComplianceProgramPanel({ isMasterAdmin = false, navigationRootPath = '' }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -608,8 +608,22 @@ export default function ComplianceProgramPanel({ isMasterAdmin = false }) {
     });
   };
 
-  const openActionTarget = (target) => {
+  const resolveNavigationTarget = (target) => {
     const normalized = String(target || '').trim();
+    if (!normalized || !navigationRootPath || !normalized.startsWith('/settings')) return normalized;
+    try {
+      const parsed = new URL(normalized, 'http://opis.local');
+      const tab = String(parsed.searchParams.get('tab') || '').trim().toLowerCase();
+      if (tab === 'compliance') return `${navigationRootPath}${parsed.hash || ''}`;
+      if (tab === 'pos') return `/settings/pos${parsed.hash || ''}`;
+    } catch {
+      return normalized;
+    }
+    return normalized;
+  };
+
+  const openActionTarget = (target) => {
+    const normalized = resolveNavigationTarget(target);
     if (!normalized) return;
     const scrollToHashTarget = (hash) => {
       const normalizedHash = String(hash || '').trim();
@@ -757,12 +771,12 @@ export default function ComplianceProgramPanel({ isMasterAdmin = false }) {
             ) : (
               <div className="space-y-2">
                 {missingRequirements.map((entry) => (
-                  <div key={entry.code} className="flex items-start justify-between gap-3 rounded-md border border-slate-200 px-3 py-2">
-                    <div>
+                  <div key={entry.code} className="flex flex-col items-stretch gap-3 rounded-md border border-slate-200 px-3 py-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
                       <p className="text-sm font-medium text-slate-900">{entry.label || prettifyFieldKey(entry.code)}</p>
                       <p className="text-xs text-slate-500">Section: {entry.section}</p>
                     </div>
-                    <Button type="button" size="sm" variant="outline" onClick={() => openActionTarget(entry.action_target)}>
+                    <Button type="button" size="sm" variant="outline" className="w-full shrink-0 whitespace-nowrap sm:w-auto" onClick={() => openActionTarget(entry.action_target)}>
                       Fix now
                     </Button>
                   </div>
@@ -997,9 +1011,9 @@ export default function ComplianceProgramPanel({ isMasterAdmin = false }) {
             {activationBlockers.length > 0 && (
               <div className="space-y-1 rounded-md border border-amber-200 bg-amber-50 p-2">
                 {activationBlockers.map((blocker) => (
-                  <div key={`${blocker.code}-${blocker.section}`} className="flex items-center justify-between gap-2 text-xs">
-                    <span className="text-amber-800">{blocker.message}</span>
-                    <Button type="button" size="sm" variant="outline" onClick={() => openActionTarget(blocker.action_target)}>
+                  <div key={`${blocker.code}-${blocker.section}`} className="flex flex-col items-stretch gap-2 text-xs sm:flex-row sm:items-center sm:justify-between">
+                    <span className="min-w-0 break-words text-amber-800">{blocker.message}</span>
+                    <Button type="button" size="sm" variant="outline" className="w-full shrink-0 whitespace-nowrap sm:w-auto" onClick={() => openActionTarget(blocker.action_target)}>
                       Go to step
                     </Button>
                   </div>

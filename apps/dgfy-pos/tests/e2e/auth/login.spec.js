@@ -8,6 +8,6 @@ test.describe('authentication', () => {
   test('signs in to the POS terminal with environment credentials', async ({ page }) => {
     test.skip(!hasTestCredentials, 'Provide E2E_TEST_USER_EMAIL and E2E_TEST_USER_PASSWORD in .env.e2e.');
     await signIn(page, testCredentials, { expectedPostcondition: 'pos-catalog' });
-    await expect(page.getByText('Shared Account Profile')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Open account profile menu' })).toBeVisible();
   });
 });

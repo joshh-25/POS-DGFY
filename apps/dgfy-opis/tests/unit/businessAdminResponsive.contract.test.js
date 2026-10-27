@@ -29,6 +29,13 @@ describe('Business Admin responsive layout contract', () => {
     expect(businessAdminCss).toContain('.business-admin-settings-context-grid { grid-template-columns: 1fr; }');
   });
 
+  it('keeps Fiscal & BIR date filters compact without shrinking mobile controls', () => {
+    expect(businessAdminCss).toContain('.business-admin-fiscal-filter-card { gap: 8px; padding: 10px; margin-bottom: 12px; }');
+    expect(businessAdminCss).toContain('.business-admin-fiscal-filter-card .business-admin-field { flex: 0 1 128px; min-width: 128px; gap: 4px; }');
+    expect(businessAdminCss).toContain('min-height: 34px;');
+    expect(businessAdminCss).toContain('.business-admin-fiscal-filter-card .business-admin-field input,');
+    expect(businessAdminCss).toContain('.business-admin-fiscal-filter-card .business-admin-field select { min-height: 36px; }');
+  });
   it('keeps the storefront save action in normal document flow', () => {
     const saveBarRule = businessAdminCss.match(
       /\.business-admin-settings-editor \.business-admin-storefront-save-bar \{([\s\S]*?)\n\}/
@@ -42,6 +49,15 @@ describe('Business Admin responsive layout contract', () => {
   it('keeps dense branch/admin tables horizontally scrollable on narrow screens', () => {
     expect(businessAdminCss).toContain('.business-admin-table-wrap { width: 100%; overflow-x: auto; }');
     expect(businessAdminCss).toContain('.business-admin-table { width: 100%; min-width: 560px;');
+  });
+
+  it('keeps expense void actions usable as touch targets', () => {
+    const voidRule = businessAdminCss.match(
+      /\.business-admin-expense-void-button,[\s\S]*?\.business-admin-expense-void-link \{([\s\S]*?)\n\}/
+    )?.[1] || '';
+    expect(voidRule).toContain('min-height: 44px;');
+    expect(voidRule).toContain('display: inline-flex;');
+    expect(businessAdminCss).toContain('.business-admin-expense-void-link:focus-visible');
   });
 
   it('keeps the Branches workspace visually responsive', () => {

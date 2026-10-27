@@ -849,7 +849,8 @@ export const buildSyncMobilePosItemsUseCase = ({ createItemUseCase, updateItemUs
                         item = await createItemUseCase({
                             itemData,
                             userId: user?.user_id,
-                            canManageCategories: resolveCanManageCategories(user)
+                            canManageCategories: resolveCanManageCategories(user),
+                            source: 'pos'
                         });
                     } catch (error) {
                         // Same SKU conflict on a retried create means the
@@ -887,7 +888,8 @@ export const buildSyncMobilePosItemsUseCase = ({ createItemUseCase, updateItemUs
                         itemId: serverItemId,
                         itemData,
                         userId: user?.user_id,
-                        canManageCategories: resolveCanManageCategories(user)
+                        canManageCategories: resolveCanManageCategories(user),
+                        source: 'pos'
                     });
                     acceptedEntries += 1;
                     results.push({

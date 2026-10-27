@@ -26,7 +26,7 @@ describe('OPIS Back Office migration contract', () => {
       expect(manifest).toContain(`${manifestKey}: module(`);
     }
     expect(businessAdmin).toContain('MigratedBackOfficeModule');
-    expect(businessAdmin).toContain('BACKOFFICE_NAV_GROUPS');
+    expect(businessAdmin).toContain('BUSINESS_ADMIN_SIDEBAR_GROUPS');
     expect(businessAdmin).toContain('BACKOFFICE_SECTION_META');
     expect(manifest).toContain('group');
     expect(manifest).toContain('buildBackOfficeModulePath');

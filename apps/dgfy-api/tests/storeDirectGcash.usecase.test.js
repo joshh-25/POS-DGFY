@@ -351,4 +351,77 @@ describe('Storefront direct wallet payment-session routing', () => {
     expect(paymongoService.createDirectGcashPaymentIntent).not.toHaveBeenCalled();
     expect(paymongoService.createHostedCheckoutSession).not.toHaveBeenCalled();
   });
+
+  it('fails closed for cards instead of creating Hosted Checkout when direct card is disabled', async () => {
+    const commercePaymentRepository = {
+      findSessionByIdempotency: jest.fn().mockResolvedValue(null),
+      createSession: jest.fn(),
+      updateSessionById: jest.fn()
+    };
+    const paymongoService = {
+      createDirectCardPaymentIntent: jest.fn(),
+      createHostedCheckoutSession: jest.fn()
+    };
+    const storeRepository = {
+      findDefaultActiveLocation: jest.fn().mockResolvedValue({
+        location_id: 1,
+        is_open: true,
+        allow_out_of_stock_sales: true
+      }),
+      getSettingsByKeys: jest.fn().mockResolvedValue([]),
+      findSellableItemsByIds: jest.fn().mockResolvedValue([{
+        item_id: 1,
+        name: 'Test Item',
+        default_sale_price: 2,
+        sale_price: 2,
+        is_available: true,
+        availability_status: 'in_stock'
+      }])
+    };
+    const useCase = buildStoreCheckoutPaymentSessionUseCase({
+      storeRepository,
+      commercePaymentRepository,
+      tenantRevenueRepository: {
+        findEffectiveFeePolicy: jest.fn().mockResolvedValue({
+          policy_id: 4,
+          version: 1,
+          settlement_status: 'active',
+          payout_destination_masked: '****1234',
+          dgfy_rate_bps: 100,
+          provider_fee_payer: 'tenant',
+          settlement_cycle_days: 15
+        })
+      },
+      paymongoService,
+      commercePaymentsEnabled: true,
+      commerceQrphEnabled: false,
+      commercePaymongoSplitEnabled: false,
+      directCardEnabled: false,
+      requireCommercePaymentConfig: jest.fn().mockReturnValue([])
+    });
+
+    const result = await dbStore.run({ tenantId: TENANT_ID, tenantToken: 'masu-cafe' }, () => useCase({
+      payload: {
+        store_slug: 'masu-cafe',
+        payment_type: 'card',
+        idempotency_key: 'direct-card-required-1234',
+        customer_name: 'Test Customer',
+        customer_email: 'customer@example.com',
+        customer_phone: '+639171234567',
+        order_method: 'pickup',
+        lines: [{ item_id: 1, quantity: 1 }]
+      }
+    }));
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe('SERVICE_UNAVAILABLE');
+    expect(result.error.statusCode).toBe(503);
+    expect(result.error.details).toEqual(expect.objectContaining({
+      code: 'DIRECT_CARD_CONFIGURATION_INCOMPLETE',
+      payment_type: 'card'
+    }));
+    expect(commercePaymentRepository.createSession).not.toHaveBeenCalled();
+    expect(paymongoService.createDirectCardPaymentIntent).not.toHaveBeenCalled();
+    expect(paymongoService.createHostedCheckoutSession).not.toHaveBeenCalled();
+  });
 });

@@ -207,6 +207,14 @@ export const buildBusinessAdminCapabilities = (user = {}) => ({
         || String(user?.role || '').trim().toLowerCase() === 'admin'
         || userHasBusinessAdminPermission(user, PERMISSIONS.POS.actions.FORCE_CLOSE_SHIFT)
     ),
+    manage_fiscal_terminals: canUsePermission(
+        user,
+        PERMISSIONS.POS.actions.MANAGE_FISCAL_TERMINALS
+    ),
+    manage_esales_reports: canUsePermission(
+        user,
+        PERMISSIONS.POS.actions.MANAGE_ESALES_REPORTS
+    ),
     view_processing_fee_policy: canUsePermission(
         user,
         PERMISSIONS.TENANT_REVENUE.actions.VIEW_FEE_POLICY

@@ -1,3 +1,5 @@
+import { resolvePosTaxpayerType } from '@sieitzz/shared-constants/posTaxpayerType';
+
 const money = (value) => Number(value || 0).toFixed(2);
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
 const text = (value, fallback = '-') => String(value ?? '').trim() || fallback;
@@ -66,6 +68,46 @@ const documentInfo = (transaction, receiptContract) => {
   const type = String(receiptContract?.document_type || transaction?.document_type || 'non_fiscal_slip').toLowerCase();
   return { fiscal: type === 'fiscal_invoice' };
 };
+
+// The renderer and server share the same resolver so a value cannot be accepted
+// by one fiscal boundary and rejected by another.
+export const resolveTaxpayerType = resolvePosTaxpayerType;
+
+const renderFiscalSetupIncompleteHtml = (width) => `<style>
+  .dgfy-fiscal-setup-error{box-sizing:border-box;width:${width};max-width:100%;margin:auto;padding:16px;background:#fff7ed;border:1px solid #fdba74;border-radius:8px;color:#7c2d12;font:12px/1.4 ui-sans-serif,system-ui,sans-serif}.dgfy-fiscal-setup-error strong{display:block;font-size:13px;margin-bottom:6px}.dgfy-fiscal-setup-error p{margin:4px 0}
+  </style><article class="dgfy-fiscal-setup-error" data-fiscal-setup-ready="false"><strong>FISCAL SETUP INCOMPLETE</strong><p>A recognized taxpayer type is required before a fiscal invoice can be previewed or printed.</p><p>Set the business taxpayer type to VAT or non-VAT, then try again.</p></article>`;
+
+const renderFiscalSetupIncompleteText = (columns) => {
+  const rule = '-'.repeat(columns);
+  const center = (value) => {
+    const textValue = String(value);
+    const padding = Math.max(0, Math.floor((columns - textValue.length) / 2));
+    return `${' '.repeat(padding)}${textValue}`.slice(0, columns);
+  };
+  const wrap = (value) => {
+    const words = String(value).split(/\s+/).filter(Boolean);
+    const rows = [];
+    let current = '';
+    words.forEach((word) => {
+      const candidate = current ? `${current} ${word}` : word;
+      if (candidate.length > columns && current) {
+        rows.push(current);
+        current = word;
+      } else {
+        current = candidate;
+      }
+    });
+    if (current) rows.push(current);
+    return rows;
+  };
+  return [
+    rule,
+    center('FISCAL SETUP INCOMPLETE'),
+    ...wrap('A recognized taxpayer type is required before a fiscal invoice can be printed.'),
+    ...wrap('Set the business taxpayer type to VAT or non-VAT, then try again.'),
+    rule
+  ].join('\n');
+};
 const parsePaymentBreakdown = (value) => {
   if (Array.isArray(value)) return value;
   if (typeof value !== 'string') return [];
@@ -103,7 +145,9 @@ function renderPosReceiptHtmlBase({ transaction, businessSettings = {}, receiptC
   if (!transaction) return '';
   const width = normalizePaperWidth(paperWidth);
   const { fiscal } = documentInfo(transaction, receiptContract);
-  const vat = !String(businessSettings.pos_taxpayer_type || '').toLowerCase().includes('non');
+  const taxpayerType = resolveTaxpayerType(businessSettings.pos_taxpayer_type);
+  if (fiscal && !taxpayerType) return renderFiscalSetupIncompleteHtml(width);
+  const vat = taxpayerType === 'vat_registered';
   const label = fiscal ? (vat ? 'VAT INVOICE' : 'NON-VAT INVOICE') : '';
   const lines = Array.isArray(transaction.lines) ? transaction.lines : [];
   const discount = transaction.discount && typeof transaction.discount === 'object' ? transaction.discount : null;
@@ -169,6 +213,10 @@ function renderThermalReceiptTextBase(input = {}) {
   const width = normalizePaperWidth(input.paperWidth);
   const columns = width === '57mm' ? 32 : 42;
   const rule = '-'.repeat(columns);
+  const { fiscal } = documentInfo(transaction, input.receiptContract);
+  if (fiscal && !resolveTaxpayerType(input.businessSettings?.pos_taxpayer_type)) {
+    return renderFiscalSetupIncompleteText(columns);
+  }
   const lines = Array.isArray(transaction.lines) ? transaction.lines : [];
   const pair = (label, value) => `${label}`.slice(0, columns - String(value).length - 1).padEnd(columns - String(value).length, ' ') + String(value);
   const lineRows = lines.flatMap((line) => {

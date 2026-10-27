@@ -86,14 +86,14 @@
   "source_register": [
     { "id": "REPORT-REGISTRY", "path": "apps/dgfy-api/src/modules/reports/domain/reportRegistry.js", "sha256": "3b60e74fd98b9a8b864e79968339d4b3980e862165908d09db609b01daedd099" },
     { "id": "REPORT-EVIDENCE-CATALOG", "path": "apps/dgfy-api/src/modules/reports/domain/reportEvidenceCatalog.js", "sha256": "1868e5ab0d31217b9de7998d0c4614ddae738346571536478cf5ce80fcb8bcdf" },
-    { "id": "EJOURNAL-SERIALIZER", "path": "apps/dgfy-api/src/modules/reports/domain/eJournalReadiness.js", "sha256": "5c9607ec01628daa58395e67d95d95997352a7b2d9eb28c6fc010c7578627bad" },
+    { "id": "EJOURNAL-SERIALIZER", "path": "apps/dgfy-api/src/modules/reports/domain/eJournalReadiness.js", "sha256": "0da080af5e729630c21782940c68c39a185e918fe1910aa78856f1001e07418e" },
     { "id": "EVIDENCE-USECASE", "path": "apps/dgfy-api/src/modules/businessAdmin/usecases/businessAdminEvidenceUseCase.js", "sha256": "5a5eac5171dd227324226212a130d0f21c58e92be787853d163f193bd2db8e8e" },
-    { "id": "EVIDENCE-ROUTES", "path": "apps/dgfy-api/src/routes/businessAdmin.js", "sha256": "d628ed7583f5d00ee3099250ce841bb6068248e7120aa136a3744017bf7b5312" },
-    { "id": "EVIDENCE-REPOSITORY", "path": "apps/dgfy-api/src/modules/pos/repositories/posRepository.js", "sha256": "17e4c8687836b3e3bf5e8d80c68d1419850d556b571d966ae1f809464320d780" },
+    { "id": "EVIDENCE-ROUTES", "path": "apps/dgfy-api/src/routes/businessAdmin.js", "sha256": "3112ad72f7effd1c6130a7a9989432f877623993f360d0e62577f1508a24c503" },
+    { "id": "EVIDENCE-REPOSITORY", "path": "apps/dgfy-api/src/modules/pos/repositories/posRepository.js", "sha256": "cc15bfc14a1e6e039fedda8d866a50b0d9a77cd918b70a4374f88ff274963b27" },
     { "id": "EVIDENCE-PANEL", "path": "packages/web-core/src/features/merchantBackOffice/components/EvidencePanel.jsx", "sha256": "1b48224dd46dd45be950249435f09f7cc521bc18a331f5f4b1c0b97b17382f2d" },
     { "id": "EVIDENCE-API", "path": "packages/web-core/src/features/merchantBackOffice/api/businessAdminReportsApi.js", "sha256": "27ab139ab4e6aea3fd9c34b4878f539499bc59bf1c860c88e5d49492b7a2a96f" },
     { "id": "EVIDENCE-REPORTS-PAGE", "path": "packages/web-core/src/features/merchantBackOffice/pages/ReportsPage.jsx", "sha256": "2cf34406a2959661ec69a30e972d790d01c0fb8e104fdb909f79caacb94009aa" },
-    { "id": "EVIDENCE-HANDLER", "path": "apps/dgfy-api/src/modules/businessAdmin/controllers/businessAdminHandlers.js", "sha256": "15c02946203ec3212137c297ce72f7ab5931312cf2227f5bafb5460d0d26a744" },
+    { "id": "EVIDENCE-HANDLER", "path": "apps/dgfy-api/src/modules/businessAdmin/controllers/businessAdminHandlers.js", "sha256": "2af4a221dda5a641cff96cccb2869324b5c7448342b8028a8058412ba5329eea" },
     { "id": "EVIDENCE-UNIT-TEST", "path": "apps/dgfy-api/tests/eJournalReadiness.unit.test.js", "sha256": "38690f0588d2e4bce655f7e8f30c61301cc26c1b09cb27700feeb251a127d3ca" },
     { "id": "EVIDENCE-USECASE-TEST", "path": "apps/dgfy-api/tests/businessAdminEvidence.usecase.test.js", "sha256": "1cec065095ac722a346124aed9c61fdfc5c4d813d702fe9fc3b405601a6a2a91" }
   ],

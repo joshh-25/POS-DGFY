@@ -20,7 +20,7 @@ const capabilities = (value) => {
   if (invalid.length) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Unknown staff capability slug', { statusCode: 422, details: { unknown_capabilities: invalid, allowed_capabilities: STAFF_CAPABILITIES } });
   return list;
 };
-const audit = (repository, actor, entityId, action, changes, transaction) => repository.createAuditLog({ user_id: actor, entity_type: 'staff_role', entity_id: entityId, action, changes }, { transaction });
+const audit = (repository, actor, entityId, action, changes, transaction, entityType = 'staff_role') => repository.createAuditLog({ user_id: actor, entity_type: entityType, entity_id: entityId, action, changes }, { transaction });
 const run = async (repository, work, fallback, onCommit) => {
   const transaction = await (dbStore.getStore()?.sequelize || dbStore.get('sequelize')).transaction();
   try {
@@ -153,7 +153,8 @@ export const buildAssignStaffRoleToUserUseCase = ({ repository, invalidateUserCa
     target,
     role,
     actorUserId: actor,
-    transaction
+    transaction,
+    auditEntityType: 'user'
   });
   affectedUserId = target.user_id;
   return { assignment };

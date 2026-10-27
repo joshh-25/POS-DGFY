@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import dbStore from '../../../utils/dbStore.js';
+import { sequelize as landlordSequelize } from '../../../models/index.js';
 
 const COMPLIANCE_TRANSITIONS = Object.freeze({
     non_compliant_active: new Set(['non_compliant_active', 'compliant_pending']),
@@ -285,8 +286,13 @@ const assertTransitionAllowed = ({ previousState, nextState }) => {
 
 export const complianceRepository = {
     async beginTransaction() {
-        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
-        return sequelize.transaction();
+        // Compliance mode/profile/artifact records are landlord-owned. A tenant
+        // request context also exposes its tenant Sequelize instance through
+        // dbStore, but using that connection here makes the subsequent Tenant
+        // update query run against `<tenant_db>.tenants`, which does not exist.
+        // Keep the transaction on the same landlord connection as the models
+        // returned by getModel('Tenant') and the compliance artifact models.
+        return landlordSequelize.transaction();
     },
 
     async findTenantById(tenantId, options = {}) {
