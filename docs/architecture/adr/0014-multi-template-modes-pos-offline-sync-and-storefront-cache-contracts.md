@@ -3,8 +3,8 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-04-27
-last_reviewed: 2026-10-26
-review_by: 2026-10-27
+last_reviewed: 2026-10-28
+review_by: 2027-04-28
 applies_to: architecture_decision
 topic: multi_template_modes_pos_offline_sync_and_storefront_cache_contracts
 ---
@@ -329,4 +329,21 @@ separate #999 implementation scope.
 - Reason: A failed settings load previously reset an F&B terminal to the Counter workflow
   (Walk-in/Pickup/Delivery, no Dine In) with no recovery short of an app restart, and live dine-in
   sales were recorded as `walk_in`.
+- PR: this PR (Refs #2824).
+
+### 2026-10-27 — POS checkout readiness when workflow settings are unresolved (#2824)
+
+- Clause amended: the 2026-10-26 last-known-good workflow settings amendment (`default`).
+- Decision: when no fresh server result or tenant-scoped cached workflow is available, the POS
+  presents loading or reconnect state and blocks new checkout until settings resolve. It does not
+  present the Counter default as authoritative. An existing F&B check may still be settled using
+  its own checkout context, and operator-controlled replay of already queued records remains
+  available. The client exposes `server`, `cache`, or `unresolved` workflow provenance to drive
+  this readiness state; it adds no API or persisted data contract.
+- Limitation: the last-known-good cache is keyed from the in-session tenant identity. A reload that
+  cannot refresh its session has no tenant identity to read that cache and remains on the existing
+  event-driven recovery path. This matches ADR 0014's offline-login prohibition and does not claim
+  coverage for a signed-out reload.
+- Reason: a default Counter presentation can offer an incorrect order method while F&B settings
+  are unresolved, leading to a wrongly classified sale.
 - PR: this PR (Refs #2824).
