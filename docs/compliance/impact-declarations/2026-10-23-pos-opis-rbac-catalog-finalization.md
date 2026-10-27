@@ -12,8 +12,8 @@ verification_evidence: focused-api-jest-64-tests,backend-lint,check-architecture
 rollback_note: Revert the POS catalog normalization, staff-role/RBAC, OPIS Business Admin navigation and presentation, tenant migration, tests, and this declaration together. Preserve existing tenant, user, role, catalog, and audit records; do not remove additive schema objects during rollback without a separate migration review.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-23T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-20261023-POS-OPIS-RBAC-CATALOG-FINALIZATION
+preflight_run_at: 2026-10-27T15:07:34.914Z
+preflight_request_ref: PREFLIGHT-40526937183-2026-10-23-POS-OPIS-RBAC-CATALOG-FINALIZATION
 ---
 
 # POS and OPIS RBAC, navigation, and catalog finalization

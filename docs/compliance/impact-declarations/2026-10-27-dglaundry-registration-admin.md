@@ -12,8 +12,8 @@ verification_evidence: DGFY API suites (4 suites and 65 tests passed); Platform 
 rollback_note: Stop new registration decisions first. If no approvals exist, revert the application change and run the migration down path. If approvals exist, preserve company, membership, provider-location, and audit records and use a forward repair because the down migration cannot safely reverse accepted access records.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-27T20:25:19+08:00
-preflight_request_ref: NOT-EXECUTED-2026-10-27-DGLAUNDRY-REGISTRATION-ADMIN
+preflight_run_at: 2026-10-27T15:07:34.916Z
+preflight_request_ref: PREFLIGHT-40526937183-2026-10-27-DGLAUNDRY-REGISTRATION-ADMIN
 ---
 
 # DGLaundry Registration Queue and Decisions
