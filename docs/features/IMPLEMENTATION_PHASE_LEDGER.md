@@ -31153,97 +31153,6 @@ Not complete. Set only after the scoped implementation and named validation evid
 
 ### Next phase number
 
-Phase 535. No explicit dependency.
-
-## Phase 535 - OPIS clean sidebar navigation
-
-### Initiative and release
-
-OPIS navigation consolidation for the next develop-bound release; local implementation follows
-the approved `implementation_plan.md` and builds on the Phase 534 navigation contracts.
-
-### Objective and scope
-
-Reduce the default OPIS sidebar to the approved 16 primary destinations, keep workflow-specific
-tools discoverable when their existing workflow visibility permits them, and consolidate related
-destinations into URL-backed workspace tabs. Preserve canonical route IDs, legacy deep links,
-query/hash behavior, tenant and branch scope, server-projected access checks, existing APIs,
-database schema, and canonical owner boundaries. Notifications move from the primary sidebar to
-the existing header destination without adding a new polling contract.
-
-### Status
-
-`in_progress` — presentation-layer implementation and focused validation are in progress; browser
-runtime verification, final review, and PR/deployment remain open.
-
-### Dependencies
-
-Phase 533 RBAC remediation and Phase 534 OPIS/POS navigation parity remain in the current local
-worktree. Their existing uncommitted changes are preserved and are not rewritten by this phase.
-No new database migration or backend authorization contract is introduced.
-
-### Contract and authority
-
-[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
-[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
-[ADR 0020](../architecture/adr/0020-mode-aware-rbac-and-permission-contract.md),
-[ADR 0031](../architecture/adr/0031-pos-shift-safe-navigation-and-data-loading.md),
-[ADR 0087](../architecture/adr/0087-dedicated-opis-application-boundary.md),
-`apps/dgfy-opis/src/features/businessAdmin/businessAdminManifest.js`,
-`apps/dgfy-opis/src/features/businessAdmin/businessAdminNavigation.js`, and
-`apps/dgfy-opis/src/features/businessAdmin/BusinessAdminPage.jsx`.
-Classification: `within-existing-boundary`; this phase changes OPIS presentation composition and
-route navigation only, while API authorization and canonical feature owners remain unchanged.
-
-### Implementation targets
-
-- Presentation-only clean sidebar groups for Overview, Sales, Inventory, Operations, and Management.
-- Additional-tools discovery for existing Services, Hospitality, Job orders, Dispatch orders,
-  Vouchers, and Attendance destinations when their current visibility rules allow them.
-- Parent highlighting and URL-backed tabs for Orders, Inventory, Purchasing, Users & Roles, and
-  Reports without creating duplicate route owners.
-- Header Notifications navigation while preserving the existing `/notifications` destination.
-- Direct-route accessibility remains separate from sidebar visibility; hidden legacy links are not
-  converted into authorization boundaries.
-- Focused route, navigation, visibility, build, lint, and rendered-shell validation.
-
-### Acceptance and validation evidence
-
-- [x] The plan was reviewed against the repository architecture, ADRs, manifest, route parser, and
-      current Phase 533/534 worktree state.
-- [x] The clean sidebar configuration contains exactly the approved 16 primary destination entries
-      and reuses existing manifest route IDs.
-- [x] Workspace tabs reuse existing canonical routes; no backend or schema change is introduced.
-- [x] Direct-route accessibility is separated from sidebar presentation visibility.
-- [ ] Focused tests, lint, affected builds, architecture checks, and `git diff --check` pass after
-      the final validation run.
-- [ ] Authenticated browser verification confirms parent highlighting, deep links, tab navigation,
-      branch/query preservation, restricted-user visibility, and no navigation flicker.
-- [ ] PR review and deployment are complete; this phase does not merge or deploy.
-
-### Rollback
-
-Revert the presentation-layer navigation changes through the normal release rollback process.
-Existing manifest routes, API authorization, permission grants, and database state remain intact.
-
-### Completion date
-
-Not complete. Set only after the scoped implementation and named validation evidence are terminal.
-
-### Post-merge verification
-
-- [ ] Verify Admin, Manager, Cashier, and restricted-user sidebar projections in an authenticated
-      deployed-like session.
-- [ ] Verify old OPIS prefixes and deep links preserve query/hash context and resolve to the same
-      authorized canonical destinations.
-- [ ] Verify branch changes and rapid tab navigation do not display stale data or log the user out.
-- [ ] Verify optional workflow tools appear only when their existing workflow/capability contract
-      makes them relevant.
-
-### Next phase number
-
-Phase 536. No explicit dependency.
-
 ## Phase 536 - Registration draft upload application ID nullability (#2718)
 
 ### Initiative and release
@@ -31268,6 +31177,8 @@ Issue #2718 and the landlord migration chain. No explicit phase dependency.
 
 ### Contract and authority
 
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
 [ADR 0022](../architecture/adr/0022-global-dgfy-account-business-registration.md), and the
 [migration-runner ownership/deploy-order contract](../../apps/dgfy-migration-runner/README.md).
 Classification: `within-existing-boundary`; the change only relaxes a landlord column constraint
@@ -33084,9 +32995,10 @@ of this phase.
 
 ### Status
 
-`in_progress` — implementation and local feature validation are complete on the `develop`-based
-worker branch; PR review and merge remain outstanding. App versions stay unchanged on this
-`develop` PR per Pat's explicit direction in #2048; the conflicting ADR wording is recorded below.
+`completed` — the scoped implementation merged to `develop` in PR [#2843](https://github.com/Sieitzz/dgfy-platform/pull/2843)
+on 2026-10-26 at merge commit `16a2a85a359835bcb7ef0715d5e6dbb9dbbd886d`. The original local
+validation evidence below is retained unchanged. App versions stayed unchanged on this develop PR
+per Pat's explicit direction in #2048; the conflicting ADR wording is recorded below.
 
 ### Dependencies
 
@@ -33147,8 +33059,8 @@ provider configuration, and deployed-environment verification are outside this p
 
 ### Completion date
 
-Not complete. Record only after the scoped implementation is merged and implementation validation
-passes.
+2026-10-26 — PR #2843 merged to `develop`, merge commit
+`16a2a85a359835bcb7ef0715d5e6dbb9dbbd886d`.
 
 ### Post-merge verification
 
@@ -33612,6 +33524,99 @@ Not complete. Record only after this PR is merged and its scoped validation is c
 
 Phase 563. No explicit dependency.
 
+## Phase 563 - Fully clear Storefront discovery searches (#2833 follow-up)
+
+### Initiative and release
+
+Storefront external discovery defaults, issue #2833 follow-up. Planner handoff:
+[`plan-2833.md`](../../.tmp/plan-2833.md). Ordinary Worker PR targeting `develop`.
+
+### Objective and scope
+
+Make every discovery cancellation control restore the default native-only dataset and clear stale
+search, category, filter, sort, pagination, selection, highlight, and cluster state. Preserve the
+current location and map camera as results discovery returns to the hero map. Keep the original
+partner eligibility and Proventous work from Phase 559 unchanged. No API, schema, migration,
+dependency, shared-package, or provider-eligibility changes are in scope.
+
+### Status
+
+`in_progress` — implementation and local validation are complete on
+`fix/2833-clear-discovery-search`; review and merge remain outstanding. No merge or deployment has
+occurred.
+
+### Dependencies
+
+None. Phase 559's merged eligibility contract is the existing behavior this follow-up preserves;
+its outstanding deployed verification is not a technical dependency.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0010](../architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md),
+[ADR 0071](../architecture/adr/0071-independently-deployable-frontend-apps.md),
+[External Discovery Redirect Foundation](EXTERNAL_DISCOVERY_REDIRECT_FOUNDATION.md),
+[Testing Guide](../testing/README.md), [Web Performance QA](../../.agents/skills/web-performance-qa/SKILL.md),
+and live issue [#2833](https://github.com/Sieitzz/dgfy-platform/issues/2833). Classification:
+`within-existing-boundary`; no ADR change or architecture exception is introduced.
+
+### Implementation targets
+
+Storefront discovery hooks and state, `StoresMap` camera lifecycle props, discovery search/category
+stages and results renderer; focused integration and map lifecycle tests; the external-discovery
+feature contract and this ledger entry. No backend/Admin or public API changes.
+
+### Acceptance and validation evidence
+
+- [x] Search X, active category chip, already-active dropdown category, **All**, and **Reset filters**
+  clear all query/filter/sort/page/selection/cluster state and issue one unsearched request with
+  `pin_scope=tenant_primary`.
+- [x] Text-only editing leaves the active category selected; X remains available for any active
+  filter. Pressed category chips and Beauty/Salon aliases expose the correct visible and accessible
+  state. Selecting another category still works and records its existing analytics event.
+- [x] Location coordinates survive category search and cancellation. Camera center, zoom, bearing,
+  and pitch survive the results-to-hero transition and data refresh; initial load, later search,
+  Near Me, and user map interaction keep their intended viewport behavior.
+- [x] Abort/sequence protection prevents stale responses from replacing the reset result; cancellation
+  returns map/cards/clusters to native-only content under the existing Phase 559 eligibility rules.
+- [x] Focused Storefront tests, `npm run build:store`, changed-file ESLint, architecture/docs/compliance,
+  version policy, whitespace checks, and local desktop/mobile rendered QA pass. No deployed
+  verification is claimed by this Worker phase.
+
+Validation evidence (2026-10-27): six focused Storefront suites passed (90 tests); the production
+Storefront build passed; changed-file ESLint exited 0 with 0 errors (existing warnings remain);
+architecture boundaries, governed-doc/ADR lint, compliance, and the correctly scoped develop-branch
+version check passed. Local Playwright rendered checks at desktop 1440×1000 and mobile 390×844 used
+synthetic discovery responses and a blank local map style; both cancellation flows returned an
+unsearched `tenant_primary` request and native-only content, with no browser console errors. Map
+camera/location retention and delayed-response/debounce behavior are covered by focused integration
+and lifecycle tests. Synthetic screenshots were kept under `/tmp`, outside the repository.
+
+### Risks and decisions
+
+The results and hero maps are separate mounts, so camera persistence uses a discovery-scoped ref and
+optional `StoresMap` props rather than global map state. Existing request abort and sequence guards
+must remain authoritative when cancellation races a pending response. The initial plan proposed
+Phase 560, but the live ledger had already claimed Phases 560–562; Phase 563 is the next available
+number. Worker board policy owns the `In progress` and `For Review` transitions even though the plan
+artifact requested no board changes.
+
+### Completion date
+
+Not complete. Record after the scoped PR is merged and implementation validation passes.
+
+### Post-merge verification
+
+- [ ] **deployment** — verify the merged Storefront SHA is deployed through the authorized release
+  process; owner: DGFY release operator; blocks deployed verification of #2833.
+- [ ] **operational** — verify each cancellation path, native-only content, and location/camera
+  retention on the deployed Storefront; owner: issue #2833 verifier; blocks closing #2833.
+
+### Next phase number
+
+Phase 564. No explicit dependency.
+
 ---
 
 **Dated note, 2026-10-27 (develop sync) — local OPIS/POS BIR phases collided with landed develop phases:**
@@ -33625,7 +33630,13 @@ The fetched develop branch reserves Phases 555–562 for its landed work. Per th
 
 ---
 
-## Phase 563 - OPIS & POS BIR implementation — Step 01 baseline and source completeness
+---
+
+**Dated note, 2026-10-27 (subsequent develop sync) — Phase 563 was reserved on develop:**
+
+The fetched `develop` ledger now contains Phase 563 for the #2833 Storefront discovery follow-up. The `develop` reservation remains Phase 563; the six unmerged OPIS/POS BIR phases move from 563–568 to 564–569. Their internal phase references move with them. No implementation files, tests, migrations, or evidence are changed by this ledger resolution.
+
+## Phase 564 - OPIS & POS BIR implementation — Step 01 baseline and source completeness
 
 ### Initiative and release
 
@@ -33707,13 +33718,13 @@ review remain outside this local-only change.
 
 ### Next phase number
 
-Phase 564. Step 02 — reviewed fiscal document specification.
+Phase 565. Step 02 — reviewed fiscal document specification.
 
-## Phase 564 - OPIS & POS BIR implementation — Step 02 fiscal specification draft
+## Phase 565 - OPIS & POS BIR implementation — Step 02 fiscal specification draft
 
 ### Initiative and release
 
-OPIS & POS BIR implementation plan dated 2026-10-26. Drafting follows Phase 563's passing
+OPIS & POS BIR implementation plan dated 2026-10-26. Drafting follows Phase 564's passing
 code/test baseline; fiscal release evidence remains held.
 
 ### Objective and scope
@@ -33730,7 +33741,7 @@ This is an external approval gate, not a local POS/API/OPIS implementation block
 
 ### Dependencies
 
-Phase 563's local code/test baseline, source re-audit, and compliance declaration
+Phase 564's local code/test baseline, source re-audit, and compliance declaration
 reconciliation are complete. Final fiscal code decisions depend on the approved
 specification and its examples; that reviewer work is outside the local-only change.
 
@@ -33772,9 +33783,9 @@ Not complete. Record after reviewer decisions and G1 validation.
 
 ### Next phase number
 
-Phase 565. Step 03 — fail-safe fiscal and business setup.
+Phase 566. Step 03 — fail-safe fiscal and business setup.
 
-## Phase 565 - OPIS & POS BIR implementation — Step 03 fiscal renderer fail-safe slice
+## Phase 566 - OPIS & POS BIR implementation — Step 03 fiscal renderer fail-safe slice
 
 ### Initiative and release
 
@@ -33792,12 +33803,12 @@ strategy.
 ### Status
 
 `in_progress` — the shared receipt surfaces now fail closed and the remaining
-server/client work is implemented by Phases 566–568. Tax/accounting approval and
+server/client work is implemented by Phases 567–569. Tax/accounting approval and
 later release/regulatory evidence remain external review work, not local blockers.
 
 ### Dependencies
 
-Phase 564 remains in progress. The renderer accepts existing repository spellings for
+Phase 565 remains in progress. The renderer accepts existing repository spellings for
 backward-compatible reads (`VAT`, `VAT_REGISTERED`, `vat_registered`, and recognized
 non-VAT equivalents), but unknown values resolve to no classification. The
 authenticated local compliance preflight is reconciled against the worktree API;
@@ -33827,20 +33838,20 @@ no Docker or staging environment is required for this local scope.
 - [x] POS/OPIS settings expose explicit taxpayer choices and a fiscal setup
   readiness status without silently rewriting stored legacy values.
 - [x] POS/OPIS client save validation blocks newly submitted unknown nonblank taxpayer
-  values; server-side validation is covered by Phases 567–568.
+  values; server-side validation is covered by Phases 568–569.
 - [x] Server-enforced taxpayer validation is implemented and covered by the local
   API/migration/preflight evidence; statutory approval remains external.
 - [x] Server-side fiscal issuance boundary enforcement; implemented and covered by
-  Phase 567 API and POS checkout contracts.
+  Phase 568 API and POS checkout contracts.
 - [x] Existing-setting migration/readiness review without silent tenant rewriting;
-  completed by the Phase 567 idempotent local migration run.
+  completed by the Phase 568 idempotent local migration run.
 - [ ] Tax/accounting and product approval of the fiscal specification and examples
   remain external review work.
 - [ ] G2 evidence and later release acceptance remain outside this local-only change.
 
 ### Completion date
 
-Local implementation and validation are complete across Phases 565–568 on
+Local implementation and validation are complete across Phases 566–569 on
 2026-10-27. Formal approval and later release evidence are intentionally not
 claimed here.
 
@@ -33855,9 +33866,9 @@ claimed here.
 
 ### Next phase number
 
-Phase 566. Complete Step 03 business setup validation and issuance-boundary work.
+Phase 567. Complete Step 03 business setup validation and issuance-boundary work.
 
-## Phase 566 - OPIS & POS BIR implementation — POS/OPIS fiscal setup readiness slice
+## Phase 567 - OPIS & POS BIR implementation — POS/OPIS fiscal setup readiness slice
 
 ### Initiative and release
 
@@ -33876,11 +33887,11 @@ Storefront, or IMS source is changed by this slice.
 
 `in_progress` — the POS/OPIS presentation and client guard are implemented, and
 the server validation, migration review, and fiscal issuance enforcement are
-closed by Phases 567–568. Later release/regulatory evidence remains deferred.
+closed by Phases 568–569. Later release/regulatory evidence remains deferred.
 
 ### Dependencies
 
-Phase 565's shared renderer resolver is the read/validation vocabulary. The final
+Phase 566's shared renderer resolver is the read/validation vocabulary. The final
 stored enum remains subject to the approved Fiscal Document Specification and
 tax/accounting review. Existing unrelated dirty API/Storefront changes are outside
 this phase and were not modified.
@@ -33905,9 +33916,9 @@ this phase and were not modified.
 - [x] Targeted settings tests passed: 3 taxpayer/readiness tests; the full settings
   behavior file passed 46/46 when run with the receipt suite.
 - [x] Server/API save validation and read-only projection enforcement; completed in
-  Phase 567 without changing persisted raw values.
+  Phase 568 without changing persisted raw values.
 - [x] Existing-setting migration/readiness assignment without silent rewriting;
-  completed by the Phase 567 idempotent local migration run.
+  completed by the Phase 568 idempotent local migration run.
 - [ ] G2 fiscal issuance and later release acceptance remain outside this
   local-only change; they are not a staging blocker.
 
@@ -33927,15 +33938,15 @@ and later release evidence are intentionally not claimed here.
 
 ### Next phase number
 
-Phase 567. Server-side fiscal setup validation and migration review after approval.
+Phase 568. Server-side fiscal setup validation and migration review after approval.
 
-## Phase 567 - OPIS & POS BIR implementation — server fiscal setup enforcement
+## Phase 568 - OPIS & POS BIR implementation — server fiscal setup enforcement
 
 ### Initiative and release
 
 OPIS & POS BIR implementation plan dated 2026-10-26. This phase is the approved
 API and migration-runner continuation of Step 03 after the POS/OPIS presentation
-and client guard work in Phase 566.
+and client guard work in Phase 567.
 
 ### Objective and scope
 
@@ -33955,7 +33966,7 @@ outside this local-only change and are not local implementation blockers.
 
 ### Dependencies
 
-Phase 565's fail-closed renderer and Phase 566's POS/OPIS readiness UI provide the
+Phase 566's fail-closed renderer and Phase 567's POS/OPIS readiness UI provide the
 shared vocabulary and presentation. The Fiscal Document Specification remains a
 draft and does not authorize new statutory tax semantics. Existing unrelated
 Storefront/IMS changes in the worktree remain outside this phase.
@@ -34021,10 +34032,10 @@ commit/merge process; no PR or deployment is created by this local validation.
 
 ### Next phase number
 
-Phase 568. Local POS fiscal setup preflight. Deployed G2 acceptance remains a later
+Phase 569. Local POS fiscal setup preflight. Deployed G2 acceptance remains a later
 release gate after the local preflight is complete.
 
-## Phase 568 - OPIS & POS BIR implementation — local POS fiscal setup preflight
+## Phase 569 - OPIS & POS BIR implementation — local POS fiscal setup preflight
 
 ### Initiative and release
 
@@ -34033,7 +34044,7 @@ local-only and does not depend on a develop, staging, or production environment.
 
 ### Objective and scope
 
-Prove the Phase 567 taxpayer-type and fiscal-issuance safeguards against the local
+Prove the Phase 568 taxpayer-type and fiscal-issuance safeguards against the local
 POS/API/migration stack before any external release activity. Validate the local
 POS operator experience, API behavior, migration state, and non-fiscal continuity
 with disposable local data. Do not call this phase deployed G2 certification.
@@ -34149,7 +34160,7 @@ Chromium for physical receipt evidence.
 
 ### Dependencies
 
-Phase 567 local implementation and migration validation. No branch promotion,
+Phase 568 local implementation and migration validation. No branch promotion,
 remote deployment, external tenant, or tax/accounting sign-off is required for
 this local preflight.
 
@@ -34202,5 +34213,5 @@ process; no staging or production validation is required for this local phase.
 
 ### Next phase number
 
-Phase 569. Later release/regulatory acceptance is deferred outside
+Phase 570. Later release/regulatory acceptance is deferred outside
 this local-only change and is not a staging blocker.

@@ -37,6 +37,7 @@ export function DiscoveryExploreStage({
   hasDesktopCategoryOverflow,
   hasDiscoveryExplorationStarted,
   hasDiscoverySearch,
+  hasDiscoveryResultsStage,
   highlightedDiscoveryMarkerKey,
   isCategoryRowExpanded,
   isClusterResultsActive,
@@ -61,7 +62,7 @@ export function DiscoveryExploreStage({
   stableHeroDiscoveryMapPins,
   storesWithNearestBranch
 }) {
-  const isCollapsed = isDiscoverySearchFocused || hasDiscoverySearch || hasDiscoveryExplorationStarted;
+  const isCollapsed = isDiscoverySearchFocused || hasDiscoveryResultsStage || hasDiscoveryExplorationStarted;
 
   return (
     <section style={{ display: 'grid', gap: 0, paddingBottom: 8 }}>
@@ -118,6 +119,7 @@ export function DiscoveryExploreStage({
         handlePopularDiscoveryCategory={handlePopularDiscoveryCategory}
         hasDesktopCategoryOverflow={hasDesktopCategoryOverflow}
         hasDiscoverySearch={hasDiscoverySearch}
+        hasDiscoveryResultsStage={hasDiscoveryResultsStage}
         highlightedDiscoveryMarkerKey={highlightedDiscoveryMarkerKey}
         isCategoryRowExpanded={isCategoryRowExpanded}
         isClusterResultsActive={isClusterResultsActive}

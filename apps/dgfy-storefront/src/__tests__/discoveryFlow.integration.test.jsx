@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import maplibregl from 'maplibre-gl';
 import { App } from '../main.jsx';
@@ -69,6 +69,13 @@ vi.mock('maplibre-gl', () => {
     const layers = new Map();
     const images = new Set();
     const layerHandlers = {};
+    const mapHandlers = {};
+    let camera = {
+      center: options.center || [122.57, 10.72],
+      zoom: options.zoom ?? 11,
+      bearing: options.bearing ?? 0,
+      pitch: options.pitch ?? 0
+    };
     const sourceApi = (source = {}) => {
       const sourceInstance = { ...source };
       sourceInstance.setData = vi.fn((data) => {
@@ -78,11 +85,15 @@ vi.mock('maplibre-gl', () => {
     };
     const api = {
       container: options.container,
+      options,
       on: vi.fn((eventName, layerOrHandler, maybeHandler) => {
         if (typeof layerOrHandler === 'string' && typeof maybeHandler === 'function') {
           const key = `${eventName}:${layerOrHandler}`;
           layerHandlers[key] = layerHandlers[key] || [];
           layerHandlers[key].push(maybeHandler);
+        } else if (typeof layerOrHandler === 'function') {
+          mapHandlers[eventName] = mapHandlers[eventName] || [];
+          mapHandlers[eventName].push(layerOrHandler);
         }
         return api;
       }),
@@ -94,12 +105,17 @@ vi.mock('maplibre-gl', () => {
         if (typeof layerOrHandler === 'string' && typeof maybeHandler === 'function') {
           const key = `${eventName}:${layerOrHandler}`;
           layerHandlers[key] = (layerHandlers[key] || []).filter((entry) => entry !== maybeHandler);
+        } else if (typeof layerOrHandler === 'function') {
+          mapHandlers[eventName] = (mapHandlers[eventName] || []).filter((entry) => entry !== layerOrHandler);
         }
         return api;
       }),
       flyTo: vi.fn().mockReturnThis(),
       fitBounds: vi.fn().mockReturnThis(),
-      getZoom: vi.fn(() => 13),
+      getCenter: vi.fn(() => ({ lng: camera.center[0], lat: camera.center[1] })),
+      getZoom: vi.fn(() => camera.zoom),
+      getBearing: vi.fn(() => camera.bearing),
+      getPitch: vi.fn(() => camera.pitch),
       resize: vi.fn(),
       remove: vi.fn(),
       getCanvas: vi.fn(() => ({ style: {} })),
@@ -133,6 +149,8 @@ vi.mock('maplibre-gl', () => {
       }),
       __sources: sources,
       __layers: layers,
+      __setCamera: (nextCamera) => { camera = { ...camera, ...nextCamera }; },
+      __emit: (eventName, event = {}) => (mapHandlers[eventName] || []).forEach((handler) => handler(event)),
       __emitLayer: (eventName, layerId, feature) => {
         const key = `${eventName}:${layerId}`;
         (layerHandlers[key] || []).forEach((handler) => handler({
@@ -900,6 +918,221 @@ describe('storefront discovery integration flow', () => {
     expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(2);
   });
 
+  it('fully cancels a category search and allows the same category to be searched again', async () => {
+    const user = userEvent.setup();
+    render(<BrowserRouter><App /></BrowserRouter>);
+    await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(1));
+
+    await user.click(screen.getByRole('button', { name: 'More' }));
+    await user.click(screen.getByRole('button', { name: 'Hotel' }));
+    await waitFor(() => {
+      expect(getLastDiscoveryParams(fetchMock).get('search')).toBe('Hotel');
+      expect(screen.getByRole('button', { name: 'Clear discovery search' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Hotel', pressed: true })).toBeTruthy();
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search products, services or stores nearby...');
+    await user.clear(searchInput);
+    expect(searchInput.value).toBe('');
+    expect(screen.getByRole('button', { name: 'Hotel', pressed: true })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Clear discovery search' })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Clear discovery search' }));
+
+    await waitFor(() => {
+      expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(3);
+      expect(getLastDiscoveryParams(fetchMock).has('search')).toBe(false);
+      expect(getLastDiscoveryParams(fetchMock).get('pin_scope')).toBe('tenant_primary');
+      expect(screen.getByPlaceholderText('Search products, services or stores nearby...').value).toBe('');
+      expect(screen.getByRole('button', { name: 'Hotel', pressed: false })).toBeTruthy();
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Hotel' }));
+    await waitFor(() => {
+      expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(4);
+      expect(getLastDiscoveryParams(fetchMock).get('search')).toBe('Hotel');
+      expect(getLastDiscoveryParams(fetchMock).get('pin_scope')).toBe('all_matching_branches');
+    });
+  });
+
+  it('uses full cancellation for All and the already-selected category dropdown option', async () => {
+    const user = userEvent.setup();
+    render(<BrowserRouter><App /></BrowserRouter>);
+    await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(1));
+
+    await user.click(screen.getByRole('button', { name: 'More' }));
+    await user.click(screen.getByRole('button', { name: 'Hotel' }));
+    await waitFor(() => expect(getLastDiscoveryParams(fetchMock).get('search')).toBe('Hotel'));
+    await openDiscoveryResultsPanel(user);
+
+    const activeHotelControls = screen.getAllByRole('button', { name: 'Hotel' });
+    await user.click(activeHotelControls.at(-1));
+    await user.click(screen.getAllByRole('button', { name: 'Hotel' }).at(-1));
+    await waitFor(() => {
+      expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(3);
+      expect(getLastDiscoveryParams(fetchMock).has('search')).toBe(false);
+      expect(getLastDiscoveryParams(fetchMock).get('pin_scope')).toBe('tenant_primary');
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Hotel' }));
+    await waitFor(() => expect(getLastDiscoveryParams(fetchMock).get('search')).toBe('Hotel'));
+    await openDiscoveryResultsPanel(user);
+    await user.click(screen.getAllByRole('button', { name: 'Hotel' }).at(-1));
+    await user.click(screen.getByRole('button', { name: 'Category: All', exact: true }));
+    await waitFor(() => {
+      expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(5);
+      expect(getLastDiscoveryParams(fetchMock).has('search')).toBe(false);
+      expect(getLastDiscoveryParams(fetchMock).get('pin_scope')).toBe('tenant_primary');
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Hotel' }));
+    await waitFor(() => expect(getLastDiscoveryParams(fetchMock).get('search')).toBe('Hotel'));
+    await openDiscoveryResultsPanel(user);
+    const resetFiltersButton = await screen.findByRole('button', { name: 'Reset discovery filters' });
+    await user.click(resetFiltersButton);
+    await waitFor(() => {
+      expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(7);
+      expect(getLastDiscoveryParams(fetchMock).has('search')).toBe(false);
+      expect(getLastDiscoveryParams(fetchMock).get('pin_scope')).toBe('tenant_primary');
+    });
+  });
+
+  it('keeps a delayed partner response and pending text debounce from restoring a cancelled search', async () => {
+    const user = userEvent.setup();
+    const nativeStore = {
+      tenant_name: 'Native Reset Store', slug: 'native-reset-store', entity_type: 'dgfy_native',
+      storefront_categories: ['Food'], storefront_open: true, latitude: 10.72, longitude: 122.56
+    };
+    const partnerStore = {
+      tenant_name: 'Delayed Partner Hotel', slug: 'delayed-partner-hotel', entity_type: 'external_listing',
+      external_provider: 'synqcore', storefront_categories: ['Hotel'], latitude: 10.73, longitude: 122.57,
+      storefront_url: '/e/delayed-partner-hotel'
+    };
+    let releaseDelayedHotelResponse;
+    const responseWithStores = (stores, pinScope = 'tenant_primary') => makeJsonResponse({
+      stores,
+      pagination: { page: 1, limit: 100, total: stores.length, totalPages: 1 },
+      applied_filters: {
+        result_mode: 'union',
+        stock_filter: 'include_out_of_stock',
+        pin_scope: pinScope,
+        include_match_meta: true
+      }
+    });
+    fetchMock.mockImplementation((url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        const params = new URL(normalized, 'http://localhost').searchParams;
+        if (params.get('search') === 'Hotel') {
+          return new Promise((resolve) => {
+            releaseDelayedHotelResponse = () => resolve(responseWithStores([partnerStore], 'all_matching_branches'));
+          });
+        }
+        return Promise.resolve(responseWithStores([nativeStore], params.get('pin_scope') || 'tenant_primary'));
+      }
+      if (isStoreCatalogRequest(normalized)) return Promise.resolve(makeJsonResponse({ items: [] }));
+      return Promise.resolve(makeJsonResponse({}));
+    });
+
+    render(<BrowserRouter><App /></BrowserRouter>);
+    await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(1));
+
+    await user.click(screen.getByRole('button', { name: 'More', exact: true }));
+    await user.click(screen.getByRole('button', { name: 'Hotel', exact: true }));
+    await waitFor(() => expect(releaseDelayedHotelResponse).toBeTypeOf('function'));
+    expect(getLastDiscoveryParams(fetchMock).get('search')).toBe('Hotel');
+    await user.click(screen.getByRole('button', { name: 'Clear discovery search' }));
+    await waitFor(() => {
+      expect(getLastDiscoveryParams(fetchMock).has('search')).toBe(false);
+      expect(getLastDiscoveryParams(fetchMock).get('pin_scope')).toBe('tenant_primary');
+      expect(getDiscoveryPinMarkerKeys()).toEqual([expect.stringContaining('native-reset-store')]);
+    });
+
+    await act(async () => {
+      releaseDelayedHotelResponse();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(getDiscoveryPinMarkerKeys()).toEqual([expect.stringContaining('native-reset-store')]));
+    expect(screen.queryByText('Delayed Partner Hotel')).toBeNull();
+
+    const searchInput = screen.getByPlaceholderText('Search products, services or stores nearby...');
+    await user.type(searchInput, 'hotel');
+    await user.click(screen.getByRole('button', { name: 'Clear discovery search' }));
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(4);
+    expect(getLastDiscoveryParams(fetchMock).has('search')).toBe(false);
+    expect(getLastDiscoveryParams(fetchMock).get('pin_scope')).toBe('tenant_primary');
+    expect(getDiscoveryPinMarkerKeys()).toEqual([expect.stringContaining('native-reset-store')]);
+  });
+
+  it('clears every discovery filter and stale selection through the search clear control', async () => {
+    const user = userEvent.setup();
+    installMixedDiscoveryResponses();
+    render(<BrowserRouter><App /></BrowserRouter>);
+    await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(1));
+
+    const discoveryActions = useStorefrontStore.getState();
+    discoveryActions.discoverySetCategoryFilter('hotel');
+    discoveryActions.discoverySetDistanceFilter('within_10km');
+    discoveryActions.discoverySetOpenFilter('open');
+    discoveryActions.discoverySetRatingFilter('4plus');
+    discoveryActions.discoverySetAvailabilityFilter('available');
+    discoveryActions.discoverySetSortBy('catalog');
+    discoveryActions.discoverySetResultsPage(3);
+    discoveryActions.discoverySetPinScope('all_matching_branches');
+    discoveryActions.discoverySetActiveFilterDropdown('distance');
+    discoveryActions.discoverySetIsNoMatchToastActive(true);
+    discoveryActions.discoverySetSelectedMapPin({ latitude: 10.73, longitude: 122.57, stores: [mixedDiscoveryStores[2]] });
+    discoveryActions.discoverySetHighlightedMarkerKey('partner-hotel');
+    discoveryActions.discoverySetHighlightedStoreSlug('partner-hotel');
+
+    const searchInput = screen.getByPlaceholderText('Search products, services or stores nearby...');
+    await user.type(searchInput, 'hotel');
+    await user.click(screen.getByRole('button', { name: 'Clear discovery search' }));
+    await waitFor(() => {
+      expect(getLastDiscoveryParams(fetchMock).has('search')).toBe(false);
+      expect(getLastDiscoveryParams(fetchMock).get('pin_scope')).toBe('tenant_primary');
+    });
+
+    const discovery = useStorefrontStore.getState().discovery;
+    expect(discovery).toMatchObject({
+      categoryFilter: 'all',
+      distanceFilter: 'all',
+      openFilter: 'all',
+      ratingFilter: 'all',
+      availabilityFilter: 'all',
+      sortBy: 'nearest',
+      resultsPage: 1,
+      pinScope: 'tenant_primary',
+      activeFilterDropdown: null,
+      isNoMatchToastActive: false,
+      highlightedMarkerKey: '',
+      highlightedStoreSlug: '',
+      selectedMapPin: null
+    });
+    expect(searchInput.value).toBe('');
+    await waitFor(() => {
+      expect(getDiscoveryPinMarkerKeys()).toEqual(expect.arrayContaining([
+        expect.stringContaining('native-food'),
+        expect.stringContaining('native-hospitality')
+      ]));
+      expect(getDiscoveryPinMarkerKeys()).toHaveLength(2);
+    });
+    expect(screen.queryByText(/External listing ·/)).toBeNull();
+  });
+
+  it('exposes pressed category state through the Beauty and Salon aliases', async () => {
+    const user = userEvent.setup();
+    installMixedDiscoveryResponses();
+    render(<BrowserRouter><App /></BrowserRouter>);
+    await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(1));
+
+    await user.click(screen.getByRole('button', { name: 'Salon', pressed: false }));
+    await waitFor(() => expect(getLastDiscoveryParams(fetchMock).get('search')).toBe('Salon'));
+    await user.click(screen.getByRole('button', { name: 'More', exact: true }));
+    expect(screen.getByRole('button', { name: 'Salon', pressed: true })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Beauty', pressed: true })).toBeTruthy();
+  });
+
   it('expands the category rail and searches for a partner Hotel chip', async () => {
     const user = userEvent.setup();
     render(<BrowserRouter><App /></BrowserRouter>);
@@ -1010,9 +1243,16 @@ describe('storefront discovery integration flow', () => {
     expect(screen.getByText('Synqcore Hotel One')).toBeTruthy();
     expect(screen.getByText('Synqcore Hotel Two')).toBeTruthy();
 
-    await openDiscoveryResultsPanel(user);
-    await user.click(screen.getByRole('button', { name: 'Hotel' }));
-    await user.click(screen.getByRole('button', { name: 'Job' }));
+    await user.click(screen.getByRole('button', { name: 'Clear discovery search' }));
+    await waitFor(() => {
+      expect(screen.queryByText('Stores At This Pin')).toBeNull();
+      expect(screen.queryByText('Synqcore Hotel One')).toBeNull();
+      expect(screen.queryByText('Synqcore Hotel Two')).toBeNull();
+      expect(getDiscoveryPinMarkerKeys().every((key) => !key.includes('partner-'))).toBe(true);
+    });
+
+    await user.click(screen.getByRole('button', { name: 'More', exact: true }));
+    await user.click(screen.getByRole('button', { name: 'Job', exact: true }));
     await waitFor(() => expect(getDiscoveryPinMarkerKeys()).toEqual([expect.stringContaining('proventous-job')]));
     expect(screen.getByText('Proventous Job')).toBeTruthy();
     expect(screen.queryByText('Synqcore Hotel One')).toBeNull();
@@ -2485,6 +2725,85 @@ describe('storefront discovery integration flow', () => {
     const params = getLastDiscoveryParams(fetchMock);
     expect(params.get('latitude')).toBeNull();
     expect(params.get('longitude')).toBeNull();
+  });
+
+  it('preserves discovery location and camera when cancelling a search back to native results', async () => {
+    const user = userEvent.setup();
+    const getCurrentPosition = vi.fn((success) => {
+      success({ coords: { latitude: 10.701, longitude: 122.501 } });
+    });
+    Object.defineProperty(window.navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition }
+    });
+    const nativeStore = {
+      entity_type: 'dgfy_native',
+      tenant_id: 71,
+      tenant_name: 'Native Reset Store',
+      slug: 'native-reset-store',
+      storefront_categories: ['Food'],
+      latitude: 10.72,
+      longitude: 122.56,
+      location_id: 71,
+      storefront_open: true
+    };
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        const params = new URL(normalized, 'http://localhost').searchParams;
+        const stores = params.has('search') ? [] : [nativeStore];
+        return makeJsonResponse({
+          stores,
+          pagination: { page: 1, limit: 100, total: stores.length, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: params.get('pin_scope') || 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (isStoreCatalogRequest(normalized)) return makeJsonResponse({ items: [] });
+      return makeJsonResponse({});
+    });
+
+    render(<BrowserRouter><App /></BrowserRouter>);
+    await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(1));
+    await user.click(screen.getByTitle('Use my current location'));
+    await waitFor(() => {
+      expect(getLastDiscoveryParams(fetchMock).get('latitude')).toBe('10.701');
+      expect(getLastDiscoveryParams(fetchMock).get('longitude')).toBe('122.501');
+    });
+
+    await user.click(screen.getByRole('button', { name: 'More' }));
+    await user.click(screen.getByRole('button', { name: 'Hotel' }));
+    await waitFor(() => expect(getLastDiscoveryParams(fetchMock).get('search')).toBe('Hotel'));
+    await waitFor(() => expect(getMapApis().length).toBeGreaterThanOrEqual(2));
+    const resultsMap = getLatestMapApi();
+    resultsMap.__setCamera({ center: [122.42, 10.62], zoom: 8.25, bearing: 17, pitch: 29 });
+    resultsMap.__emit('moveend');
+
+    await user.click(screen.getByRole('button', { name: 'Clear discovery search' }));
+    await waitFor(() => {
+      expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(4);
+      const params = getLastDiscoveryParams(fetchMock);
+      expect(params.has('search')).toBe(false);
+      expect(params.get('pin_scope')).toBe('tenant_primary');
+      expect(params.get('latitude')).toBe('10.701');
+      expect(params.get('longitude')).toBe('122.501');
+    });
+    await waitFor(() => expect(getMapApis().length).toBeGreaterThanOrEqual(3));
+
+    const restoredHeroMap = getLatestMapApi();
+    expect(restoredHeroMap.options.center).toEqual([122.42, 10.62]);
+    expect(restoredHeroMap.options.zoom).toBe(8.25);
+    expect(restoredHeroMap.options.bearing).toBe(17);
+    expect(restoredHeroMap.options.pitch).toBe(29);
+    expect(restoredHeroMap.flyTo).not.toHaveBeenCalled();
+    expect(restoredHeroMap.fitBounds).not.toHaveBeenCalled();
+    await waitFor(() => expect(getDiscoveryPinMarkerKeys().some((key) => key.includes('native-reset-store'))).toBe(true));
+    expect(restoredHeroMap.flyTo).not.toHaveBeenCalled();
+    expect(restoredHeroMap.fitBounds).not.toHaveBeenCalled();
   });
 
   it('shows explicit tenant setup empty-state when catalog has no sellable items', async () => {

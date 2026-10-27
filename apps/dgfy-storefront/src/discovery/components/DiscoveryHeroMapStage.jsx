@@ -10,6 +10,7 @@ import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../packages/web-
 
 export function DiscoveryHeroMapStage({
   discoveryCoords,
+  cameraSnapshotRef,
   discoveryLayout,
   discoveryViewportMode,
   getDiscoveryMarkerKey,
@@ -18,6 +19,8 @@ export function DiscoveryHeroMapStage({
   handleNearMe,
   highlightedDiscoveryMarkerKey,
   isDiscoveryMobileViewport,
+  onCameraInteraction,
+  preserveCameraOnMount,
   setHasDiscoveryExplorationStarted,
   setHighlightedDiscoveryMarkerKey,
   setHighlightedStoreSlug,
@@ -51,6 +54,9 @@ export function DiscoveryHeroMapStage({
           stores={stableHeroDiscoveryMapPins}
           selectedKey={highlightedDiscoveryMarkerKey || null}
           userLocation={discoveryCoords}
+          cameraSnapshotRef={cameraSnapshotRef}
+          preserveCameraOnMount={preserveCameraOnMount}
+          onCameraInteraction={onCameraInteraction}
           height={discoveryLayout.heroMapHeight}
           openPopupOnHover
           onSelectCluster={handleDiscoveryClusterSelect}
