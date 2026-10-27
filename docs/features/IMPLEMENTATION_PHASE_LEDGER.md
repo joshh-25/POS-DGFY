@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-10-24
+last_reviewed: 2026-10-27
 review_by: 2027-02-16
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
@@ -33426,3 +33426,99 @@ deployment, production data access, or financial mutation occurred in this Worke
 
 Phase 562. Phase 561 depends on the Wave 2–4 routes integrated on the epic branch; Phase 546 on
 `origin/develop` is unrelated and creates no additional dependency.
+
+## Phase 562 - Reduce always-loaded agent instructions and guard Claude Code budget (#2854)
+
+### Initiative and release
+
+Agent instruction loading / issue #2854, Phase 1 and Phase 3. Phase 2 is deferred.
+
+### Objective and scope
+
+Remove eager role-skill imports from AGENTS.md without deleting rule content, require role-shaped
+sessions to read the relevant canonical skill before acting, and add regression checks for eager
+skill imports and Claude Code's always-loaded instruction budget. Add fixture-based tests and
+extend the pre-commit trigger to cover CLAUDE.md and .claude/rules/**/*.md. No application
+runtime, API, database, or deployment behavior changes.
+
+### Status
+
+in_progress — implementation and local validation are underway on the #2854 Worker branch.
+
+### Dependencies
+
+None. Phase 561 and the active #2696 integration phases are unrelated. Phase 562 was the next
+number on fresh origin/develop at branch creation; recheck the ledger for a concurrent number
+claim before merge, per the lifecycle rules.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[PR Conventions](../ai/PR.md), [Planner/Worker Handoff Compatibility](../ai/PLANNER_WORKER_HANDOFF_COMPATIBILITY.md),
+and live issue [#2854](https://github.com/Sieitzz/dgfy-platform/issues/2854). Classification:
+no-architecture-impact; no applicable ADR or architecture exception is needed.
+
+### Implementation targets
+
+- [AGENTS.md](../../AGENTS.md), [checker](../../scripts/check-agent-surfaces.js),
+  [fixture tests](../../scripts/check-agent-surfaces.test.js), [.husky/pre-commit](../../.husky/pre-commit),
+  and the root [package.json](../../package.json).
+
+### Acceptance and validation evidence
+
+- [x] All role entries keep their canonical paths as plain text, the imperative load instruction
+      covers slash and free-text role-shaped requests, and the standing never --squash rule is
+      present in Merge Safety.
+- [x] The checker ignores fenced and inline code, catches direct and punctuated eager skill
+      imports, follows repo-local imports through depth 5, and warns/fails at the 120,000/150,000
+      character thresholds.
+- [x] Fixture tests cover transitive imports, unresolved targets, budget thresholds, staged
+      CLAUDE.md and .claude/rules/ paths, and a pre-existing role-path regression.
+- [x] Fresh Claude Code session confirms no startup budget warning and the canonical role files
+      load when /implement, /pm, and /pr-reviewer are invoked.
+- [x] npm run test:agent-surfaces, npm run check:agent-surfaces, npm run lint:docs,
+      npm run check:compliance -- --staged, node scripts/check-app-version-bump.js, and
+      git diff --check pass; the changed-file temporary-marker scan is clear.
+
+### Evidence (Worker run, 2026-10-27)
+
+- npm run test:agent-surfaces passed 13/13 fixture tests.
+- npm run check:agent-surfaces passed and measured 32,730 characters across
+  .claude/rules/bash-path-resolution.md (1,530), AGENTS.md (30,927), and CLAUDE.md (273).
+- Claude Code 2.1.294 opened in a fresh interactive session with no instruction-size warning.
+  /memory listed CLAUDE.md, imported AGENTS.md, the project bash-path rule, and user-global rules.
+  /implement, /pm, and /pr-reviewer each read their repository canonical SKILL.md; no issue, PR,
+  or code mutation was performed in that check.
+- npm run lint:docs passed (37 governed docs and 106 ADRs); node scripts/check-app-version-bump.js
+  passed. npm install reported dependencies up to date and package-lock.json stayed unchanged.
+- wc -c measured CLAUDE.md at 277 bytes, AGENTS.md at 31,143 bytes, and the project Claude rule at
+  1,538 bytes (32,958 bytes total). rg found no eager .agents/skills imports in the always-loaded
+  files. git diff --check passed.
+- The changed-file marker scan found only the existing AGENTS.md instruction that documents the
+  scan; no actionable debug or work-in-progress marker was present. Staged compliance checks passed
+  in both commits: no compliance-sensitive changes were detected and the API-contract rules passed.
+
+### Risks and decisions
+
+Phase 2 content trimming is out of scope; no instruction text was removed. User-global Claude
+rules are outside this checker, so the ≤60,000-character target leaves room for them. The checker
+counts JavaScript string length of UTF-8-decoded repository files. Role-specific checkpoints remain
+in canonical skills and authoritative references; AGENTS.md now requires those skills to be read
+before any slash or free-text role-shaped work. The Risk 1 audit also found a stale rc/* base-branch
+note in the Reviewer skill; docs/ai/PR.md and the release policy govern the current prefixes, and
+the broader open rule-surface audit #330 is the existing follow-up owner. That skill remains outside
+this PR's scope.
+
+### Completion date
+
+Not complete. Record only after this PR is merged and its scoped validation is complete.
+
+### Post-merge verification
+
+- [x] operational — Worker verified startup, /memory, and role loading in a fresh local session;
+  owner: Worker; blocks nothing after PR creation. No deployment or provider verification applies.
+
+### Next phase number
+
+Phase 563. No explicit dependency.
