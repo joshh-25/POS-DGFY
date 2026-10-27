@@ -4,7 +4,7 @@ owner: engineering
 last_reviewed: 2026-10-27
 declaration_id: 2026-10-26-pre-existing-payment-rbac-esales-hardening
 classification: regulatory
-surfaces: pos,terminal,payments,settings,compliance
+surfaces: pos,terminal,payments,settings,compliance,inventory
 reason_codes_impacted: DIRECT_CARD_CONFIGURATION_INCOMPLETE,STAFF_ROLE_PERMISSION_FAIL_CLOSED,ESALES_STATUS_ROUTE_ALIGNMENT
 policy_version: 2026.10.26
 verification_evidence: focused backend tests,shared POS contract tests,frontend production builds,git diff check

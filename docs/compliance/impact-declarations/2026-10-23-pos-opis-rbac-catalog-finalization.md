@@ -5,7 +5,7 @@ last_reviewed: 2026-10-23
 related_adr: docs/architecture/adr/0020-mode-aware-rbac-and-role-presets.md,docs/architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md
 declaration_id: 2026-10-23-pos-opis-rbac-catalog-finalization
 classification: regulatory
-surfaces: pos,terminal,settings,inventory,business_admin,tenant_schema,compliance
+surfaces: pos,terminal,settings,inventory,business_admin,tenant_schema,compliance,payments
 reason_codes_impacted: ALLOWED,VALIDATION_FAILED,AUTHORIZATION_FAILED,UNAUTHORIZED
 policy_version: 2026.10.23
 verification_evidence: focused-api-jest-64-tests,backend-lint,check-architecture,check-tenant-schema-coverage-staged,code-audit-archive-test,git-diff-cached-check

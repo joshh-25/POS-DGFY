@@ -5,7 +5,7 @@ last_reviewed: 2026-10-27
 related_adr: docs/architecture/adr/0007-dual-mode-pos-compliance-program.md,docs/architecture/adr/0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md,docs/architecture/adr/0045-shared-pos-receipt-renderer.md
 declaration_id: 2026-10-26-pos-fiscal-setup-server-enforcement
 classification: regulatory
-surfaces: pos,terminal,settings,compliance,payments
+surfaces: pos,terminal,settings,compliance,payments,inventory
 reason_codes_impacted: FISCAL_SETUP_INCOMPLETE,POS_TAXPAYER_TYPE_UNRECOGNIZED,COMPLIANCE_SETTINGS_INCOMPLETE
 policy_version: 2026.10.26
 verification_evidence: apps/dgfy-api/tests/settingsValidator.posTaxpayerType.test.js,apps/dgfy-api/tests/posTaxpayerTypePolicy.test.js,apps/dgfy-api/tests/posTaxpayerType.migration.test.js,apps/dgfy-api/tests/compliancePolicyEngine.test.js,POS/OPIS production builds,shared POS settings and receipt contract tests,git diff --check
