@@ -1,0 +1,7 @@
+{
+  "offline_screenshot": "11/offline.png",
+  "online_recovered_screenshot": "11/online-recovered.png",
+  "offline_indicator_detected": true,
+  "online_indicator_detected": true,
+  "runtime_errors": []
+}

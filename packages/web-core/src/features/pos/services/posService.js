@@ -1047,8 +1047,14 @@ export const generateESalesReport = async (payload = {}) => {
 };
 
 export const updateESalesReportStatus = async (reportId, payload = {}) => {
+    const id = String(reportId ?? '').trim();
+    if (!id) {
+        const error = new Error('eSales report ID is required');
+        error.code = 'POS_FISCAL_REPORT_ID_REQUIRED';
+        throw error;
+    }
     try {
-        const response = await api.patch(`/pos/esales-reports/${reportId}`, payload);
+        const response = await api.patch(`/pos/esales-reports/${encodeURIComponent(id)}/status`, payload);
         return getDataOrFallback(response);
     } catch (error) {
         if (error?.response?.status === 404) {

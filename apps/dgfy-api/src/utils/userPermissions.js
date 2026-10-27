@@ -40,6 +40,20 @@ export const normalizePermissionArray = (rawPermissions) => {
 export const resolveEffectivePermissions = (user) => {
   const explicitPermissions = normalizePermissionArray(user?.permissions);
 
+  const assignedStaffRoleId = user?.staff_role_id != null ? String(user.staff_role_id) : '';
+  const hydratedStaffRoleId = user?.staffRole?.staff_role_id != null
+    ? String(user.staffRole.staff_role_id)
+    : '';
+  const hasAssignedStaffRole = Boolean(assignedStaffRoleId || hydratedStaffRoleId);
+  const staffRoleAssignmentMatches = !assignedStaffRoleId
+    || (Boolean(hydratedStaffRoleId) && assignedStaffRoleId === hydratedStaffRoleId);
+  const staffRoleActive = staffRoleAssignmentMatches && user?.staffRole?.is_active === true;
+
+  // An assigned role is a revocable authority source. Do this before trusting
+  // either legacy explicit permissions or the pre-resolved auth shortcut so a
+  // deactivated, missing, or mismatched tenant role cannot retain stale grants.
+  if (hasAssignedStaffRole && !staffRoleActive) return [];
+
   // authenticate() already resolves the database row before attaching req.user.
   // Treat that array as authoritative, including an intentional empty custom set;
   // resolving it a second time would silently restore role defaults.
@@ -49,9 +63,6 @@ export const resolveEffectivePermissions = (user) => {
 
   const staffRolePermissions = normalizePermissionArray(user?.staffRole?.capabilities);
   const role = String(user?.role || 'staff').trim().toLowerCase();
-  const hasAssignedStaffRole = user?.staff_role_id != null
-    || user?.staffRole?.staff_role_id != null;
-  const staffRoleActive = user?.staffRole?.is_active === true;
 
   // New rows have an explicit mode. `custom` is authoritative even when the
   // stored array is empty; `inherit` intentionally ignores the stored array.

@@ -1,0 +1,169 @@
+{
+  "request": {
+    "path": "/api/v1/pos/terminal/shifts/current",
+    "method": "GET"
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json; charset=utf-8",
+    "data": {
+      "shift": {
+        "pos_terminal_shift_id": 155,
+        "business_date": "2026-10-23",
+        "terminal_id": "COUNTER-01",
+        "location_id": 3,
+        "cashier_id": 1,
+        "opening_float_amount": "19999.0000",
+        "opening_note": null,
+        "opened_at": "2026-10-23T06:50:55.000Z",
+        "closing_cash_amount": null,
+        "expected_cash_amount": null,
+        "cash_variance_amount": null,
+        "closing_note": null,
+        "closed_at": null,
+        "closed_by": null,
+        "status": "open",
+        "created_at": "2026-10-23T06:50:55.000Z",
+        "updated_at": "2026-10-23T06:50:55.000Z",
+        "cashier": {
+          "user_id": 1,
+          "username": "Admin",
+          "email": "gutojoshua.hubomoto@gmail.com"
+        },
+        "cashEvents": [],
+        "location": {
+          "location_id": 3,
+          "name": "Ungka Branch",
+          "address_line": "Balabago, Iloilo City, Iloilo, Philippines",
+          "address_details": null,
+          "latitude": "10.74713500",
+          "longitude": "122.53723100",
+          "delivery_radius_km": "5.00",
+          "is_open": true,
+          "is_active": true,
+          "is_primary_storefront": false,
+          "operating_hours": null,
+          "current_wait_time_minutes": 15,
+          "allow_out_of_stock_sales": false,
+          "supports_delivery": true,
+          "supports_pickup": true,
+          "supports_dine_in": true,
+          "allow_dine_in_pay_at_store": false,
+          "scheduling_enabled": true,
+          "immediate_fulfillment_enabled": true,
+          "fulfillment_lead_time_min_days": null,
+          "fulfillment_lead_time_max_days": null,
+          "created_at": "2026-07-15T04:17:33.000Z",
+          "updated_at": "2026-09-24T14:32:03.000Z"
+        }
+      },
+      "cash_summary": {
+        "pos_terminal_shift_id": 155,
+        "business_date": "2026-10-23",
+        "terminal_id": "COUNTER-01",
+        "location_id": 3,
+        "location_name": "Ungka Branch",
+        "cashier_id": 1,
+        "status": "open",
+        "opened_at": "2026-10-23T06:50:55.000Z",
+        "closed_at": null,
+        "opening_float_amount": 19999,
+        "closing_cash_amount": null,
+        "expected_cash_amount": 19999,
+        "cash_variance_amount": null,
+        "cash_sales_amount": 0,
+        "cash_in_total": 0,
+        "cash_out_total": 0,
+        "opening_adjustment_total": 0,
+        "closing_adjustment_total": 0,
+        "net_events_total": 0
+      },
+      "sales_summary": {
+        "transaction_count": 0,
+        "subtotal_amount": 0,
+        "discount_amount": 0,
+        "service_fee_total": 0,
+        "restaurant_service_charge_total": 0,
+        "vatable_sales": 0,
+        "vat_amount": 0,
+        "vat_exempt_sales": 0,
+        "zero_rated_sales": 0,
+        "total_amount": 0,
+        "item_count": 0,
+        "discount_item_count": 0,
+        "total_cost": 0,
+        "void_transaction_count": 0,
+        "transaction_void_amount": 0,
+        "item_void_amount": 0,
+        "void_amount": 0,
+        "voided_item_count": 0,
+        "item_voided_item_count": 0,
+        "post_close_void_transaction_count": 0,
+        "post_close_void_amount": 0,
+        "post_close_voided_item_count": 0,
+        "refund_amount": 0,
+        "refunded_item_count": 0,
+        "provider_refunds_included": false,
+        "net_profit": 0,
+        "daily_totals": [],
+        "popular_items": [],
+        "payment_breakdown": [
+          {
+            "payment_type": "cash",
+            "payment_label": "Cash",
+            "count": 0,
+            "amount": 0
+          },
+          {
+            "payment_type": "gcash",
+            "payment_label": "GCash",
+            "count": 0,
+            "amount": 0
+          },
+          {
+            "payment_type": "maya",
+            "payment_label": "Maya",
+            "count": 0,
+            "amount": 0
+          },
+          {
+            "payment_type": "card",
+            "payment_label": "Card (Credit/Debit)",
+            "count": 0,
+            "amount": 0
+          },
+          {
+            "payment_type": "bank_transfer",
+            "payment_label": "Bank Transfer",
+            "count": 0,
+            "amount": 0
+          },
+          {
+            "payment_type": "employee_credit",
+            "payment_label": "Employee Credit",
+            "count": 0,
+            "amount": 0
+          },
+          {
+            "payment_type": "other",
+            "payment_label": "Other",
+            "count": 0,
+            "amount": 0
+          }
+        ],
+        "delivery_provider_breakdown": [],
+        "order_method_breakdown": [],
+        "order_source_breakdown": []
+      },
+      "terminal_occupancy": null,
+      "location_binding_readiness": {
+        "total_shifts": 155,
+        "unresolved_count": 0,
+        "low_confidence_count": 0,
+        "source_counts": {},
+        "ready_for_strict_mode": true
+      }
+    },
+    "message": null
+  }
+}

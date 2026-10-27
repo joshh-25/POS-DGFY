@@ -1,0 +1,678 @@
+{
+  "request": {
+    "path": "/api/v1/settings",
+    "method": "GET"
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json; charset=utf-8",
+    "data": {
+      "ops_workflow_mode": {
+        "value": "fnb",
+        "data_type": "string",
+        "description": "Business Mode",
+        "updated_at": "2026-06-29T08:29:26.000Z"
+      },
+      "tenant_onboarding_state": {
+        "value": "completed",
+        "data_type": "string",
+        "description": "Tenant onboarding state (not_started | in_progress | completed)",
+        "updated_at": "2026-07-24T10:09:50.000Z"
+      },
+      "tenant_onboarding_started_at": {
+        "value": "2026-07-24T10:09:50.183Z",
+        "data_type": "string",
+        "description": "ISO timestamp for tenant onboarding start",
+        "updated_at": "2026-07-24T10:09:50.000Z"
+      },
+      "tenant_onboarding_completed_at": {
+        "value": "2026-07-24T10:37:06.677Z",
+        "data_type": "string",
+        "description": "ISO timestamp for tenant onboarding completion",
+        "updated_at": "2026-07-24T10:37:06.000Z"
+      },
+      "tenant_onboarding_progress": {
+        "value": {
+          "step_payloads": {
+            "business_classification": {
+              "legitimacy": {
+                "registration_status": "registered"
+              }
+            }
+          },
+          "checklist_snapshot": {
+            "checklist": {
+              "store_name_ready": true,
+              "has_primary_storefront_location": true,
+              "has_priced_starter_item": true
+            },
+            "required_keys": [
+              "store_name_ready",
+              "has_primary_storefront_location",
+              "has_priced_starter_item"
+            ],
+            "required_total": 3,
+            "completed_required_count": 3,
+            "is_ready": true,
+            "missing_requirements": []
+          },
+          "classification_snapshot": {
+            "payload": {
+              "legitimacy": {
+                "registration_status": "registered"
+              }
+            }
+          }
+        },
+        "data_type": "json",
+        "description": "Tenant onboarding progress and latest checklist snapshot",
+        "updated_at": "2026-07-24T10:09:50.000Z"
+      },
+      "store_is_visible": {
+        "value": true,
+        "data_type": "boolean",
+        "description": "Controls whether the tenant appears in public discovery and public storefront profile reads",
+        "updated_at": "2026-06-29T08:29:26.000Z"
+      },
+      "customer_access_mode": {
+        "value": "transaction",
+        "data_type": "string",
+        "description": "Requested storefront customer access mode (ghost | catalog | inquiry | transaction)",
+        "updated_at": "2026-07-10T02:07:54.000Z"
+      },
+      "inventory_display_mode": {
+        "value": "availability",
+        "data_type": "string",
+        "description": "Customer-facing inventory display mode (hidden | availability | low_stock | exact_quantity)",
+        "updated_at": "2026-06-29T08:29:26.000Z"
+      },
+      "inventory_low_stock_display_threshold": {
+        "value": 5,
+        "data_type": "number",
+        "description": "Public low-stock display threshold for storefront inventory labels",
+        "updated_at": "2026-06-29T08:29:26.000Z"
+      },
+      "storefront_profile_image_path": {
+        "value": "",
+        "data_type": "string",
+        "description": "Auto-created by settings update flow for key 'storefront_profile_image_path'",
+        "updated_at": "2026-06-28T15:09:59.000Z"
+      },
+      "storefront_profile_image_url": {
+        "value": "",
+        "data_type": "string",
+        "description": "Auto-created by settings update flow for key 'storefront_profile_image_url'",
+        "updated_at": "2026-06-29T08:46:36.000Z"
+      },
+      "storefront_cover_image_path": {
+        "value": "",
+        "data_type": "string",
+        "description": "Auto-created by settings update flow for key 'storefront_cover_image_path'",
+        "updated_at": "2026-06-28T15:10:05.000Z"
+      },
+      "storefront_cover_image_url": {
+        "value": "",
+        "data_type": "string",
+        "description": "Auto-created by settings update flow for key 'storefront_cover_image_url'",
+        "updated_at": "2026-06-29T08:46:36.000Z"
+      },
+      "pos_terminal_registry": {
+        "value": [
+          {
+            "terminal_id": "JOHN-01",
+            "label": "Cashie Jaro Branch",
+            "location_id": 1,
+            "cashier_email": "",
+            "is_active": true,
+            "is_default": true,
+            "pairing_version": "",
+            "paired_device_ready": false,
+            "device_enforcement": "off"
+          },
+          {
+            "terminal_id": "COUNTER-01",
+            "label": "Ungka Branch",
+            "location_id": 3,
+            "cashier_email": "",
+            "cashier_user_ids": [],
+            "is_active": true,
+            "is_default": false,
+            "pairing_version": "",
+            "paired_device_ready": false,
+            "device_enforcement": "off"
+          }
+        ],
+        "data_type": "json",
+        "description": "Auto-created by settings update flow for key 'pos_terminal_registry'",
+        "updated_at": "2026-10-16T06:11:15.000Z"
+      },
+      "pos_terminal_registry_mode": {
+        "value": "warn",
+        "data_type": "string",
+        "description": "Auto-created by settings update flow for key 'pos_terminal_registry_mode'",
+        "updated_at": "2026-09-15T14:14:08.000Z"
+      },
+      "pos_terminal_location_binding_enforced": {
+        "value": true,
+        "data_type": "boolean",
+        "description": "Auto-created by settings update flow for key 'pos_terminal_location_binding_enforced'",
+        "updated_at": "2026-09-15T14:14:08.000Z"
+      },
+      "store_has_no_location": {
+        "value": true,
+        "data_type": "boolean",
+        "description": "Auto-created by settings update flow for key 'store_has_no_location'",
+        "updated_at": "2026-07-28T12:34:01.000Z"
+      },
+      "storefront_tagline": {
+        "value": "Authentic Indian-Nepalese flavors, warmly served.",
+        "data_type": "string",
+        "description": "Auto-created by settings update flow for key 'storefront_tagline'",
+        "updated_at": "2026-06-29T08:29:26.000Z"
+      },
+      "storefront_phone": {
+        "value": "09173085308",
+        "data_type": "string",
+        "description": "Auto-created by settings update flow for key 'storefront_phone'",
+        "updated_at": "2026-06-29T08:29:26.000Z"
+      },
+      "storefront_email": {
+        "value": "",
+        "data_type": "string",
+        "description": "Auto-created by settings update flow for key 'storefront_email'",
+        "updated_at": "2026-06-29T08:29:26.000Z"
+      },
+      "storefront_about": {
+        "value": "Masu Cafe serves flavorful Indian–Nepalese dishes made with rich spices, comforting meals, and a warm café experience in Iloilo City.",
+        "data_type": "string",
+        "description": "Auto-created by settings update flow for key 'storefront_about'",
+        "updated_at": "2026-06-29T08:29:26.000Z"
+      },
+      "storefront_hours": {
+        "value": {
+          "mode": "weekly",
+          "timezone": "Asia/Manila",
+          "weekly": {
+            "sun": {
+              "enabled": true,
+              "open": "00:00",
+              "close": "00:00",
+              "intervals": [
+                {
+                  "open": "00:00",
+                  "close": "00:00"
+                }
+              ]
+            },
+            "mon": {
+              "enabled": true,
+              "open": "00:00",
+              "close": "00:00",
+              "intervals": [
+                {
+                  "open": "00:00",
+                  "close": "00:00"
+                }
+              ]
+            },
+            "tue": {
+              "enabled": true,
+              "open": "00:00",
+              "close": "00:00",
+              "intervals": [
+                {
+                  "open": "00:00",
+                  "close": "00:00"
+                }
+              ]
+            },
+            "wed": {
+              "enabled": true,
+              "open": "00:00",
+              "close": "00:00",
+              "intervals": [
+                {
+                  "open": "00:00",
+                  "close": "00:00"
+                }
+              ]
+            },
+            "thu": {
+              "enabled": true,
+              "open": "00:00",
+              "close": "00:00",
+              "intervals": [
+                {
+                  "open": "00:00",
+                  "close": "00:00"
+                }
+              ]
+            },
+            "fri": {
+              "enabled": true,
+              "open": "00:00",
+              "close": "00:00",
+              "intervals": [
+                {
+                  "open": "00:00",
+                  "close": "00:00"
+                }
+              ]
+            },
+            "sat": {
+              "enabled": true,
+              "open": "00:00",
+              "close": "00:00",
+              "intervals": [
+                {
+                  "open": "00:00",
+                  "close": "00:00"
+                }
+              ]
+            }
+          },
+          "display": "Sun-Sat 24 hours"
+        },
+        "data_type": "json",
+        "description": "Auto-created by settings update flow for key 'storefront_hours'",
+        "updated_at": "2026-07-23T11:23:56.000Z"
+      },
+      "storefront_why_choose_us": {
+        "value": [
+          "Indian–Nepalese Flavors",
+          "Spicy Comfort Meals",
+          "Warm Café Dining",
+          "Flavorful Rice Plates"
+        ],
+        "data_type": "json",
+        "description": "Auto-created by settings update flow for key 'storefront_why_choose_us'",
+        "updated_at": "2026-06-29T08:29:26.000Z"
+      },
+      "storefront_social_links": {
+        "value": {
+          "messenger": "",
+          "facebook": "https://www.facebook.com/profile.php?id=100064251120321",
+          "instagram": ""
+        },
+        "data_type": "json",
+        "description": "Auto-created by settings update flow for key 'storefront_social_links'",
+        "updated_at": "2026-06-29T08:29:26.000Z"
+      },
+      "storefront_ui_v2_enabled": {
+        "value": true,
+        "data_type": "boolean",
+        "description": "Auto-created by settings update flow for key 'storefront_ui_v2_enabled'",
+        "updated_at": "2026-06-29T08:29:26.000Z"
+      },
+      "storefront_categories": {
+        "value": [
+          "Indian Cuisine Café",
+          "Café",
+          "Curry Dishes",
+          "Biryani",
+          "Vegetarian Meals"
+        ],
+        "data_type": "json",
+        "description": "Auto-created by settings update flow for key 'storefront_categories'",
+        "updated_at": "2026-06-29T08:29:26.000Z"
+      },
+      "storefront_gallery_images": {
+        "value": [
+          {
+            "url": "/uploads/storefront-assets/f5d1f5e9-7fda-4aaa-95d6-9ed3dac1a11a/gallery-1782722933010-masu-0.png",
+            "path": "storefront-assets/f5d1f5e9-7fda-4aaa-95d6-9ed3dac1a11a/gallery-1782722933010-masu-0.png",
+            "caption": "",
+            "alt": "",
+            "sort_order": 0
+          },
+          {
+            "url": "/uploads/storefront-assets/f5d1f5e9-7fda-4aaa-95d6-9ed3dac1a11a/gallery-1782722933011-masu-1.jpg",
+            "path": "storefront-assets/f5d1f5e9-7fda-4aaa-95d6-9ed3dac1a11a/gallery-1782722933011-masu-1.jpg",
+            "caption": "",
+            "alt": "",
+            "sort_order": 1
+          },
+          {
+            "url": "/uploads/storefront-assets/f5d1f5e9-7fda-4aaa-95d6-9ed3dac1a11a/gallery-1782722933012-masu-2.png",
+            "path": "storefront-assets/f5d1f5e9-7fda-4aaa-95d6-9ed3dac1a11a/gallery-1782722933012-masu-2.png",
+            "caption": "",
+            "alt": "",
+            "sort_order": 2
+          },
+          {
+            "url": "/uploads/storefront-assets/f5d1f5e9-7fda-4aaa-95d6-9ed3dac1a11a/gallery-1782722933013-masu-3.png",
+            "path": "storefront-assets/f5d1f5e9-7fda-4aaa-95d6-9ed3dac1a11a/gallery-1782722933013-masu-3.png",
+            "caption": "",
+            "alt": "",
+            "sort_order": 3
+          }
+        ],
+        "data_type": "json",
+        "description": "Auto-created by settings update flow for key 'storefront_gallery_images'",
+        "updated_at": "2026-06-29T08:29:26.000Z"
+      },
+      "storefront_delivery_partners": {
+        "value": [
+          {
+            "partner": "foodpanda",
+            "label": "Masu Cafe Food Panda",
+            "url": "https://www.foodpanda.ph/restaurant/s58u/masu-cafe-villa-anita-street"
+          }
+        ],
+        "data_type": "json",
+        "description": "Auto-created by settings update flow for key 'storefront_delivery_partners'",
+        "updated_at": "2026-06-29T08:29:26.000Z"
+      },
+      "storefront_review_highlights": {
+        "value": [],
+        "data_type": "json",
+        "description": "Auto-created by settings update flow for key 'storefront_review_highlights'",
+        "updated_at": "2026-06-29T08:29:26.000Z"
+      },
+      "storefront_review_summary": {
+        "value": {
+          "score": 0,
+          "total_count": 0
+        },
+        "data_type": "json",
+        "description": "Auto-created by settings update flow for key 'storefront_review_summary'",
+        "updated_at": "2026-07-21T02:43:43.000Z"
+      },
+      "storefront_promo": {
+        "value": {
+          "id": "promo-1783920108315-udwsmt",
+          "title": "New Promo",
+          "subtitle": "This is Test",
+          "badge": "This is Tesst",
+          "validity_text": "valid till Tests",
+          "promo_code": "300",
+          "discount_percent": 20,
+          "usage_limit": 3,
+          "used_count": 0,
+          "valid_time_start": "13:21",
+          "valid_time_end": "13:21",
+          "valid_from": "2026-07-13",
+          "valid_until": "2026-07-23",
+          "target_item_ids": [],
+          "active": true
+        },
+        "data_type": "json",
+        "description": "Auto-created by settings update flow for key 'storefront_promo'",
+        "updated_at": "2026-07-28T12:34:01.000Z"
+      },
+      "storefront_follow_enabled": {
+        "value": true,
+        "data_type": "boolean",
+        "description": "Auto-created by settings update flow for key 'storefront_follow_enabled'",
+        "updated_at": "2026-06-29T08:29:26.000Z"
+      },
+      "storefront_share_enabled": {
+        "value": true,
+        "data_type": "boolean",
+        "description": "Auto-created by settings update flow for key 'storefront_share_enabled'",
+        "updated_at": "2026-06-29T08:29:26.000Z"
+      },
+      "platform_max_customer_access_mode": {
+        "value": "transaction",
+        "data_type": "string",
+        "description": "Platform-admin configured Customer Access Mode ceiling.",
+        "source": "tenant",
+        "updated_at": "2026-06-29T08:29:26.000Z"
+      },
+      "store_tenant_slug": {
+        "value": "masu-cafe-ed841f",
+        "data_type": "string",
+        "description": null,
+        "updated_at": "2026-06-29T08:29:26.000Z"
+      },
+      "pos_open_status": {
+        "value": true,
+        "data_type": "boolean",
+        "description": null,
+        "updated_at": "2026-08-15T13:01:34.000Z"
+      },
+      "pos_wait_time_minutes": {
+        "value": 15,
+        "data_type": "number",
+        "description": null,
+        "updated_at": "2026-06-29T08:29:26.000Z"
+      },
+      "store_delivery_fee": {
+        "value": 50,
+        "data_type": "number",
+        "description": null,
+        "updated_at": "2026-09-12T05:57:28.000Z"
+      },
+      "pos_discount_profiles": {
+        "value": [
+          {
+            "name": "Senior Discount",
+            "percentage": 10,
+            "active": true
+          }
+        ],
+        "data_type": "json",
+        "description": "Auto-created by settings update flow for key 'pos_discount_profiles'",
+        "updated_at": "2026-09-25T08:14:30.000Z"
+      },
+      "pos_petty_cash_symbol": {
+        "value": "PHP",
+        "data_type": "string",
+        "description": "Auto-created by settings update flow for key 'pos_petty_cash_symbol'",
+        "updated_at": "2026-07-07T06:20:32.000Z"
+      },
+      "pos_petty_cash_amount": {
+        "value": 0,
+        "data_type": "number",
+        "description": "Auto-created by settings update flow for key 'pos_petty_cash_amount'",
+        "updated_at": "2026-07-07T06:20:32.000Z"
+      },
+      "storefront_promos": {
+        "value": [
+          {
+            "id": "promo-1783920108315-udwsmt",
+            "title": "New Promo",
+            "subtitle": "This is Test",
+            "badge": "This is Tesst",
+            "validity_text": "valid till Tests",
+            "promo_code": "300",
+            "discount_percent": 20,
+            "usage_limit": 3,
+            "used_count": 0,
+            "valid_time_start": "13:21",
+            "valid_time_end": "13:21",
+            "valid_from": "2026-07-13",
+            "valid_until": "2026-07-23",
+            "target_item_ids": [],
+            "active": true
+          }
+        ],
+        "data_type": "json",
+        "description": "Auto-created by settings update flow for key 'storefront_promos'",
+        "updated_at": "2026-07-28T12:34:01.000Z"
+      },
+      "pos_best_seller_settings": {
+        "value": {
+          "enabled": true,
+          "lookback_days": 30,
+          "top_limit": 3,
+          "daily_top_enabled": false
+        },
+        "data_type": "json",
+        "description": "Auto-created by settings update flow for key 'pos_best_seller_settings'",
+        "updated_at": "2026-09-15T14:14:08.000Z"
+      },
+      "pos_cashier_attendance_lifecycle_v1": {
+        "value": {
+          "enabled": true,
+          "location_ids": [
+            1
+          ]
+        },
+        "data_type": "json",
+        "description": "Tenant/location rollout for POS cashier attendance and breaks",
+        "updated_at": "2026-08-24T23:41:06.000Z"
+      },
+      "pos_employee_discount_self_approval_enabled": {
+        "value": true,
+        "data_type": "boolean",
+        "description": "Auto-created by settings update flow for key 'pos_employee_discount_self_approval_enabled'",
+        "updated_at": "2026-08-27T15:02:18.000Z"
+      },
+      "voucher_pos_redemption_enabled": {
+        "value": false,
+        "data_type": "boolean",
+        "description": "Auto-created by settings update flow for key 'voucher_pos_redemption_enabled'",
+        "updated_at": "2026-08-27T15:02:18.000Z"
+      },
+      "store_delivery_fee_mode": {
+        "value": "calculated",
+        "data_type": "string",
+        "description": "Auto-created by settings update flow for key 'store_delivery_fee_mode'",
+        "updated_at": "2026-09-12T05:57:29.000Z"
+      },
+      "store_delivery_fee_calc": {
+        "value": {
+          "min_fee": 50,
+          "included_km": 3,
+          "per_km_rate": 10,
+          "increment_km": 1,
+          "max_distance_km": 15
+        },
+        "data_type": "json",
+        "description": "Auto-created by settings update flow for key 'store_delivery_fee_calc'",
+        "updated_at": "2026-09-12T05:57:30.000Z"
+      },
+      "storefront_guest_checkout_enabled": {
+        "value": true,
+        "data_type": "boolean",
+        "description": "Auto-created by settings update flow for key 'storefront_guest_checkout_enabled'",
+        "updated_at": "2026-09-12T12:22:27.000Z"
+      },
+      "storefront_cash_payment_enabled": {
+        "value": true,
+        "data_type": "boolean",
+        "description": "Auto-created by settings update flow for key 'storefront_cash_payment_enabled'",
+        "updated_at": "2026-09-12T12:22:27.000Z"
+      },
+      "pos_business_name": {
+        "value": "Masu Cafe Indian Foodszt",
+        "data_type": "string",
+        "description": "Business name used by POS and tenant-facing receipts.",
+        "updated_at": "2026-10-17T06:40:58.000Z"
+      },
+      "pos_receipt_metadata_pending_changes": {
+        "value": {
+          "status": "pending_review",
+          "requested_at": "2026-10-17T05:24:24.593Z",
+          "requested_by": "Admin",
+          "changes": {
+            "pos_business_name": "Masu Cafe Indian Foodszt"
+          }
+        },
+        "data_type": "json",
+        "description": "Auto-created by settings update flow for key 'pos_receipt_metadata_pending_changes'",
+        "updated_at": "2026-10-17T05:24:24.000Z"
+      },
+      "pos_taxpayer_type": {
+        "value": "",
+        "data_type": "string",
+        "description": "POS taxpayer classification used for fiscal document setup; choose VAT or non-VAT only after review.",
+        "updated_at": "2026-10-26T06:47:02.000Z"
+      },
+      "pos_settings_access_pin_enabled": {
+        "value": true,
+        "data_type": "boolean",
+        "description": "Runtime indicator that a POS Settings access PIN is configured.",
+        "source": "tenant",
+        "updated_at": "2026-07-13T03:18:26.000Z"
+      },
+      "pos_taxpayer_type_resolved": {
+        "value": null,
+        "data_type": "string",
+        "description": "Runtime canonical POS taxpayer classification resolved from the persisted setting.",
+        "source": "runtime",
+        "updated_at": "2026-10-26T06:47:02.000Z"
+      },
+      "pos_fiscal_setup_readiness": {
+        "value": {
+          "status": "not_configured",
+          "taxpayer_type": null,
+          "reason_code": "POS_TAXPAYER_TYPE_NOT_CONFIGURED"
+        },
+        "data_type": "json",
+        "description": "Runtime readiness state for the POS taxpayer classification required by fiscal documents.",
+        "source": "runtime",
+        "updated_at": "2026-10-26T06:47:02.000Z"
+      },
+      "requested_customer_access_mode": {
+        "value": "transaction",
+        "data_type": "string",
+        "description": "Runtime Customer Access Mode requested by the tenant.",
+        "source": "runtime",
+        "updated_at": null
+      },
+      "effective_customer_access_mode": {
+        "value": "transaction",
+        "data_type": "string",
+        "description": "Runtime Customer Access Mode enforced by public Storefront APIs.",
+        "source": "runtime",
+        "updated_at": null
+      },
+      "max_customer_access_mode": {
+        "value": "transaction",
+        "data_type": "string",
+        "description": "Most permissive Customer Access Mode currently allowed after platform and readiness caps.",
+        "source": "runtime",
+        "updated_at": null
+      },
+      "registration_stage_max_customer_access_mode": {
+        "value": "transaction",
+        "data_type": "string",
+        "description": "Customer Access Mode ceiling derived from registration readiness.",
+        "source": "runtime",
+        "updated_at": null
+      },
+      "customer_access_limitation_reason": {
+        "value": null,
+        "data_type": "string",
+        "description": "Reason the requested Customer Access Mode is capped, when applicable.",
+        "source": "runtime",
+        "updated_at": null
+      },
+      "customer_access_registration_stage": {
+        "value": "registered",
+        "data_type": "string",
+        "description": "Registration readiness stage used for Customer Access Mode enforcement.",
+        "source": "runtime",
+        "updated_at": null
+      },
+      "customer_access_capabilities": {
+        "value": {
+          "profile": true,
+          "contact": true,
+          "catalog": true,
+          "inventory": true,
+          "inquiry": false,
+          "cart": true,
+          "quote": true,
+          "checkout": true,
+          "booking": true,
+          "payment": true
+        },
+        "data_type": "json",
+        "description": "Public Storefront capabilities available under the effective Customer Access Mode.",
+        "source": "runtime",
+        "updated_at": null
+      },
+      "customer_access_modes_enabled": {
+        "value": true,
+        "data_type": "boolean",
+        "description": "Runtime Customer Access Mode enforcement state. This is derived from environment rollback controls and is not persisted as a tenant setting.",
+        "source": "runtime",
+        "updated_at": null
+      }
+    },
+    "message": "Settings retrieved successfully"
+  }
+}

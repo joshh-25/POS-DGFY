@@ -52,7 +52,7 @@ export default function CanonicalBusinessNameEditor({
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EEF5FF] text-[#1A4E8D]">
                         <Building2 className="h-5 w-5" aria-hidden="true" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                         <h2 className="text-[16px] font-extrabold text-[#0F172A]">Canonical business name</h2>
                         <p className="mt-1 max-w-2xl text-[12px] leading-5 text-[#64748B]">
                             This is the actual business identity used by OPIS, POS, account/business selection, Storefront discovery, and reports.
@@ -67,7 +67,7 @@ export default function CanonicalBusinessNameEditor({
                 ) : null}
             </div>
 
-            <form className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={handleSubmit}>
+            <form className="mt-4 flex flex-col gap-3 md:flex-row md:items-end" onSubmit={handleSubmit}>
                 <div className="min-w-0 flex-1">
                     <label htmlFor="canonical-business-name" className="mb-1.5 block text-[12px] font-bold text-slate-700">
                         Business name
@@ -88,7 +88,7 @@ export default function CanonicalBusinessNameEditor({
                 <button
                     type="submit"
                     disabled={!canEdit || saving || !String(name || '').trim()}
-                    className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#1A4E8D] px-4 text-[12px] font-extrabold text-white shadow-sm transition hover:bg-[#143F73] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex h-10 w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-[#1A4E8D] px-4 text-[12px] font-extrabold text-white shadow-sm transition hover:bg-[#143F73] disabled:cursor-not-allowed disabled:opacity-50 md:w-auto md:shrink-0"
                 >
                     <Save className="h-4 w-4" aria-hidden="true" />
                     {saving ? 'Saving…' : 'Save business name'}

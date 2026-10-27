@@ -5,6 +5,7 @@ import {
 } from '../../shared/utils/customerAccessPolicy.js';
 import { mapSettingsUseCaseError } from './settingsUseCaseError.js';
 import { sanitizeSettingsPayloadForRead } from './posTerminalRegistrySecrets.js';
+import { buildPosTaxpayerTypeReadProjection } from './posTaxpayerTypePolicy.js';
 
 const STOREFRONT_ASSET_SETTING_PAIRS = Object.freeze([
     { urlKey: 'storefront_cover_image_url', pathKey: 'storefront_cover_image_path' },
@@ -48,8 +49,12 @@ export const buildGetAllSettingsUseCase = ({
             const accessPolicy = resolveAccessPolicyFromSettings(settings, {
                 featureEnabled: customerAccessModesEnabled
             });
+            const taxpayerTypeProjection = buildPosTaxpayerTypeReadProjection(
+                settings.pos_taxpayer_type
+            );
             return ok({
                 ...settings,
+                ...taxpayerTypeProjection,
                 requested_customer_access_mode: {
                     value: accessPolicy.requested_customer_access_mode,
                     data_type: 'string',

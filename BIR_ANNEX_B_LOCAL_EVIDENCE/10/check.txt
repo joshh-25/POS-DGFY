@@ -1,0 +1,5 @@
+status=PASS
+environment=LOCAL_ONLY
+evidence_label=LOCAL TEST - NOT FOR SUBMISSION
+version_text=POS v1.46.0
+reason=Local POS login and home screenshots captured with a visible build version.

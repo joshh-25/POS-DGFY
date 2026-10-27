@@ -1819,9 +1819,16 @@ export const verifyFiscalEventLedger = async (req, res, next) => {
 
 export const getCurrentTerminalShift = async (req, res, next) => {
     try {
+        const query = req.validatedQuery || req.query || {};
+        const requestedShiftId = Number.parseInt(query.shift_id, 10);
         const result = await getCurrentTerminalShiftUseCase({
-            query: req.validatedQuery || req.query,
-            user: await posReadUser(req)
+            query,
+            // Branch Resume validates the exact directory row selected by the
+            // authenticated account. Do not let a stale operator-authority
+            // cookie swap that read to the previous register owner.
+            user: Number.isInteger(requestedShiftId) && requestedShiftId > 0
+                ? req.user
+                : await posReadUser(req)
         });
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,

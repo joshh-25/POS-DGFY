@@ -7,8 +7,10 @@ import {
     COMPLIANCE_VERIFICATION_STATUS
 } from './complianceConstants.js';
 import { getActivePolicyPack } from './policyPacks.js';
+import { isRecognizedPosTaxpayerType } from '@sieitzz/shared-constants/posTaxpayerType';
 
 const FISCAL_ONLY_SETTING_KEYS = new Set([
+    'pos_taxpayer_type',
     'pos_tin_branch',
     'pos_ptu_number',
     'pos_min_number',
@@ -254,6 +256,7 @@ const DEVICE_CLASS_LABELS = Object.freeze({
 
 const SETTING_LABELS = Object.freeze({
     pos_business_name: 'Business name',
+    pos_taxpayer_type: 'Taxpayer type',
     pos_tin_branch: 'TIN branch',
     pos_address: 'Business address',
     pos_ptu_number: 'PTU number',
@@ -402,6 +405,9 @@ export const evaluateComplianceChecklist = ({
 
     const missingSettingKeys = (effectivePolicy?.controls?.bir?.required_settings_keys || []).filter((key) => {
         const raw = settings?.[key]?.value;
+        if (key === 'pos_taxpayer_type') {
+            return !isRecognizedPosTaxpayerType(raw);
+        }
         return raw == null || String(raw).trim().length === 0;
     });
 

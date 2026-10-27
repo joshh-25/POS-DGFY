@@ -6,6 +6,7 @@ const POLICY_PACKS = [
             bir: {
                 required_settings_keys: [
                     'pos_business_name',
+                    'pos_taxpayer_type',
                     'pos_tin_branch',
                     'pos_address',
                     'pos_ptu_number',

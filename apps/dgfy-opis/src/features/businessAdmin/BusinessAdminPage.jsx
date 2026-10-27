@@ -63,6 +63,8 @@ import {
     shouldBlockSettingsNavigation
 } from './businessAdminSettingsModel.js';
 import SettingsWorkspace from '../../../../../packages/web-core/src/features/pos/settings/PosSettingsWorkspace.jsx';
+import ComplianceProgramPanel from '../../../../../packages/web-core/src/features/compliance/components/ComplianceProgramPanel.jsx';
+import FiscalOperationsPanel from '../../../../../packages/web-core/src/features/compliance/components/FiscalOperationsPanel.jsx';
 import { resolveAppAssetUrl } from '../../../../../packages/web-core/src/utils/assetUrl.js';
 import {
     installCrossAppSettingsRefresh,
@@ -120,6 +122,11 @@ import {
     getDefaultDateRangePreset,
     isHistoricalBusinessAdminSection
 } from './businessAdminDateRange.js';
+import {
+    buildBusinessAdminDetailScopeKey,
+    buildBusinessAdminSectionScopeKey,
+    isBusinessAdminSectionResultCurrent
+} from './businessAdminSectionScope.js';
 import './businessAdmin.css';
 
 const MIGRATED_BACKOFFICE_MODULE_KEYS = new Set(Object.keys(MERCHANT_BACKOFFICE_MODULE_META));
@@ -410,6 +417,64 @@ const buildTenantRevenueQuery = (params = {}) => ({
     ...(params.date_from ? { period_start: `${params.date_from}T00:00:00.000Z` } : {}),
     ...(params.date_to ? { period_end: `${params.date_to}T23:59:59.999Z` } : {})
 });
+
+const buildSectionRequestInputs = ({
+    activeSection,
+    params,
+    branchId,
+    ordersPage,
+    expensesPage,
+    cashSummaryPage,
+    inventoryPage
+}) => {
+    switch (activeSection) {
+        case 'overview':
+        case 'locations':
+            return { query: params };
+        case 'orders':
+            return { query: params, page: ordersPage, limit: BUSINESS_ADMIN_ORDERS_PAGE_SIZE };
+        case 'expenses':
+            return { query: params, page: expensesPage, limit: BUSINESS_ADMIN_ORDERS_PAGE_SIZE };
+        case 'customers':
+            return { query: params, page: 1, limit: 50 };
+        case 'team':
+            return { query: params };
+        case 'attendance':
+            return { query: params, page: 1, limit: 100 };
+        case 'shifts':
+            return {
+                history: { query: params, status: undefined, page: 1, limit: BUSINESS_ADMIN_CASH_SUMMARY_PAGE_SIZE },
+                cashSummary: { query: params, status: 'closed', page: cashSummaryPage, limit: BUSINESS_ADMIN_CASH_SUMMARY_PAGE_SIZE }
+            };
+        case 'inventory':
+            return {
+                valuation: branchId ? { branch_id: branchId } : {},
+                lowStock: { query: params, page: inventoryPage, limit: BUSINESS_ADMIN_INVENTORY_PAGE_SIZE }
+            };
+        case 'recipes':
+            return { query: params, page: 1, limit: 50 };
+        case 'fiscal':
+            return { query: params };
+        case 'notifications':
+            return { branch_id: branchId || '', status: 'open', limit: 100 };
+        case 'audit':
+            return { query: params, limit: 100, page: 1 };
+        case 'approvals':
+            return { status: 'pending', limit: 100 };
+        case 'payments':
+            return {
+                monitoring: params,
+                tenantRevenue: buildTenantRevenueQuery(params),
+                transactionLimit: 100,
+                transactionOffset: 0
+            };
+        case 'company':
+        case 'settings':
+            return {};
+        default:
+            return {};
+    }
+};
 
 const historicalEmptyMessage = (message, dateFrom, dateTo) => (
     `${message} Date range: ${formatDateRangeLabel(dateFrom, dateTo)}. Choose a wider date range to view older records.`
@@ -2107,7 +2172,7 @@ function AuditWorkspace({ data, dateFrom, dateTo }) {
     return <SectionCard title="Audit log" subtitle="Immutable historical events with sensitive values redacted at the API boundary"><DataTable rows={rows} rowKey={(row, index) => row.audit_log_id || `${row.timestamp}-${row.entity_type}-${row.entity_id}-${index}`} emptyMessage={historicalEmptyMessage('No audit history is available for this scope.', dateFrom, dateTo)} columns={[{ key: 'timestamp', label: 'When', render: (row) => dateTime(row.timestamp) }, { key: 'action', label: 'Action' }, { key: 'entity_type', label: 'Entity' }, { key: 'entity_id', label: 'ID' }, { key: 'actor_name', label: 'Actor' }, { key: 'outcome', label: 'Outcome', render: (row) => <StatusPill value={row.outcome} /> }]} /></SectionCard>;
 }
 
-function FiscalWorkspace({ data }) {
+function FiscalWorkspace({ data, bootstrap, branches }) {
     const fiscalEvidenceRows = [...(data?.z_readings || []), ...(data?.esales_reports || [])];
     const fiscalEvidenceColumns = [
         { key: 'record_type', label: 'Record', render: (row) => row.reading_identifier ? 'Z reading' : 'eSales' },
@@ -2123,7 +2188,16 @@ function FiscalWorkspace({ data }) {
     ];
 
     return <>
-        <div className="business-admin-alert info"><Database size={17} /><div><strong>Immutable fiscal read model.</strong><div>Z-readings and eSales evidence are shown from POS records. BIR accreditation, CAS/POS registration, and legal filing remain external owner gates.</div></div></div>
+        <div className="business-admin-alert info"><Database size={17} /><div><strong>Fiscal &amp; BIR control center.</strong><div>Manage the local compliance program and fiscal evidence controls here. BIR accreditation, tax/legal sign-off, and filing remain external owner gates.</div></div></div>
+        <ComplianceProgramPanel
+            isMasterAdmin={bootstrap?.user?.is_master_admin === true}
+            navigationRootPath="/fiscal"
+        />
+        <FiscalOperationsPanel
+            terminalUser={bootstrap?.user}
+            accessCapabilities={bootstrap?.access?.capabilities || {}}
+            locations={branches}
+        />
         <div className="business-admin-grid">
             <SectionCard title="X readings" subtitle="Current, non-persisted read summaries">
                 <DataTable rows={data?.current_x_readings || []} columns={[{ key: 'business_date', label: 'Business date' }, { key: 'location_name', label: 'Branch' }, { key: 'terminal_id', label: 'Register' }, { key: 'reading_identifier', label: 'Reading' }, { key: 'source', label: 'Source' }]} emptyMessage="No X-reading summary is available." />
@@ -2512,7 +2586,10 @@ function BusinessAdminSettingsWorkspace({
     onReload = async () => {},
     onSettingsSaved = () => {},
     onOpenActivity = () => {},
-    settingsRefreshKey = 0
+    settingsRefreshKey = 0,
+    administrativeTools = [],
+    pendingApprovalsCount = null,
+    onOpenAdministrativeTool = () => {}
 }) {
     const access = bootstrap?.access || {};
     const branches = Array.isArray(bootstrap?.business?.branches) ? bootstrap.business.branches : [];
@@ -2648,6 +2725,36 @@ function BusinessAdminSettingsWorkspace({
                         </div>
                     </section>
                 </div>
+                {administrativeTools.length > 0 ? (
+                    <section className="business-admin-card business-admin-settings-admin-tools" data-testid="business-admin-administrative-tools">
+                        <div className="business-admin-card-header">
+                            <div>
+                                <div className="business-admin-card-title">Administrative tools</div>
+                                <div className="business-admin-card-subtitle">Review protected approvals, fiscal evidence, and audit history.</div>
+                            </div>
+                        </div>
+                        <div className="business-admin-card-body grid gap-3 md:grid-cols-3">
+                            {administrativeTools.map((tool) => {
+                                const Icon = tool.icon || Settings;
+                                const showPendingBadge = tool.key === 'approvals'
+                                    && Number.isInteger(pendingApprovalsCount)
+                                    && pendingApprovalsCount > 0;
+                                return (
+                                    <button
+                                        type="button"
+                                        key={tool.key}
+                                        className="business-admin-button justify-between text-left"
+                                        onClick={() => onOpenAdministrativeTool(tool.key)}
+                                        data-testid={`business-admin-admin-tool-${tool.key}`}
+                                    >
+                                        <span className="flex items-center gap-2"><Icon size={16} /> {tool.label}</span>
+                                        {showPendingBadge ? <span className="business-admin-nav-item-badge rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] text-amber-800">{pendingApprovalsCount}</span> : null}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </section>
+                ) : null}
                 <section className="business-admin-card" data-testid="business-admin-settings-section">
                     {!definition || !isVisible ? (
                         <div className="business-admin-card-body">
@@ -3099,8 +3206,7 @@ export default function BusinessAdminPage() {
     const [bootstrapError, setBootstrapError] = useState('');
     const [bootstrapAuthRequired, setBootstrapAuthRequired] = useState(false);
     const [bootstrapAccessDenied, setBootstrapAccessDenied] = useState(false);
-    const [sectionData, setSectionData] = useState(null);
-    const [loadedSection, setLoadedSection] = useState('');
+    const [loadedResult, setLoadedResult] = useState(null);
     const [sectionLoading, setSectionLoading] = useState(false);
     const [sectionError, setSectionError] = useState('');
     const [sectionAccessDenied, setSectionAccessDenied] = useState(false);
@@ -3112,6 +3218,11 @@ export default function BusinessAdminPage() {
     const branchId = useMemo(() => (
         String(new URLSearchParams(location.search).get('branch_id') || '').trim()
     ), [location.search]);
+    const requestedOrderId = useMemo(() => {
+        if (activeSection !== 'orders') return '';
+        const value = String(new URLSearchParams(location.search).get('transaction_id') || '').trim();
+        return /^\d+$/.test(value) && Number(value) > 0 ? value : '';
+    }, [activeSection, location.search]);
     const [searchInput, setSearchInput] = useState('');
     const [search, setSearch] = useState('');
     const [receiptType, setReceiptType] = useState('');
@@ -3119,8 +3230,8 @@ export default function BusinessAdminPage() {
     const [expensesPage, setExpensesPage] = useState(1);
     const [cashSummaryPage, setCashSummaryPage] = useState(1);
     const [inventoryPage, setInventoryPage] = useState(1);
-    const [selectedOrder, setSelectedOrder] = useState(null);
-    const [selectedCustomer, setSelectedCustomer] = useState(null);
+    const [selectedOrderResult, setSelectedOrderResult] = useState(null);
+    const [selectedCustomerResult, setSelectedCustomerResult] = useState(null);
     const [actionLoading, setActionLoading] = useState(null);
     const [actionError, setActionError] = useState('');
     const [voidHistoryOpen, setVoidHistoryOpen] = useState(false);
@@ -3137,8 +3248,11 @@ export default function BusinessAdminPage() {
     const [settingsDirty, setSettingsDirty] = useState(false);
     const requestRef = useRef(0);
     const sectionAbortRef = useRef(null);
+    const orderDetailRequestRef = useRef(0);
+    const customerDetailRequestRef = useRef(0);
     const bootstrapRef = useRef(null);
     const previousSectionRef = useRef(activeSection);
+    const previousSectionScopeRef = useRef('');
 
     useEffect(() => {
         bootstrapRef.current = bootstrap;
@@ -3326,7 +3440,8 @@ export default function BusinessAdminPage() {
     }, [activeSection, bootstrap, catalogOnlyAccess, navigateBusinessAdmin, rootPath]);
 
     const handleOrderDetailClose = useCallback(() => {
-        setSelectedOrder(null);
+        orderDetailRequestRef.current += 1;
+        setSelectedOrderResult(null);
         const searchParams = new URLSearchParams(location.search);
         if (!searchParams.has('transaction_id')) return;
         searchParams.delete('transaction_id');
@@ -3433,6 +3548,11 @@ export default function BusinessAdminPage() {
         if (typeof window === 'undefined') return undefined;
         const handleSessionInvalidation = () => {
             bootstrapRequestRef.current += 1;
+            requestRef.current += 1;
+            sectionAbortRef.current?.abort();
+            sectionAbortRef.current = null;
+            orderDetailRequestRef.current += 1;
+            customerDetailRequestRef.current += 1;
             bootstrapRef.current = null;
             setBootstrap(null);
             setBootstrapLoading(false);
@@ -3440,13 +3560,20 @@ export default function BusinessAdminPage() {
             setBootstrapAuthRequired(true);
             setBootstrapAccessDenied(false);
             setBootstrapError(BUSINESS_ADMIN_SESSION_REQUIRED_MESSAGE);
-            setSectionData(null);
-            setLoadedSection('');
+            setLoadedResult(null);
             setSectionError('');
+            setSectionAccessDenied(false);
+            setSelectedOrderResult(null);
+            setSelectedCustomerResult(null);
             setSettingsDirty(false);
         };
         const handleTenantSwitch = () => {
             bootstrapRequestRef.current += 1;
+            requestRef.current += 1;
+            sectionAbortRef.current?.abort();
+            sectionAbortRef.current = null;
+            orderDetailRequestRef.current += 1;
+            customerDetailRequestRef.current += 1;
             bootstrapRef.current = null;
             setBootstrap(null);
             setBootstrapLoading(false);
@@ -3454,9 +3581,11 @@ export default function BusinessAdminPage() {
             setBootstrapAuthRequired(true);
             setBootstrapAccessDenied(false);
             setBootstrapError(BUSINESS_ADMIN_COMPANY_SWITCHED_MESSAGE);
-            setSectionData(null);
-            setLoadedSection('');
+            setLoadedResult(null);
             setSectionError('');
+            setSectionAccessDenied(false);
+            setSelectedOrderResult(null);
+            setSelectedCustomerResult(null);
             setSettingsDirty(false);
         };
         window.addEventListener('auth:session-expired', handleSessionInvalidation);
@@ -3484,12 +3613,20 @@ export default function BusinessAdminPage() {
     }, [loadBootstrap, settingsDirty]);
 
     const handleSettingsSaved = useCallback(({ section = '', branchId = '' } = {}) => {
+        requestRef.current += 1;
+        sectionAbortRef.current?.abort();
+        sectionAbortRef.current = null;
+        setLoadedResult(null);
+        setSelectedOrderResult(null);
+        setSelectedCustomerResult(null);
         publishBusinessAdminSettingsUpdated({
             tenantId: bootstrap?.business?.tenant_id || bootstrap?.user?.company?.id,
             branchId,
             section
         });
-    }, [bootstrap?.business?.tenant_id, bootstrap?.user?.company?.id]);
+        setReloadNonce((value) => value + 1);
+        void loadBootstrap();
+    }, [bootstrap?.business?.tenant_id, bootstrap?.user?.company?.id, loadBootstrap]);
 
     const handleDateRangePresetChange = useCallback((event) => {
         const nextPreset = event.target.value;
@@ -3540,33 +3677,115 @@ export default function BusinessAdminPage() {
         receiptType: activeSection === 'orders' ? receiptType : ''
     }), [activeDateRange.dateFrom, activeDateRange.dateTo, activeSection, branchId, receiptType, requestedItemId, search]);
 
+    const sectionRequestInputs = useMemo(() => buildSectionRequestInputs({
+        activeSection,
+        params,
+        branchId,
+        ordersPage,
+        expensesPage,
+        cashSummaryPage,
+        inventoryPage
+    }), [activeSection, branchId, cashSummaryPage, expensesPage, inventoryPage, ordersPage, params]);
+    const currentSectionScopeKey = useMemo(() => buildBusinessAdminSectionScopeKey({
+        bootstrap,
+        activeSection,
+        requestInputs: sectionRequestInputs
+    }), [activeSection, bootstrap, sectionRequestInputs]);
+    const orderDetailScopeKey = useMemo(() => buildBusinessAdminDetailScopeKey({
+        sectionScopeKey: currentSectionScopeKey,
+        recordType: 'order',
+        recordId: requestedOrderId
+    }), [currentSectionScopeKey, requestedOrderId]);
+
     const loadSection = useCallback(async () => {
         if (!bootstrap) return;
         sectionAbortRef.current?.abort();
         const requestId = requestRef.current + 1;
         requestRef.current = requestId;
+        const requestedScopeKey = currentSectionScopeKey;
         const controller = typeof AbortController === 'function' ? new AbortController() : null;
         sectionAbortRef.current = controller;
         const requestConfig = controller ? { signal: controller.signal } : {};
         if (catalogOnlyAccess && activeSection !== 'catalog') {
-            setSectionData(null);
-            setLoadedSection(activeSection);
+            setLoadedResult({ scopeKey: requestedScopeKey, section: activeSection, data: null, loadedAt: Date.now() });
             setSectionError('');
             setSectionLoading(false);
             return;
         }
         if (MIGRATED_BACKOFFICE_MODULE_KEYS.has(activeSection)) {
-            setSectionData(null);
-            setLoadedSection(activeSection);
+            setLoadedResult({ scopeKey: requestedScopeKey, section: activeSection, data: null, loadedAt: Date.now() });
             setSectionError('');
             setSectionLoading(false);
             return;
         }
         if (activeSection === 'settings') {
-            setSectionData(null);
-            setLoadedSection(activeSection);
+            setSectionLoading(true);
             setSectionError('');
-            setSectionLoading(false);
+            setSectionAccessDenied(false);
+            setActionError('');
+            const canReadPendingApprovals = isBusinessAdminDestinationAccessible(
+                BACKOFFICE_SECTION_META.approvals,
+                {
+                    catalogOnlyAccess,
+                    usersRolesVisible: canViewUsers,
+                    capabilities: bootstrap.access?.capabilities || {},
+                    settingsCapabilities
+                }
+            );
+            try {
+                let pendingApprovalsCount = null;
+                if (canReadPendingApprovals) {
+                    try {
+                        const approvalPayload = await businessAdminApi.approvals(
+                            { status: 'pending', limit: 100 },
+                            requestConfig
+                        );
+                        pendingApprovalsCount = Array.isArray(approvalPayload?.approvals)
+                            ? approvalPayload.approvals.length
+                            : null;
+                    } catch (error) {
+                        const status = Number(error?.response?.status || 0);
+                        if (status === 401 || status === 419) throw error;
+                        if (status !== 403) setSectionError('Pending approvals count is temporarily unavailable.');
+                    }
+                }
+                if (requestRef.current === requestId && !controller?.signal.aborted) {
+                    setLoadedResult({
+                        scopeKey: requestedScopeKey,
+                        section: activeSection,
+                        data: { pendingApprovalsCount },
+                        loadedAt: Date.now()
+                    });
+                }
+            } catch (error) {
+                if (controller?.signal.aborted || error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError') return;
+                const status = Number(error?.response?.status || 0);
+                if (status === 401 || status === 419) {
+                    setLoadedResult(null);
+                    setSelectedOrderResult(null);
+                    setSelectedCustomerResult(null);
+                    bootstrapRequestRef.current += 1;
+                    bootstrapRef.current = null;
+                    setBootstrap(null);
+                    setBootstrapAuthRequired(true);
+                    setBootstrapAccessDenied(false);
+                    setBootstrapError(BUSINESS_ADMIN_SESSION_REQUIRED_MESSAGE);
+                    setSectionError(BUSINESS_ADMIN_SESSION_REQUIRED_MESSAGE);
+                } else {
+                    setLoadedResult({
+                        scopeKey: requestedScopeKey,
+                        section: activeSection,
+                        data: { pendingApprovalsCount: null },
+                        loadedAt: Date.now()
+                    });
+                    setSectionError(getBusinessAdminErrorMessage(error));
+                }
+            } finally {
+                if (requestRef.current === requestId) {
+                    setSectionLoading(false);
+                    if (sectionAbortRef.current === controller) sectionAbortRef.current = null;
+                }
+            }
             return;
         }
         setSectionLoading(true);
@@ -3630,16 +3849,40 @@ export default function BusinessAdminPage() {
             else if (activeSection === 'company') payload = await businessAdminApi.company(requestConfig);
             else if (activeSection === 'pos-activity') payload = await businessAdminApi.posActivityAnalytics(params, requestConfig);
             else payload = { bootstrap };
-            if (requestRef.current === requestId) {
-                setSectionData(payload);
-                setLoadedSection(activeSection);
+            if (requestRef.current === requestId && !controller?.signal.aborted) {
+                setLoadedResult({
+                    scopeKey: requestedScopeKey,
+                    section: activeSection,
+                    data: payload,
+                    loadedAt: Date.now()
+                });
+                setSectionAccessDenied(false);
             }
         } catch (error) {
             if (controller?.signal.aborted || error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError') return;
             if (requestRef.current === requestId) {
-                setSectionAccessDenied(Number(error?.response?.status || 0) === 403);
-                setSectionError(getBusinessAdminErrorMessage(error));
-                setLoadedSection(activeSection);
+                const status = Number(error?.response?.status || 0);
+                const sessionRequired = status === 401 || status === 419;
+                const accessDenied = status === 403;
+                if (sessionRequired || accessDenied) {
+                    setLoadedResult(null);
+                    setSelectedOrderResult(null);
+                    setSelectedCustomerResult(null);
+                    orderDetailRequestRef.current += 1;
+                    customerDetailRequestRef.current += 1;
+                }
+                if (sessionRequired) {
+                    bootstrapRequestRef.current += 1;
+                    bootstrapRef.current = null;
+                    setBootstrap(null);
+                    setBootstrapAuthRequired(true);
+                    setBootstrapAccessDenied(false);
+                    setBootstrapError(BUSINESS_ADMIN_SESSION_REQUIRED_MESSAGE);
+                }
+                setSectionAccessDenied(accessDenied);
+                setSectionError(sessionRequired
+                    ? BUSINESS_ADMIN_SESSION_REQUIRED_MESSAGE
+                    : (accessDenied ? BUSINESS_ADMIN_ACCESS_DENIED_MESSAGE : getBusinessAdminErrorMessage(error)));
             }
         } finally {
             if (requestRef.current === requestId) {
@@ -3647,11 +3890,9 @@ export default function BusinessAdminPage() {
                 if (sectionAbortRef.current === controller) sectionAbortRef.current = null;
             }
         }
-    }, [activeSection, bootstrap, cashSummaryPage, catalogOnlyAccess, expensesPage, inventoryPage, ordersPage, params, branchId]);
+    }, [activeSection, bootstrap, canViewUsers, cashSummaryPage, catalogOnlyAccess, currentSectionScopeKey, expensesPage, inventoryPage, ordersPage, params, settingsCapabilities, branchId]);
 
     useEffect(() => {
-        setSelectedOrder(null);
-        setSelectedCustomer(null);
         loadSection();
         return () => {
             requestRef.current += 1;
@@ -3660,18 +3901,62 @@ export default function BusinessAdminPage() {
         };
     }, [loadSection, reloadNonce]);
 
+    useEffect(() => {
+        if (previousSectionScopeRef.current && previousSectionScopeRef.current !== currentSectionScopeKey) {
+            orderDetailRequestRef.current += 1;
+            customerDetailRequestRef.current += 1;
+            setSelectedOrderResult(null);
+            setSelectedCustomerResult(null);
+        }
+        previousSectionScopeRef.current = currentSectionScopeKey;
+    }, [currentSectionScopeKey]);
+
     const handleOrderSelect = useCallback(async (order) => {
         const id = extractId(order, ['transaction_id', 'pos_transaction_id']);
         if (!id) return;
+        const detailScopeKey = buildBusinessAdminDetailScopeKey({
+            sectionScopeKey: currentSectionScopeKey,
+            recordType: 'order',
+            recordId: id
+        });
+        const requestId = orderDetailRequestRef.current + 1;
+        orderDetailRequestRef.current = requestId;
+        const controller = typeof AbortController === 'function' ? new AbortController() : null;
         setActionError('');
-        try { setSelectedOrder(await businessAdminApi.orderDetail(id)); } catch (error) { setActionError(getBusinessAdminErrorMessage(error)); }
-    }, []);
+        try {
+            const detail = await businessAdminApi.orderDetail(id, controller ? { signal: controller.signal } : {});
+            if (orderDetailRequestRef.current === requestId && !controller?.signal.aborted) {
+                setSelectedOrderResult({ scopeKey: detailScopeKey, recordId: String(id), data: detail });
+            }
+        } catch (error) {
+            if (!controller?.signal.aborted && orderDetailRequestRef.current === requestId) {
+                setActionError(getBusinessAdminErrorMessage(error));
+            }
+        }
+    }, [currentSectionScopeKey]);
 
     const handleCustomerSelect = useCallback(async (customer) => {
         if (!customer?.profile_ref) return;
+        const requestId = customerDetailRequestRef.current + 1;
+        customerDetailRequestRef.current = requestId;
+        const controller = typeof AbortController === 'function' ? new AbortController() : null;
+        const detailScopeKey = currentSectionScopeKey;
         setActionError('');
-        try { setSelectedCustomer(await businessAdminApi.customerDetail(customer.profile_ref, params)); } catch (error) { setActionError(getBusinessAdminErrorMessage(error)); }
-    }, [params]);
+        try {
+            const detail = await businessAdminApi.customerDetail(
+                customer.profile_ref,
+                params,
+                controller ? { signal: controller.signal } : {}
+            );
+            if (customerDetailRequestRef.current === requestId && !controller?.signal.aborted) {
+                setSelectedCustomerResult({ scopeKey: detailScopeKey, data: detail });
+            }
+        } catch (error) {
+            if (!controller?.signal.aborted && customerDetailRequestRef.current === requestId) {
+                setActionError(getBusinessAdminErrorMessage(error));
+            }
+        }
+    }, [currentSectionScopeKey, params]);
 
     const handleCashSummaryExport = useCallback(async () => {
         if (cashSummaryExporting) return;
@@ -3704,28 +3989,33 @@ export default function BusinessAdminPage() {
         }
     }, [cashSummaryExporting, params]);
 
-    const requestedOrderId = useMemo(() => {
-        if (activeSection !== 'orders') return '';
-        const value = String(new URLSearchParams(location.search).get('transaction_id') || '').trim();
-        return /^\d+$/.test(value) && Number(value) > 0 ? value : '';
-    }, [activeSection, location.search]);
-
     useEffect(() => {
         if (activeSection !== 'orders' || !requestedOrderId) return undefined;
-        if (Number(selectedOrder?.transaction_id) === Number(requestedOrderId)) return undefined;
+        if (
+            selectedOrderResult?.scopeKey === orderDetailScopeKey
+            && String(selectedOrderResult?.recordId || '') === String(requestedOrderId)
+        ) return undefined;
         let cancelled = false;
+        const requestId = orderDetailRequestRef.current + 1;
+        orderDetailRequestRef.current = requestId;
+        const controller = typeof AbortController === 'function' ? new AbortController() : null;
         setActionError('');
-        businessAdminApi.orderDetail(requestedOrderId)
+        businessAdminApi.orderDetail(requestedOrderId, controller ? { signal: controller.signal } : {})
             .then((order) => {
-                if (!cancelled) setSelectedOrder(order);
+                if (!cancelled && orderDetailRequestRef.current === requestId && !controller?.signal.aborted) {
+                    setSelectedOrderResult({ scopeKey: orderDetailScopeKey, recordId: String(requestedOrderId), data: order });
+                }
             })
             .catch((error) => {
-                if (!cancelled) setActionError(getBusinessAdminErrorMessage(error));
+                if (!cancelled && !controller?.signal.aborted && orderDetailRequestRef.current === requestId) {
+                    setActionError(getBusinessAdminErrorMessage(error));
+                }
             });
         return () => {
             cancelled = true;
+            controller?.abort();
         };
-    }, [activeSection, requestedOrderId, selectedOrder?.transaction_id]);
+    }, [activeSection, orderDetailScopeKey, requestedOrderId, selectedOrderResult?.recordId, selectedOrderResult?.scopeKey]);
 
     const handleNotificationAction = useCallback(async (action, id) => {
         if (!id) return;
@@ -3885,7 +4175,42 @@ export default function BusinessAdminPage() {
     const activeWorkspaceTabKey = usersRolesShortcut
         ? 'users-roles'
         : (activeSection === 'settings' && settingsSection === 'team' ? 'team' : activeSection);
+    const canDisplayLoadedResult = isBusinessAdminSectionResultCurrent({
+        result: loadedResult,
+        activeSection,
+        currentScopeKey: currentSectionScopeKey,
+        authorized: destinationAccessGranted
+    });
+    const sectionData = canDisplayLoadedResult ? loadedResult.data : null;
+    const loadedSection = canDisplayLoadedResult ? activeSection : '';
+    const selectedOrder = destinationAccessGranted && selectedOrderResult?.data
+        && selectedOrderResult.scopeKey === buildBusinessAdminDetailScopeKey({
+            sectionScopeKey: currentSectionScopeKey,
+            recordType: 'order',
+            recordId: selectedOrderResult.recordId
+        })
+        ? selectedOrderResult.data
+        : null;
+    const selectedCustomer = destinationAccessGranted
+        && selectedCustomerResult?.scopeKey === currentSectionScopeKey
+        ? selectedCustomerResult.data
+        : null;
     const overviewData = sectionData?.overview || (activeSection === 'overview' ? sectionData : null);
+    const administrativeTools = (
+        ['approvals', 'fiscal', 'audit']
+            .map((key) => BACKOFFICE_SECTION_META[key])
+            .filter((definition) => definition && isBusinessAdminDestinationAccessible(definition, {
+                catalogOnlyAccess,
+                usersRolesVisible: canViewUsers,
+                capabilities: bootstrap.access?.capabilities || {},
+                settingsCapabilities
+            }))
+    );
+    const pendingApprovalsCount = activeSection === 'settings'
+        ? (Number.isInteger(sectionData?.pendingApprovalsCount) ? sectionData.pendingApprovalsCount : null)
+        : (Number.isInteger(Number(overviewData?.summary?.pending_approvals))
+            ? Number(overviewData.summary.pending_approvals)
+            : null);
     const workflowPageName = getBusinessAdminWorkflowPageName(activeSection);
     const workflowVisibilityReady = workflowModeResolved && !workflowModeLoading;
     const workflowSectionVisible = isBusinessAdminWorkflowSectionVisible(
@@ -3942,6 +4267,12 @@ export default function BusinessAdminPage() {
     const handleWorkspaceTabNavigate = (tab) => {
         navigateBusinessAdmin(preserveBusinessAdminNavigationContext(buildBusinessAdminSidebarItemPath(rootPath, tab)));
     };
+    const handleAdministrativeToolNavigate = (moduleKey) => {
+        if (!administrativeTools.some((tool) => tool.key === moduleKey)) return;
+        navigateBusinessAdmin(
+            preserveBusinessAdminNavigationContext(buildBackOfficeModulePath(rootPath, moduleKey))
+        );
+    };
     const unreadNotificationCount = Number(overviewData?.summary?.unread_notifications || 0);
     const notificationWorkspaceHasData = activeSection === 'notifications'
         && Array.isArray(sectionData?.notifications);
@@ -3969,6 +4300,9 @@ export default function BusinessAdminPage() {
             && Boolean(sectionData?.overview)
             && loadedSection === activeSection;
         const canKeepSectionWorkspace = Boolean(sectionData) && loadedSection === activeSection;
+        if (sectionError && !canKeepSectionWorkspace && !sectionLoading) {
+            return <div className="business-admin-alert error" data-testid={sectionAccessDenied ? 'business-admin-section-access-denied' : 'business-admin-section-error'}><AlertTriangle size={17} /><div><strong>{sectionAccessDenied ? 'Back Office access denied.' : 'Back Office data unavailable.'}</strong><div>{sectionError}</div></div></div>;
+        }
         if (workflowPageName && workflowModeLoading) return <WorkspaceLoading label={`Loading ${meta.title}…`} />;
         if (workflowPageName && !workflowModeResolved) {
             return <Navigate to={buildBackOfficeOverviewPath(rootPath)} replace />;
@@ -4015,7 +4349,6 @@ export default function BusinessAdminPage() {
                 />
             );
         }
-        if (sectionError && !canKeepSectionWorkspace) return <div className="business-admin-alert error" data-testid={sectionAccessDenied ? 'business-admin-section-access-denied' : 'business-admin-section-error'}><AlertTriangle size={17} /><div><strong>{sectionAccessDenied ? 'Back Office access denied.' : 'Back Office data unavailable.'}</strong><div>{sectionError}</div></div></div>;
         if (usersRolesShortcut) {
             return (
                 <BusinessAdminUsersRolesWorkspace
@@ -4043,6 +4376,9 @@ export default function BusinessAdminPage() {
                     onReload={loadBootstrap}
                     onSettingsSaved={handleSettingsSaved}
                     onOpenActivity={() => navigateBusinessAdmin(buildBackOfficeModulePath(rootPath, 'audit'))}
+                    administrativeTools={administrativeTools}
+                    pendingApprovalsCount={pendingApprovalsCount}
+                    onOpenAdministrativeTool={handleAdministrativeToolNavigate}
                 />
             );
         }
@@ -4067,13 +4403,13 @@ export default function BusinessAdminPage() {
         }
         if (activeSection === 'orders') return <OrdersWorkspace data={sectionData} selected={selectedOrder} onSelect={handleOrderSelect} onClose={handleOrderDetailClose} dateFrom={activeDateRange.dateFrom} dateTo={activeDateRange.dateTo} page={ordersPage} onPageChange={setOrdersPage} />;
         if (activeSection === 'expenses') return <ExpensesWorkspace data={sectionData} branches={branches} capabilities={bootstrap.access?.capabilities || {}} accessScope={bootstrap.access?.scope} onCreate={handleExpenseCreate} onVoid={handleExpenseVoid} actionLoading={actionLoading} onPageChange={setExpensesPage} />;
-        if (activeSection === 'customers') return <CustomersWorkspace data={sectionData} selected={selectedCustomer} onSelect={handleCustomerSelect} onClose={() => setSelectedCustomer(null)} onOrderSelect={handleOrderSelect} selectedOrder={selectedOrder} onOrderClose={handleOrderDetailClose} onCreate={handleCustomerCreate} creating={actionLoading === 'customer-create'} />;
+        if (activeSection === 'customers') return <CustomersWorkspace data={sectionData} selected={selectedCustomer} onSelect={handleCustomerSelect} onClose={() => { customerDetailRequestRef.current += 1; setSelectedCustomerResult(null); }} onOrderSelect={handleOrderSelect} selectedOrder={selectedOrder} onOrderClose={handleOrderDetailClose} onCreate={handleCustomerCreate} creating={actionLoading === 'customer-create'} />;
         if (activeSection === 'team') return <WorkforceWorkspace data={sectionData} bootstrap={bootstrap} teamCapability={settingsCapabilities.team} onManageTeam={() => navigateBusinessAdmin(buildBackOfficeModulePath(rootPath, 'users-roles'))} />;
         if (activeSection === 'attendance') return <AttendanceWorkspace data={sectionData} branches={branches} capabilities={bootstrap.access?.capabilities || {}} onEndShift={handleEndAttendanceShift} actionLoading={actionLoading} />;
         if (activeSection === 'shifts') return <ShiftsWorkspace data={sectionData} onCashSummaryPageChange={setCashSummaryPage} onExportCashSummary={handleCashSummaryExport} exportingCashSummary={cashSummaryExporting} />;
         if (activeSection === 'inventory') return <InventoryWorkspace data={sectionData} onPageChange={setInventoryPage} rootPath={rootPath} settingsDirty={settingsDirty} onLeaveSettings={() => setSettingsDirty(false)} />;
         if (activeSection === 'recipes') return <RecipesWorkspace data={sectionData} />;
-        if (activeSection === 'fiscal') return <FiscalWorkspace data={sectionData} />;
+        if (activeSection === 'fiscal') return <FiscalWorkspace data={sectionData} bootstrap={bootstrap} branches={branches} />;
         if (activeSection === 'notifications') return <NotificationsWorkspace data={sectionData} onAction={handleNotificationAction} actionLoading={actionLoading} />;
         if (activeSection === 'approvals') return <ApprovalsWorkspace data={sectionData} capabilities={bootstrap.access?.capabilities || {}} onDecision={handleApprovalDecision} actionLoading={actionLoading} voidHistoryOpen={voidHistoryOpen} voidHistoryRows={voidHistoryRows} voidHistoryLoading={voidHistoryLoading} voidHistoryError={voidHistoryError} onToggleVoidHistory={handleVoidHistoryToggle} onRefreshVoidHistory={loadVoidHistory} />;
         if (activeSection === 'audit') return <AuditWorkspace data={sectionData} dateFrom={activeDateRange.dateFrom} dateTo={activeDateRange.dateTo} />;
@@ -4133,7 +4469,12 @@ export default function BusinessAdminPage() {
                                     >
                                         <Icon size={16} />
                                         <span className="business-admin-nav-item-label">{item.label}</span>
-                                        {item.key === 'approvals' && overviewData?.summary?.pending_approvals ? <span className="business-admin-nav-item-badge ml-auto rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] text-amber-800">{overviewData.summary.pending_approvals}</span> : null}
+                                        {item.key === 'settings'
+                                            && administrativeTools.some((tool) => tool.key === 'approvals')
+                                            && Number.isInteger(pendingApprovalsCount)
+                                            && pendingApprovalsCount > 0
+                                            ? <span className="business-admin-nav-item-badge ml-auto rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] text-amber-800">{pendingApprovalsCount}</span>
+                                            : null}
                                     </button>
                                 );
                             })}

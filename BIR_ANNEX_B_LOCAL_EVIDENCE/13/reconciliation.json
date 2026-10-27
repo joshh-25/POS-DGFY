@@ -1,0 +1,16 @@
+{
+  "target_scope": {
+    "business_date": "2026-10-02",
+    "location_id": 3,
+    "terminal_id": "COUNTER-01"
+  },
+  "rows_examined": 100,
+  "relevant_rows": 100,
+  "required_fields": [
+    "timestamp",
+    "actor_name_or_user_id",
+    "action",
+    "changes"
+  ],
+  "fields_present": true
+}

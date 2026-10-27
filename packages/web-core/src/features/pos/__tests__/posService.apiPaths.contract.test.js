@@ -11,6 +11,9 @@ describe('POS service endpoint contract', () => {
   it('matches the registered fiscal and eSales backend routes', () => {
     expect(serviceSource).toContain("api.put('/pos/fiscal-terminal-registrations'");
     expect(serviceSource).toContain("api.post('/pos/esales-reports/generate'");
+    expect(serviceSource).toContain("/pos/esales-reports/${encodeURIComponent(id)}/status");
+    expect(serviceSource).toContain("unsupportedFiscalEndpointError('eSales report status update')");
+    expect(serviceSource).not.toContain("/pos/esales-reports/${reportId}`");
     expect(serviceSource).toContain("api.get('/pos/fiscal-ledger/integrity'");
     expect(serviceSource).not.toContain("api.post('/pos/esales-reports'");
     expect(serviceSource).not.toContain("api.get('/pos/fiscal-ledger-integrity'");

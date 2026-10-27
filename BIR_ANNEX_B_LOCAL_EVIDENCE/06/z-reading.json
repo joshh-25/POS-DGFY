@@ -1,0 +1,593 @@
+{
+  "request": {
+    "path": "/api/v1/pos/z-reading/2026-10-02?location_id=3&terminal_id=COUNTER-01",
+    "method": "GET"
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json; charset=utf-8",
+    "data": {
+      "business_date": "2026-10-02",
+      "location_id": 3,
+      "generated_at": "2026-10-02T08:23:35.000Z",
+      "summary": {
+        "transaction_count": 20,
+        "subtotal_amount": 1800,
+        "discount_amount": 0,
+        "service_fee_total": 0,
+        "restaurant_service_charge_total": 0,
+        "vatable_sales": 1607.142,
+        "vat_amount": 192.858,
+        "vat_exempt_sales": 0,
+        "zero_rated_sales": 0,
+        "total_amount": 1800,
+        "item_count": 20,
+        "discount_item_count": 0,
+        "total_cost": 0,
+        "void_transaction_count": 0,
+        "transaction_void_amount": 0,
+        "item_void_amount": 0,
+        "void_amount": 0,
+        "voided_item_count": 0,
+        "item_voided_item_count": 0,
+        "post_close_void_transaction_count": 0,
+        "post_close_void_amount": 0,
+        "post_close_voided_item_count": 0,
+        "refund_amount": 0,
+        "refunded_item_count": 0,
+        "provider_refunds_included": false,
+        "net_profit": 1800,
+        "daily_totals": [
+          {
+            "business_date": "2026-09-22",
+            "transaction_count": 1,
+            "total_amount": 120,
+            "discount_amount": 0,
+            "item_count": 1,
+            "discount_item_count": 0,
+            "total_cost": 0,
+            "void_transaction_count": 0,
+            "transaction_void_amount": 0,
+            "item_void_amount": 0,
+            "void_amount": 0,
+            "voided_item_count": 0,
+            "item_voided_item_count": 0,
+            "refund_amount": 0,
+            "refunded_item_count": 0,
+            "provider_refunds_included": false,
+            "net_profit": 120
+          },
+          {
+            "business_date": "2026-09-30",
+            "transaction_count": 31,
+            "total_amount": 2483.9999,
+            "discount_amount": 238.4998,
+            "item_count": 31,
+            "discount_item_count": 15,
+            "total_cost": 2077,
+            "void_transaction_count": 9,
+            "transaction_void_amount": 0,
+            "item_void_amount": 0,
+            "void_amount": 1367.2,
+            "voided_item_count": 10,
+            "item_voided_item_count": 0,
+            "refund_amount": 0,
+            "refunded_item_count": 0,
+            "provider_refunds_included": false,
+            "net_profit": 406.9999
+          },
+          {
+            "business_date": "2026-10-01",
+            "transaction_count": 0,
+            "total_amount": 0,
+            "discount_amount": 0,
+            "item_count": 0,
+            "discount_item_count": 0,
+            "total_cost": 0,
+            "void_transaction_count": 2,
+            "transaction_void_amount": 0,
+            "item_void_amount": 0,
+            "void_amount": 180,
+            "voided_item_count": 2,
+            "item_voided_item_count": 0,
+            "refund_amount": 0,
+            "refunded_item_count": 0,
+            "provider_refunds_included": false,
+            "net_profit": 0
+          },
+          {
+            "business_date": "2026-10-02",
+            "transaction_count": 20,
+            "total_amount": 1800,
+            "discount_amount": 0,
+            "item_count": 20,
+            "discount_item_count": 0,
+            "total_cost": 0,
+            "void_transaction_count": 0,
+            "transaction_void_amount": 0,
+            "item_void_amount": 0,
+            "void_amount": 0,
+            "voided_item_count": 0,
+            "item_voided_item_count": 0,
+            "refund_amount": 0,
+            "refunded_item_count": 0,
+            "provider_refunds_included": false,
+            "net_profit": 1800
+          }
+        ],
+        "popular_items": [
+          {
+            "item_id": 179,
+            "item_name": "Casino Ethyl Alcohol",
+            "sku_code": "PRD-CEA-001",
+            "quantity": 20,
+            "amount": 1800,
+            "cost": 0,
+            "net_profit": 1800
+          }
+        ],
+        "payment_breakdown": [
+          {
+            "payment_type": "cash",
+            "payment_label": "Cash",
+            "count": 20,
+            "amount": 1800
+          },
+          {
+            "payment_type": "gcash",
+            "payment_label": "GCash",
+            "count": 0,
+            "amount": 0
+          },
+          {
+            "payment_type": "maya",
+            "payment_label": "Maya",
+            "count": 0,
+            "amount": 0
+          },
+          {
+            "payment_type": "card",
+            "payment_label": "Card (Credit/Debit)",
+            "count": 0,
+            "amount": 0
+          },
+          {
+            "payment_type": "bank_transfer",
+            "payment_label": "Bank Transfer",
+            "count": 0,
+            "amount": 0
+          },
+          {
+            "payment_type": "employee_credit",
+            "payment_label": "Employee Credit",
+            "count": 0,
+            "amount": 0
+          },
+          {
+            "payment_type": "other",
+            "payment_label": "Other",
+            "count": 0,
+            "amount": 0
+          }
+        ],
+        "delivery_provider_breakdown": [
+          {
+            "provider_type": "foodpanda",
+            "provider_name": null,
+            "display_label": "Foodpanda",
+            "transaction_count": 5,
+            "amount": 450
+          },
+          {
+            "provider_type": "grab",
+            "provider_name": null,
+            "display_label": "Grab",
+            "transaction_count": 10,
+            "amount": 900
+          },
+          {
+            "provider_type": "other",
+            "provider_name": "Maxnim",
+            "display_label": "Maxnim (Other)",
+            "transaction_count": 5,
+            "amount": 450
+          }
+        ],
+        "order_method_breakdown": [
+          {
+            "order_method": "delivery",
+            "count": 20,
+            "amount": 1800
+          }
+        ],
+        "order_source_breakdown": []
+      },
+      "z_reading_reconciliation": {
+        "status": "variance",
+        "comparison_basis": "completed_recognized_transaction_total",
+        "business_date": "2026-10-02",
+        "location_id": 3,
+        "reading_identifier": "ZR-20261002-00000008",
+        "generated_at": "2026-10-02T08:23:35.000Z",
+        "evaluated_at": "2026-10-27T05:56:19.504Z",
+        "snapshot_persisted": true,
+        "report_recognized_sales": 1710,
+        "z_total_amount": 1800,
+        "variance": -90,
+        "report_net_sales": 1710,
+        "report_refunds_voids": 90,
+        "report_adjustment_amount": 0,
+        "report_adjustment_net_sales_impact": 0,
+        "report_cash_refunds_voids": 90,
+        "report_voided_refunded_transactions": 1,
+        "reconciliation_inputs": {
+          "transactions": "PosTransaction.completed",
+          "payments": "PosTransaction.payment_breakdown",
+          "adjustments": "PosTransactionAdjustment.succeeded_or_reviewable",
+          "reading_snapshot": "PosZReadingSnapshot.summary",
+          "closed_shift_gate": "POS close-day usecase"
+        },
+        "adjustment_reconciliation": {
+          "status": "included",
+          "adjustment_count": 0,
+          "succeeded_amount": 0,
+          "net_sales_impact": 0,
+          "mutates_prior_z_reading": false
+        },
+        "z_payment_breakdown": [
+          {
+            "payment_type": "cash",
+            "payment_label": "Cash",
+            "count": 20,
+            "amount": 1800
+          },
+          {
+            "payment_type": "gcash",
+            "payment_label": "GCash",
+            "count": 0,
+            "amount": 0
+          },
+          {
+            "payment_type": "maya",
+            "payment_label": "Maya",
+            "count": 0,
+            "amount": 0
+          },
+          {
+            "payment_type": "card",
+            "payment_label": "Card (Credit/Debit)",
+            "count": 0,
+            "amount": 0
+          },
+          {
+            "payment_type": "bank_transfer",
+            "payment_label": "Bank Transfer",
+            "count": 0,
+            "amount": 0
+          },
+          {
+            "payment_type": "employee_credit",
+            "payment_label": "Employee Credit",
+            "count": 0,
+            "amount": 0
+          },
+          {
+            "payment_type": "other",
+            "payment_label": "Other",
+            "count": 0,
+            "amount": 0
+          }
+        ],
+        "z_void_transaction_count": 0,
+        "z_void_amount": 0,
+        "message": "Report recognized sales differ from the immutable Z-reading total. Review the transaction scope and post-close events."
+      },
+      "snapshot_persisted": true,
+      "reading_identifier": "ZR-20261002-00000008",
+      "snapshot_reused": false,
+      "idempotent_replay": false,
+      "replay_outcome": "new_snapshot",
+      "closed_by_user_id": 1,
+      "closed_from_terminal_id": "COUNTER-01",
+      "day_close_pin_confirmed_at": "2026-10-02T08:23:35.000Z",
+      "reading_payload_hash": "90dbae28a683e171e5150e6e53a373590202b1dde26ea52b34f9226fe97ac6c1",
+      "reading_evidence": {
+        "contract_version": "pos-bir-annex-b-items-4-6-v1",
+        "evidence_type": "pos_reading",
+        "reading_type": "Z",
+        "source_timezone": "Asia/Manila",
+        "business_date": "2026-10-02",
+        "location_id": 3,
+        "terminal_id": "COUNTER-01",
+        "reading_identifier": "ZR-20261002-00000008",
+        "generated_at": "2026-10-02T08:23:35.000Z",
+        "snapshot_persisted": true,
+        "summary": {
+          "transaction_count": 20,
+          "subtotal_amount": 1800,
+          "discount_amount": 0,
+          "service_fee_total": 0,
+          "restaurant_service_charge_total": 0,
+          "vatable_sales": 1607.142,
+          "vat_amount": 192.858,
+          "vat_exempt_sales": 0,
+          "zero_rated_sales": 0,
+          "total_amount": 1800,
+          "item_count": 20,
+          "discount_item_count": 0,
+          "total_cost": 0,
+          "void_transaction_count": 0,
+          "transaction_void_amount": 0,
+          "item_void_amount": 0,
+          "void_amount": 0,
+          "voided_item_count": 0,
+          "item_voided_item_count": 0,
+          "post_close_void_transaction_count": 0,
+          "post_close_void_amount": 0,
+          "post_close_voided_item_count": 0,
+          "refund_amount": 0,
+          "refunded_item_count": 0,
+          "provider_refunds_included": false,
+          "net_profit": 1800,
+          "daily_totals": [
+            {
+              "business_date": "2026-09-22",
+              "transaction_count": 1,
+              "total_amount": 120,
+              "discount_amount": 0,
+              "item_count": 1,
+              "discount_item_count": 0,
+              "total_cost": 0,
+              "void_transaction_count": 0,
+              "transaction_void_amount": 0,
+              "item_void_amount": 0,
+              "void_amount": 0,
+              "voided_item_count": 0,
+              "item_voided_item_count": 0,
+              "refund_amount": 0,
+              "refunded_item_count": 0,
+              "provider_refunds_included": false,
+              "net_profit": 120
+            },
+            {
+              "business_date": "2026-09-30",
+              "transaction_count": 31,
+              "total_amount": 2483.9999,
+              "discount_amount": 238.4998,
+              "item_count": 31,
+              "discount_item_count": 15,
+              "total_cost": 2077,
+              "void_transaction_count": 9,
+              "transaction_void_amount": 0,
+              "item_void_amount": 0,
+              "void_amount": 1367.2,
+              "voided_item_count": 10,
+              "item_voided_item_count": 0,
+              "refund_amount": 0,
+              "refunded_item_count": 0,
+              "provider_refunds_included": false,
+              "net_profit": 406.9999
+            },
+            {
+              "business_date": "2026-10-01",
+              "transaction_count": 0,
+              "total_amount": 0,
+              "discount_amount": 0,
+              "item_count": 0,
+              "discount_item_count": 0,
+              "total_cost": 0,
+              "void_transaction_count": 2,
+              "transaction_void_amount": 0,
+              "item_void_amount": 0,
+              "void_amount": 180,
+              "voided_item_count": 2,
+              "item_voided_item_count": 0,
+              "refund_amount": 0,
+              "refunded_item_count": 0,
+              "provider_refunds_included": false,
+              "net_profit": 0
+            },
+            {
+              "business_date": "2026-10-02",
+              "transaction_count": 20,
+              "total_amount": 1800,
+              "discount_amount": 0,
+              "item_count": 20,
+              "discount_item_count": 0,
+              "total_cost": 0,
+              "void_transaction_count": 0,
+              "transaction_void_amount": 0,
+              "item_void_amount": 0,
+              "void_amount": 0,
+              "voided_item_count": 0,
+              "item_voided_item_count": 0,
+              "refund_amount": 0,
+              "refunded_item_count": 0,
+              "provider_refunds_included": false,
+              "net_profit": 1800
+            }
+          ],
+          "popular_items": [
+            {
+              "item_id": 179,
+              "item_name": "Casino Ethyl Alcohol",
+              "sku_code": "PRD-CEA-001",
+              "quantity": 20,
+              "amount": 1800,
+              "cost": 0,
+              "net_profit": 1800
+            }
+          ],
+          "payment_breakdown": [
+            {
+              "payment_type": "cash",
+              "payment_label": "Cash",
+              "count": 20,
+              "amount": 1800
+            },
+            {
+              "payment_type": "gcash",
+              "payment_label": "GCash",
+              "count": 0,
+              "amount": 0
+            },
+            {
+              "payment_type": "maya",
+              "payment_label": "Maya",
+              "count": 0,
+              "amount": 0
+            },
+            {
+              "payment_type": "card",
+              "payment_label": "Card (Credit/Debit)",
+              "count": 0,
+              "amount": 0
+            },
+            {
+              "payment_type": "bank_transfer",
+              "payment_label": "Bank Transfer",
+              "count": 0,
+              "amount": 0
+            },
+            {
+              "payment_type": "employee_credit",
+              "payment_label": "Employee Credit",
+              "count": 0,
+              "amount": 0
+            },
+            {
+              "payment_type": "other",
+              "payment_label": "Other",
+              "count": 0,
+              "amount": 0
+            }
+          ],
+          "delivery_provider_breakdown": [
+            {
+              "provider_type": "foodpanda",
+              "provider_name": null,
+              "display_label": "Foodpanda",
+              "transaction_count": 5,
+              "amount": 450
+            },
+            {
+              "provider_type": "grab",
+              "provider_name": null,
+              "display_label": "Grab",
+              "transaction_count": 10,
+              "amount": 900
+            },
+            {
+              "provider_type": "other",
+              "provider_name": "Maxnim",
+              "display_label": "Maxnim (Other)",
+              "transaction_count": 5,
+              "amount": 450
+            }
+          ],
+          "order_method_breakdown": [
+            {
+              "order_method": "delivery",
+              "count": 20,
+              "amount": 1800
+            }
+          ],
+          "order_source_breakdown": []
+        },
+        "counters": {
+          "z_counter": 8,
+          "reset_counter": 8,
+          "lifetime_grand_total_cents": 4074210
+        },
+        "reconciliation": {
+          "status": "variance",
+          "comparison_basis": "completed_recognized_transaction_total",
+          "business_date": "2026-10-02",
+          "location_id": 3,
+          "reading_identifier": "ZR-20261002-00000008",
+          "generated_at": "2026-10-02T08:23:35.000Z",
+          "evaluated_at": "2026-10-27T05:56:19.504Z",
+          "snapshot_persisted": true,
+          "report_recognized_sales": 1710,
+          "z_total_amount": 1800,
+          "variance": -90,
+          "report_net_sales": 1710,
+          "report_refunds_voids": 90,
+          "report_adjustment_amount": 0,
+          "report_adjustment_net_sales_impact": 0,
+          "report_cash_refunds_voids": 90,
+          "report_voided_refunded_transactions": 1,
+          "reconciliation_inputs": {
+            "transactions": "PosTransaction.completed",
+            "payments": "PosTransaction.payment_breakdown",
+            "adjustments": "PosTransactionAdjustment.succeeded_or_reviewable",
+            "reading_snapshot": "PosZReadingSnapshot.summary",
+            "closed_shift_gate": "POS close-day usecase"
+          },
+          "adjustment_reconciliation": {
+            "status": "included",
+            "adjustment_count": 0,
+            "succeeded_amount": 0,
+            "net_sales_impact": 0,
+            "mutates_prior_z_reading": false
+          },
+          "z_payment_breakdown": [
+            {
+              "payment_type": "cash",
+              "payment_label": "Cash",
+              "count": 20,
+              "amount": 1800
+            },
+            {
+              "payment_type": "gcash",
+              "payment_label": "GCash",
+              "count": 0,
+              "amount": 0
+            },
+            {
+              "payment_type": "maya",
+              "payment_label": "Maya",
+              "count": 0,
+              "amount": 0
+            },
+            {
+              "payment_type": "card",
+              "payment_label": "Card (Credit/Debit)",
+              "count": 0,
+              "amount": 0
+            },
+            {
+              "payment_type": "bank_transfer",
+              "payment_label": "Bank Transfer",
+              "count": 0,
+              "amount": 0
+            },
+            {
+              "payment_type": "employee_credit",
+              "payment_label": "Employee Credit",
+              "count": 0,
+              "amount": 0
+            },
+            {
+              "payment_type": "other",
+              "payment_label": "Other",
+              "count": 0,
+              "amount": 0
+            }
+          ],
+          "z_void_transaction_count": 0,
+          "z_void_amount": 0,
+          "message": "Report recognized sales differ from the immutable Z-reading total. Review the transaction scope and post-close events."
+        },
+        "payload_hash": "90dbae28a683e171e5150e6e53a373590202b1dde26ea52b34f9226fe97ac6c1"
+      },
+      "counters": {
+        "z_counter": 8,
+        "reset_counter": 8,
+        "lifetime_grand_total_cents": 4074210,
+        "lifetime_grand_total": 40742.1
+      }
+    },
+    "message": null
+  }
+}

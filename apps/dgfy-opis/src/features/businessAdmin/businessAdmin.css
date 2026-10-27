@@ -1036,10 +1036,26 @@ ul.business-admin-pos-activity-definitions { list-style: disc; padding-left: 20p
 .business-admin-expense-form-actions > span { color: #7890a1; font-size: 11px; line-height: 1.4; }
 .business-admin-expenses-table-view { display: block; }
 .business-admin-expenses-mobile-view { display: none; }
-.business-admin-expense-void-button { border: 0; padding: 0; background: none; color: #a83d35; font-size: 11px; font-weight: 800; cursor: pointer; }
+.business-admin-expense-void-button,
+.business-admin-expense-void-link {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: none;
+  color: #a83d35;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.business-admin-expense-void-link { margin-top: 8px; }
 .business-admin-expense-void-button:hover,
-.business-admin-expense-void-link:hover { text-decoration: underline; }
-.business-admin-expense-void-link { display: block; margin-top: 12px; border: 0; padding: 0; background: none; color: #a83d35; font-size: 11px; font-weight: 800; cursor: pointer; }
+.business-admin-expense-void-link:hover { border-color: #e6b4ae; background: #fff5f3; text-decoration: underline; }
+.business-admin-expense-void-button:focus-visible,
+.business-admin-expense-void-link:focus-visible { outline: 3px solid rgba(168, 61, 53, 0.24); outline-offset: 2px; }
 .business-admin-expense-card-list { display: grid; gap: 10px; padding: 12px; }
 .business-admin-expense-card { min-width: 0; border: 1px solid #dce8ef; border-radius: 14px; padding: 14px; background: linear-gradient(145deg, #fff 0%, #f8fcfc 100%); }
 .business-admin-expense-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
@@ -1527,11 +1543,6 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
   .business-admin-mobile-brand-subtitle { overflow: hidden; max-width: 100%; color: #64748b; font-size: 10px; font-weight: 800; letter-spacing: .04em; text-overflow: ellipsis; white-space: nowrap; }
   .business-admin-mobile-page-title { overflow: hidden; max-width: 100%; color: #0f172a; font-size: 14px; font-weight: 900; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
   .business-admin-mobile-nav-backdrop { position: fixed; inset: 0; z-index: 20; display: block; border: 0; background: rgba(15, 23, 42, .48); cursor: pointer; }
-  .business-admin-fiscal-filter-card { gap: 8px; padding: 10px; }
-  .business-admin-fiscal-filter-card .business-admin-field { flex: 1 1 128px; min-width: 128px; }
-  .business-admin-fiscal-filter-card .business-admin-field input,
-  .business-admin-fiscal-filter-card .business-admin-field select { min-height: 36px; }
-  .business-admin-fiscal-filter-card .business-admin-scope { width: 100%; margin-left: 0; }
   .business-admin-mobile-nav-backdrop:focus-visible { outline: 3px solid rgba(255, 255, 255, .75); outline-offset: -4px; }
   .business-admin-mobile-sidebar-close { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; margin: 0 0 5px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 7px 10px; background: #f8fafc; color: #1a4e8d; font-size: 11px; font-weight: 900; cursor: pointer; transition: border-color .16s ease, background-color .16s ease, color .16s ease, transform .16s ease; }
   .business-admin-mobile-sidebar-close:hover { border-color: #2563eb; background: #eff7ff; }
@@ -1542,6 +1553,11 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
   .business-admin-nav-group.is-standalone { display: block; margin-top: 8px; }
   .business-admin-nav-group.is-standalone .business-admin-nav-item { width: 100%; }
   .business-admin-main { padding: 18px 12px 30px; }
+  .business-admin-fiscal-filter-card { gap: 8px; padding: 10px; }
+  .business-admin-fiscal-filter-card .business-admin-field { flex: 1 1 128px; min-width: 128px; }
+  .business-admin-fiscal-filter-card .business-admin-field input,
+  .business-admin-fiscal-filter-card .business-admin-field select { min-height: 36px; }
+  .business-admin-fiscal-filter-card .business-admin-scope { width: 100%; margin-left: 0; }
   .business-admin-settings-nav-body { padding: 8px 10px; }
   .business-admin-settings-nav-strip { gap: 5px; }
   .business-admin-settings-nav-control { width: 31px; height: 32px; }
@@ -1721,7 +1737,6 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
   .business-admin-branches-summary { gap: 8px; }
   .business-admin-branches-metric { gap: 9px; padding: 13px; }
   .business-admin-branches-metric-icon { width: 32px; height: 32px; border-radius: 10px; }
-  .business-admin-fiscal-filter-card .business-admin-field { flex: 0 1 128px; }
   .business-admin-branches-metric-value { font-size: 18px; }
   .business-admin-branch-grid { grid-template-columns: minmax(0, 1fr); padding: 12px; }
   .business-admin-branch-card { padding: 14px; }
@@ -1737,6 +1752,7 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
   .business-admin-branches-filter-card .business-admin-scope { width: 100%; margin-left: 0; }
   .business-admin-filter-card { align-items: stretch; }
   .business-admin-field { flex: 1 1 140px; }
+  .business-admin-fiscal-filter-card .business-admin-field { flex: 0 1 128px; }
   .business-admin-expense-entry-card { padding: 14px; }
 }
 

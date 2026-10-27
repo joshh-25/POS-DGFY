@@ -1,0 +1,6 @@
+status=PASS
+environment=LOCAL_ONLY
+evidence_label=LOCAL TEST - NOT FOR SUBMISSION
+offline_indicator_detected=true
+online_recovery_detected=true
+reason=Local browser connection transition was visible and recovered.

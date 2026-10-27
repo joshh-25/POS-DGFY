@@ -1,0 +1,4 @@
+status=PASS
+environment=LOCAL_ONLY
+evidence_label=LOCAL TEST - NOT FOR SUBMISSION
+reason=The system narrative is generated from the local source/runtime surfaces recorded by this run.

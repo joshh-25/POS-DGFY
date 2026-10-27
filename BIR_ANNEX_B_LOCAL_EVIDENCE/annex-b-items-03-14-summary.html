@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OPIS POS — BIR Annex B Items 03–14</title>
+  <style>
+    :root { color-scheme: light; --navy:#10233f; --muted:#66758a; --line:#dfe7f0; --green:#087f5b; --green-bg:#e5f7ef; --amber:#9a5b00; --amber-bg:#fff3d6; --blue:#1f5b9e; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#f4f7fb; color:var(--navy); font-family:Segoe UI, Arial, sans-serif; }
+    .page { width:1500px; min-height:1080px; margin:0 auto; padding:42px 52px 38px; background:#fff; }
+    .eyebrow { color:var(--blue); font-size:15px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+    h1 { margin:8px 0 6px; font-size:36px; line-height:1.1; }
+    .subtitle { color:var(--muted); font-size:18px; }
+    .warning { margin-top:24px; padding:16px 20px; border:1px solid #f0cf85; border-radius:12px; background:#fff9e9; color:#714b00; font-weight:700; }
+    .stats { display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; margin:24px 0; }
+    .stat { border:1px solid var(--line); border-radius:14px; padding:18px 22px; }
+    .stat .n { font-size:34px; font-weight:800; line-height:1; }
+    .stat .label { margin-top:7px; color:var(--muted); font-size:15px; font-weight:700; }
+    .stat.pass { background:var(--green-bg); border-color:#a8e3cc; color:var(--green); }
+    .stat.blocked { background:var(--amber-bg); border-color:#f0cf85; color:var(--amber); }
+    .stat.fail { background:#fff0f0; border-color:#f2b8b8; color:#b42318; }
+    table { width:100%; border-collapse:separate; border-spacing:0; overflow:hidden; border:1px solid var(--line); border-radius:14px; font-size:16px; }
+    th { padding:14px 16px; background:#eef3f9; color:#40546e; text-align:left; font-size:13px; letter-spacing:.05em; text-transform:uppercase; }
+    td { padding:15px 16px; border-top:1px solid var(--line); vertical-align:top; }
+    tr:first-child td { border-top:0; }
+    .item { width:90px; font-size:20px; font-weight:800; }
+    .status { width:155px; font-weight:800; }
+    .pill { display:inline-block; padding:6px 11px; border-radius:999px; font-size:13px; letter-spacing:.04em; }
+    .pill.pass { color:var(--green); background:var(--green-bg); }
+    .pill.blocked { color:var(--amber); background:var(--amber-bg); }
+    .reason { color:#52657d; line-height:1.35; }
+    .note { margin-top:22px; color:var(--muted); font-size:14px; line-height:1.45; }
+    .footer { margin-top:28px; padding-top:16px; border-top:1px solid var(--line); display:flex; justify-content:space-between; color:var(--muted); font-size:13px; }
+    .footer strong { color:var(--navy); }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="eyebrow">OPIS POS · Local-only verification</div>
+    <h1>BIR Annex B Items 03–14</h1>
+    <div class="subtitle">Evidence status from the local POS/API/OPIS scope · 27 October 2026</div>
+    <div class="warning">LOCAL TEST — NOT FOR SUBMISSION · This screenshot is a local implementation/evidence review, not a BIR certification package.</div>
+    <section class="stats" aria-label="Summary counts">
+      <div class="stat pass"><div class="n">7</div><div class="label">PASS · Items 07, 09–14</div></div>
+      <div class="stat blocked"><div class="n">5</div><div class="label">BLOCKED · Items 03–06 and 08</div></div>
+      <div class="stat fail"><div class="n">0</div><div class="label">FAIL</div></div>
+    </section>
+    <table>
+      <thead><tr><th>Item</th><th>Status</th><th>Local answer</th></tr></thead>
+      <tbody>
+        <tr><td class="item">03</td><td class="status"><span class="pill blocked">BLOCKED</span></td><td class="reason">No official Annex C pro-forma or executed signature package is supplied locally.</td></tr>
+        <tr><td class="item">04</td><td class="status"><span class="pill blocked">BLOCKED</span></td><td class="reason">The selected local scope has no persisted fiscal invoice source records.</td></tr>
+        <tr><td class="item">05</td><td class="status"><span class="pill blocked">BLOCKED</span></td><td class="reason">No persisted return, void, or adjustment records were returned for the selected local scope.</td></tr>
+        <tr><td class="item">06</td><td class="status"><span class="pill blocked">BLOCKED</span></td><td class="reason">The X reading is 2026-10-27 and the Z reading is 2026-10-02, so they do not share the selected business date. Both endpoints returned HTTP 200; the evidence is still not reconcilable.</td></tr>
+        <tr><td class="item">07</td><td class="status"><span class="pill pass">PASS</span></td><td class="reason">Reports catalog, inventory/report output, and sample report evidence are present locally.</td></tr>
+        <tr><td class="item">08</td><td class="status"><span class="pill blocked">BLOCKED</span></td><td class="reason">The local e-journal source contains no finalized fiscal documents for this scope.</td></tr>
+        <tr><td class="item">09</td><td class="status"><span class="pill pass">PASS</span></td><td class="reason">Actual local source/runtime system narrative was generated.</td></tr>
+        <tr><td class="item">10</td><td class="status"><span class="pill pass">PASS</span></td><td class="reason">Local login/home and software-version evidence is present.</td></tr>
+        <tr><td class="item">11</td><td class="status"><span class="pill pass">PASS</span></td><td class="reason">Local connectivity/offline-and-recovery evidence is present.</td></tr>
+        <tr><td class="item">12</td><td class="status"><span class="pill pass">PASS</span></td><td class="reason">Software manual evidence is present. A machine brochure is N/A until a physical device model is supplied.</td></tr>
+        <tr><td class="item">13</td><td class="status"><span class="pill pass">PASS</span></td><td class="reason">Local audit-trail evidence is present.</td></tr>
+        <tr><td class="item">14</td><td class="status"><span class="pill pass">PASS</span></td><td class="reason">Disposable local backup/restore drill passed with matching table names and row counts.</td></tr>
+      </tbody>
+    </table>
+    <div class="note"><strong>Important:</strong> “PASS” means the local implementation/evidence check completed. “BLOCKED” means the software check ran but the selected local data or external document needed to complete the item does not exist yet. This does not claim official BIR approval.</div>
+    <div class="footer"><span>Source: <strong>BIR_ANNEX_B_LOCAL_EVIDENCE/RESULTS.csv</strong></span><span>Scope: <strong>local only</strong></span></div>
+  </main>
+</body>
+</html>

@@ -1,0 +1,1586 @@
+{
+  "request": {
+    "path": "/api/v1/pos/reports/overview?date_from=2026-10-02&date_to=2026-10-02&branch_id=3&location_id=3&terminal_id=COUNTER-01",
+    "method": "GET"
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json; charset=utf-8",
+    "data": {
+      "applied_filters": {
+        "granularity": "daily",
+        "dateFrom": "2026-10-02",
+        "dateTo": "2026-10-02",
+        "startAt": "2026-10-01T16:00:00.000Z",
+        "endAtExclusive": "2026-10-02T16:00:00.000Z",
+        "cashier_id": null,
+        "location_id": 3,
+        "terminal_id": "COUNTER-01",
+        "payment_type": null,
+        "source": null,
+        "delivery_provider": null,
+        "category_id": null,
+        "category": null
+      },
+      "filter_options": {
+        "cashiers": [
+          {
+            "cashier_id": 6,
+            "cashier_name": "teamoleblanc"
+          }
+        ],
+        "categories": [
+          {
+            "folder_id": 31,
+            "name": "Alcohol"
+          },
+          {
+            "folder_id": 34,
+            "name": "Beef"
+          },
+          {
+            "folder_id": 27,
+            "name": "Breakfast"
+          },
+          {
+            "folder_id": 22,
+            "name": "Chicken"
+          },
+          {
+            "folder_id": 28,
+            "name": "Coffees"
+          },
+          {
+            "folder_id": 21,
+            "name": "Colas"
+          },
+          {
+            "folder_id": 29,
+            "name": "Desks"
+          },
+          {
+            "folder_id": 25,
+            "name": "Desserts"
+          },
+          {
+            "folder_id": 24,
+            "name": "Drinks"
+          },
+          {
+            "folder_id": 23,
+            "name": "Meals"
+          },
+          {
+            "folder_id": 32,
+            "name": "Pizza"
+          },
+          {
+            "folder_id": 33,
+            "name": "Shake"
+          },
+          {
+            "folder_id": 26,
+            "name": "Snacks"
+          },
+          {
+            "folder_id": 15,
+            "name": "This all the categories"
+          },
+          {
+            "folder_id": 16,
+            "name": "This is the second categories"
+          },
+          {
+            "folder_id": 30,
+            "name": "water"
+          }
+        ],
+        "payment_methods": [
+          "cash",
+          "gcash",
+          "maya",
+          "card",
+          "bank_transfer"
+        ],
+        "sources": [
+          {
+            "value": "in_store",
+            "label": "Walk-in Sales"
+          },
+          {
+            "value": "online_store",
+            "label": "Online Sales"
+          },
+          {
+            "value": "delivery",
+            "label": "Delivery"
+          },
+          {
+            "value": "pickup",
+            "label": "Pickup"
+          }
+        ],
+        "delivery_providers": [
+          {
+            "value": "foodpanda",
+            "label": "Foodpanda"
+          },
+          {
+            "value": "grab",
+            "label": "Grab"
+          },
+          {
+            "value": "other",
+            "label": "Other"
+          }
+        ]
+      },
+      "summary_cards": "[REDACTED]",
+      "daily_report": {
+        "summary": {
+          "gross_sales": 1800,
+          "net_sales": 1710,
+          "cogs": 0,
+          "pos_profit_loss": 1710,
+          "profit_margin": 100,
+          "total_transactions": 20,
+          "completed_transactions": 19,
+          "voided_refunded_transactions": 1,
+          "total_items_sold": 20,
+          "discounts": 0,
+          "refunds_voids": 90,
+          "vatable_sales": 1526.7849,
+          "vat": 183.2151,
+          "service_fees": 0,
+          "is_loss": false
+        },
+        "adjustment_summary": {
+          "adjustment_count": 0,
+          "succeeded_count": 0,
+          "pending_count": 0,
+          "manual_review_count": 0,
+          "failed_count": 0,
+          "succeeded_amount": 0,
+          "pending_amount": 0,
+          "manual_review_amount": 0,
+          "failed_amount": 0,
+          "net_sales_impact": 0,
+          "mutates_prior_z_reading": false
+        },
+        "adjustment_rows": [],
+        "discount_breakdown": [],
+        "payment_breakdown": [
+          {
+            "payment_method": "Cash",
+            "total_transactions": 20,
+            "gross_sales": 1800,
+            "net_sales": 1710,
+            "pos_profit_loss": 1710
+          }
+        ],
+        "delivery_provider_breakdown": [
+          {
+            "provider_type": "foodpanda",
+            "provider_name": null,
+            "display_label": "Foodpanda",
+            "transaction_count": 5,
+            "amount": 450
+          },
+          {
+            "provider_type": "grab",
+            "provider_name": null,
+            "display_label": "Grab",
+            "transaction_count": 10,
+            "amount": 900
+          },
+          {
+            "provider_type": "other",
+            "provider_name": "Maxnim",
+            "display_label": "Maxnim (Other)",
+            "transaction_count": 5,
+            "amount": 450
+          }
+        ],
+        "order_method_breakdown": [
+          {
+            "order_method": "delivery",
+            "total_transactions": 20,
+            "gross_sales": 1800,
+            "net_sales": 1710,
+            "pos_profit_loss": 1710
+          }
+        ],
+        "order_source_breakdown": [
+          {
+            "order_source": "in_store",
+            "source_label": "Walk-in Sales",
+            "total_transactions": 20,
+            "gross_sales": 1800,
+            "net_sales": 1710,
+            "pos_profit_loss": 1710
+          }
+        ],
+        "cashier_summary": [
+          {
+            "cashier_id": 6,
+            "cashier_name": "teamoleblanc",
+            "shift_ids": [
+              148
+            ],
+            "summary": {
+              "gross_sales": 1800,
+              "net_sales": 1710,
+              "cogs": 0,
+              "pos_profit_loss": 1710,
+              "profit_margin": 100,
+              "total_transactions": 20,
+              "completed_transactions": 19,
+              "voided_refunded_transactions": 1,
+              "total_items_sold": 20,
+              "discounts": 0,
+              "refunds_voids": 90,
+              "vatable_sales": 1526.7849,
+              "vat": 183.2151,
+              "service_fees": 0,
+              "is_loss": false
+            },
+            "shift_money": null
+          }
+        ],
+        "cash_reconciliation": [],
+        "shift_summary": [
+          {
+            "shift_id": 148,
+            "terminal_id": "COUNTER-01",
+            "business_date": "2026-09-28",
+            "summary": {
+              "gross_sales": 1800,
+              "net_sales": 1710,
+              "cogs": 0,
+              "pos_profit_loss": 1710,
+              "profit_margin": 100,
+              "total_transactions": 20,
+              "completed_transactions": 19,
+              "voided_refunded_transactions": 1,
+              "total_items_sold": 20,
+              "discounts": 0,
+              "refunds_voids": 90,
+              "vatable_sales": 1526.7849,
+              "vat": 183.2151,
+              "service_fees": 0,
+              "is_loss": false
+            }
+          }
+        ],
+        "transaction_rows": [
+          {
+            "pos_transaction_id": 331,
+            "invoice_number": "NFS-000186",
+            "created_at": "2026-10-02T08:05:10.000Z",
+            "status": "completed",
+            "cashier_id": 6,
+            "cashier_name": "teamoleblanc",
+            "operator_session_id": null,
+            "attribution_type": "legacy_cashier_snapshot",
+            "payment_type": "cash",
+            "payment_methods": [
+              "cash"
+            ],
+            "delivery_provider_breakdown": [
+              {
+                "provider_type": "foodpanda",
+                "provider_name": null,
+                "amount": 90,
+                "display_label": "Foodpanda"
+              }
+            ],
+            "payment_status": "paid",
+            "order_source": "in_store",
+            "source_label": "Delivery",
+            "order_method": "delivery",
+            "total_amount": 90,
+            "gross_sales": 90,
+            "net_sales": 90,
+            "discount_amount": 0,
+            "vatable_sales": 80.3571,
+            "vat_amount": 9.6429,
+            "refund_amount": 0,
+            "cogs": 0,
+            "pos_profit_loss": 90
+          },
+          {
+            "pos_transaction_id": 332,
+            "invoice_number": "NFS-000187",
+            "created_at": "2026-10-02T08:05:10.000Z",
+            "status": "completed",
+            "cashier_id": 6,
+            "cashier_name": "teamoleblanc",
+            "operator_session_id": null,
+            "attribution_type": "legacy_cashier_snapshot",
+            "payment_type": "cash",
+            "payment_methods": [
+              "cash"
+            ],
+            "delivery_provider_breakdown": [
+              {
+                "provider_type": "foodpanda",
+                "provider_name": null,
+                "amount": 90,
+                "display_label": "Foodpanda"
+              }
+            ],
+            "payment_status": "paid",
+            "order_source": "in_store",
+            "source_label": "Delivery",
+            "order_method": "delivery",
+            "total_amount": 90,
+            "gross_sales": 90,
+            "net_sales": 90,
+            "discount_amount": 0,
+            "vatable_sales": 80.3571,
+            "vat_amount": 9.6429,
+            "refund_amount": 0,
+            "cogs": 0,
+            "pos_profit_loss": 90
+          },
+          {
+            "pos_transaction_id": 333,
+            "invoice_number": "NFS-000188",
+            "created_at": "2026-10-02T08:05:10.000Z",
+            "status": "completed",
+            "cashier_id": 6,
+            "cashier_name": "teamoleblanc",
+            "operator_session_id": null,
+            "attribution_type": "legacy_cashier_snapshot",
+            "payment_type": "cash",
+            "payment_methods": [
+              "cash"
+            ],
+            "delivery_provider_breakdown": [
+              {
+                "provider_type": "foodpanda",
+                "provider_name": null,
+                "amount": 90,
+                "display_label": "Foodpanda"
+              }
+            ],
+            "payment_status": "paid",
+            "order_source": "in_store",
+            "source_label": "Delivery",
+            "order_method": "delivery",
+            "total_amount": 90,
+            "gross_sales": 90,
+            "net_sales": 90,
+            "discount_amount": 0,
+            "vatable_sales": 80.3571,
+            "vat_amount": 9.6429,
+            "refund_amount": 0,
+            "cogs": 0,
+            "pos_profit_loss": 90
+          },
+          {
+            "pos_transaction_id": 334,
+            "invoice_number": "NFS-000189",
+            "created_at": "2026-10-02T08:05:10.000Z",
+            "status": "completed",
+            "cashier_id": 6,
+            "cashier_name": "teamoleblanc",
+            "operator_session_id": null,
+            "attribution_type": "legacy_cashier_snapshot",
+            "payment_type": "cash",
+            "payment_methods": [
+              "cash"
+            ],
+            "delivery_provider_breakdown": [
+              {
+                "provider_type": "foodpanda",
+                "provider_name": null,
+                "amount": 90,
+                "display_label": "Foodpanda"
+              }
+            ],
+            "payment_status": "paid",
+            "order_source": "in_store",
+            "source_label": "Delivery",
+            "order_method": "delivery",
+            "total_amount": 90,
+            "gross_sales": 90,
+            "net_sales": 90,
+            "discount_amount": 0,
+            "vatable_sales": 80.3571,
+            "vat_amount": 9.6429,
+            "refund_amount": 0,
+            "cogs": 0,
+            "pos_profit_loss": 90
+          },
+          {
+            "pos_transaction_id": 335,
+            "invoice_number": "NFS-000190",
+            "created_at": "2026-10-02T08:05:10.000Z",
+            "status": "completed",
+            "cashier_id": 6,
+            "cashier_name": "teamoleblanc",
+            "operator_session_id": null,
+            "attribution_type": "legacy_cashier_snapshot",
+            "payment_type": "cash",
+            "payment_methods": [
+              "cash"
+            ],
+            "delivery_provider_breakdown": [
+              {
+                "provider_type": "foodpanda",
+                "provider_name": null,
+                "amount": 90,
+                "display_label": "Foodpanda"
+              }
+            ],
+            "payment_status": "paid",
+            "order_source": "in_store",
+            "source_label": "Delivery",
+            "order_method": "delivery",
+            "total_amount": 90,
+            "gross_sales": 90,
+            "net_sales": 90,
+            "discount_amount": 0,
+            "vatable_sales": 80.3571,
+            "vat_amount": 9.6429,
+            "refund_amount": 0,
+            "cogs": 0,
+            "pos_profit_loss": 90
+          },
+          {
+            "pos_transaction_id": 336,
+            "invoice_number": "NFS-000191",
+            "created_at": "2026-10-02T08:05:10.000Z",
+            "status": "completed",
+            "cashier_id": 6,
+            "cashier_name": "teamoleblanc",
+            "operator_session_id": null,
+            "attribution_type": "legacy_cashier_snapshot",
+            "payment_type": "cash",
+            "payment_methods": [
+              "cash"
+            ],
+            "delivery_provider_breakdown": [
+              {
+                "provider_type": "grab",
+                "provider_name": null,
+                "amount": 90,
+                "display_label": "Grab"
+              }
+            ],
+            "payment_status": "paid",
+            "order_source": "in_store",
+            "source_label": "Delivery",
+            "order_method": "delivery",
+            "total_amount": 90,
+            "gross_sales": 90,
+            "net_sales": 90,
+            "discount_amount": 0,
+            "vatable_sales": 80.3571,
+            "vat_amount": 9.6429,
+            "refund_amount": 0,
+            "cogs": 0,
+            "pos_profit_loss": 90
+          },
+          {
+            "pos_transaction_id": 337,
+            "invoice_number": "NFS-000192",
+            "created_at": "2026-10-02T08:05:10.000Z",
+            "status": "completed",
+            "cashier_id": 6,
+            "cashier_name": "teamoleblanc",
+            "operator_session_id": null,
+            "attribution_type": "legacy_cashier_snapshot",
+            "payment_type": "cash",
+            "payment_methods": [
+              "cash"
+            ],
+            "delivery_provider_breakdown": [
+              {
+                "provider_type": "grab",
+                "provider_name": null,
+                "amount": 90,
+                "display_label": "Grab"
+              }
+            ],
+            "payment_status": "paid",
+            "order_source": "in_store",
+            "source_label": "Delivery",
+            "order_method": "delivery",
+            "total_amount": 90,
+            "gross_sales": 90,
+            "net_sales": 90,
+            "discount_amount": 0,
+            "vatable_sales": 80.3571,
+            "vat_amount": 9.6429,
+            "refund_amount": 0,
+            "cogs": 0,
+            "pos_profit_loss": 90
+          },
+          {
+            "pos_transaction_id": 338,
+            "invoice_number": "NFS-000193",
+            "created_at": "2026-10-02T08:05:11.000Z",
+            "status": "completed",
+            "cashier_id": 6,
+            "cashier_name": "teamoleblanc",
+            "operator_session_id": null,
+            "attribution_type": "legacy_cashier_snapshot",
+            "payment_type": "cash",
+            "payment_methods": [
+              "cash"
+            ],
+            "delivery_provider_breakdown": [
+              {
+                "provider_type": "grab",
+                "provider_name": null,
+                "amount": 90,
+                "display_label": "Grab"
+              }
+            ],
+            "payment_status": "paid",
+            "order_source": "in_store",
+            "source_label": "Delivery",
+            "order_method": "delivery",
+            "total_amount": 90,
+            "gross_sales": 90,
+            "net_sales": 90,
+            "discount_amount": 0,
+            "vatable_sales": 80.3571,
+            "vat_amount": 9.6429,
+            "refund_amount": 0,
+            "cogs": 0,
+            "pos_profit_loss": 90
+          },
+          {
+            "pos_transaction_id": 339,
+            "invoice_number": "NFS-000194",
+            "created_at": "2026-10-02T08:05:11.000Z",
+            "status": "completed",
+            "cashier_id": 6,
+            "cashier_name": "teamoleblanc",
+            "operator_session_id": null,
+            "attribution_type": "legacy_cashier_snapshot",
+            "payment_type": "cash",
+            "payment_methods": [
+              "cash"
+            ],
+            "delivery_provider_breakdown": [
+              {
+                "provider_type": "grab",
+                "provider_name": null,
+                "amount": 90,
+                "display_label": "Grab"
+              }
+            ],
+            "payment_status": "paid",
+            "order_source": "in_store",
+            "source_label": "Delivery",
+            "order_method": "delivery",
+            "total_amount": 90,
+            "gross_sales": 90,
+            "net_sales": 90,
+            "discount_amount": 0,
+            "vatable_sales": 80.3571,
+            "vat_amount": 9.6429,
+            "refund_amount": 0,
+            "cogs": 0,
+            "pos_profit_loss": 90
+          },
+          {
+            "pos_transaction_id": 340,
+            "invoice_number": "NFS-000195",
+            "created_at": "2026-10-02T08:05:11.000Z",
+            "status": "completed",
+            "cashier_id": 6,
+            "cashier_name": "teamoleblanc",
+            "operator_session_id": null,
+            "attribution_type": "legacy_cashier_snapshot",
+            "payment_type": "cash",
+            "payment_methods": [
+              "cash"
+            ],
+            "delivery_provider_breakdown": [
+              {
+                "provider_type": "grab",
+                "provider_name": null,
+                "amount": 90,
+                "display_label": "Grab"
+              }
+            ],
+            "payment_status": "paid",
+            "order_source": "in_store",
+            "source_label": "Delivery",
+            "order_method": "delivery",
+            "total_amount": 90,
+            "gross_sales": 90,
+            "net_sales": 90,
+            "discount_amount": 0,
+            "vatable_sales": 80.3571,
+            "vat_amount": 9.6429,
+            "refund_amount": 0,
+            "cogs": 0,
+            "pos_profit_loss": 90
+          },
+          {
+            "pos_transaction_id": 341,
+            "invoice_number": "NFS-000196",
+            "created_at": "2026-10-02T08:05:11.000Z",
+            "status": "completed",
+            "cashier_id": 6,
+            "cashier_name": "teamoleblanc",
+            "operator_session_id": null,
+            "attribution_type": "legacy_cashier_snapshot",
+            "payment_type": "cash",
+            "payment_methods": [
+              "cash"
+            ],
+            "delivery_provider_breakdown": [
+              {
+                "provider_type": "grab",
+                "provider_name": null,
+                "amount": 90,
+                "display_label": "Grab"
+              }
+            ],
+            "payment_status": "paid",
+            "order_source": "in_store",
+            "source_label": "Delivery",
+            "order_method": "delivery",
+            "total_amount": 90,
+            "gross_sales": 90,
+            "net_sales": 90,
+            "discount_amount": 0,
+            "vatable_sales": 80.3571,
+            "vat_amount": 9.6429,
+            "refund_amount": 0,
+            "cogs": 0,
+            "pos_profit_loss": 90
+          },
+          {
+            "pos_transaction_id": 342,
+            "invoice_number": "NFS-000197",
+            "created_at": "2026-10-02T08:05:11.000Z",
+            "status": "completed",
+            "cashier_id": 6,
+            "cashier_name": "teamoleblanc",
+            "operator_session_id": null,
+            "attribution_type": "legacy_cashier_snapshot",
+            "payment_type": "cash",
+            "payment_methods": [
+              "cash"
+            ],
+            "delivery_provider_breakdown": [
+              {
+                "provider_type": "grab",
+                "provider_name": null,
+                "amount": 90,
+                "display_label": "Grab"
+              }
+            ],
+            "payment_status": "paid",
+            "order_source": "in_store",
+            "source_label": "Delivery",
+            "order_method": "delivery",
+            "total_amount": 90,
+            "gross_sales": 90,
+            "net_sales": 90,
+            "discount_amount": 0,
+            "vatable_sales": 80.3571,
+            "vat_amount": 9.6429,
+            "refund_amount": 0,
+            "cogs": 0,
+            "pos_profit_loss": 90
+          },
+          {
+            "pos_transaction_id": 343,
+            "invoice_number": "NFS-000198",
+            "created_at": "2026-10-02T08:05:11.000Z",
+            "status": "completed",
+            "cashier_id": 6,
+            "cashier_name": "teamoleblanc",
+            "operator_session_id": null,
+            "attribution_type": "legacy_cashier_snapshot",
+            "payment_type": "cash",
+            "payment_methods": [
+              "cash"
+            ],
+            "delivery_provider_breakdown": [
+              {
+                "provider_type": "grab",
+                "provider_name": null,
+                "amount": 90,
+                "display_label": "Grab"
+              }
+            ],
+            "payment_status": "paid",
+            "order_source": "in_store",
+            "source_label": "Delivery",
+            "order_method": "delivery",
+            "total_amount": 90,
+            "gross_sales": 90,
+            "net_sales": 90,
+            "discount_amount": 0,
+            "vatable_sales": 80.3571,
+            "vat_amount": 9.6429,
+            "refund_amount": 0,
+            "cogs": 0,
+            "pos_profit_loss": 90
+          },
+          {
+            "pos_transaction_id": 344,
+            "invoice_number": "NFS-000199",
+            "created_at": "2026-10-02T08:05:11.000Z",
+            "status": "completed",
+            "cashier_id": 6,
+            "cashier_name": "teamoleblanc",
+            "operator_session_id": null,
+            "attribution_type": "legacy_cashier_snapshot",
+            "payment_type": "cash",
+            "payment_methods": [
+              "cash"
+            ],
+            "delivery_provider_breakdown": [
+              {
+                "provider_type": "grab",
+                "provider_name": null,
+                "amount": 90,
+                "display_label": "Grab"
+              }
+            ],
+            "payment_status": "paid",
+            "order_source": "in_store",
+            "source_label": "Delivery",
+            "order_method": "delivery",
+            "total_amount": 90,
+            "gross_sales": 90,
+            "net_sales": 90,
+            "discount_amount": 0,
+            "vatable_sales": 80.3571,
+            "vat_amount": 9.6429,
+            "refund_amount": 0,
+            "cogs": 0,
+            "pos_profit_loss": 90
+          },
+          {
+            "pos_transaction_id": 345,
+            "invoice_number": "NFS-000200",
+            "created_at": "2026-10-02T08:05:11.000Z",
+            "status": "completed",
+            "cashier_id": 6,
+            "cashier_name": "teamoleblanc",
+            "operator_session_id": null,
+            "attribution_type": "legacy_cashier_snapshot",
+            "payment_type": "cash",
+            "payment_methods": [
+              "cash"
+            ],
+            "delivery_provider_breakdown": [
+              {
+                "provider_type": "grab",
+                "provider_name": null,
+                "amount": 90,
+                "display_label": "Grab"
+              }
+            ],
+            "payment_status": "paid",
+            "order_source": "in_store",
+            "source_label": "Delivery",
+            "order_method": "delivery",
+            "total_amount": 90,
+            "gross_sales": 90,
+            "net_sales": 90,
+            "discount_amount": 0,
+            "vatable_sales": 80.3571,
+            "vat_amount": 9.6429,
+            "refund_amount": 0,
+            "cogs": 0,
+            "pos_profit_loss": 90
+          },
+          {
+            "pos_transaction_id": 346,
+            "invoice_number": "NFS-000201",
+            "created_at": "2026-10-02T08:05:11.000Z",
+            "status": "completed",
+            "cashier_id": 6,
+            "cashier_name": "teamoleblanc",
+            "operator_session_id": null,
+            "attribution_type": "legacy_cashier_snapshot",
+            "payment_type": "cash",
+            "payment_methods": [
+              "cash"
+            ],
+            "delivery_provider_breakdown": [
+              {
+                "provider_type": "other",
+                "provider_name": "Maxnim",
+                "amount": 90,
+                "display_label": "Maxnim (Other)"
+              }
+            ],
+            "payment_status": "paid",
+            "order_source": "in_store",
+            "source_label": "Delivery",
+            "order_method": "delivery",
+            "total_amount": 90,
+            "gross_sales": 90,
+            "net_sales": 90,
+            "discount_amount": 0,
+            "vatable_sales": 80.3571,
+            "vat_amount": 9.6429,
+            "refund_amount": 0,
+            "cogs": 0,
+            "pos_profit_loss": 90
+          },
+          {
+            "pos_transaction_id": 347,
+            "invoice_number": "NFS-000202",
+            "created_at": "2026-10-02T08:05:11.000Z",
+            "status": "completed",
+            "cashier_id": 6,
+            "cashier_name": "teamoleblanc",
+            "operator_session_id": null,
+            "attribution_type": "legacy_cashier_snapshot",
+            "payment_type": "cash",
+            "payment_methods": [
+              "cash"
+            ],
+            "delivery_provider_breakdown": [
+              {
+                "provider_type": "other",
+                "provider_name": "Maxnim",
+                "amount": 90,
+                "display_label": "Maxnim (Other)"
+              }
+            ],
+            "payment_status": "paid",
+            "order_source": "in_store",
+            "source_label": "Delivery",
+            "order_method": "delivery",
+            "total_amount": 90,
+            "gross_sales": 90,
+            "net_sales": 90,
+            "discount_amount": 0,
+            "vatable_sales": 80.3571,
+            "vat_amount": 9.6429,
+            "refund_amount": 0,
+            "cogs": 0,
+            "pos_profit_loss": 90
+          },
+          {
+            "pos_transaction_id": 348,
+            "invoice_number": "NFS-000203",
+            "created_at": "2026-10-02T08:05:11.000Z",
+            "status": "completed",
+            "cashier_id": 6,
+            "cashier_name": "teamoleblanc",
+            "operator_session_id": null,
+            "attribution_type": "legacy_cashier_snapshot",
+            "payment_type": "cash",
+            "payment_methods": [
+              "cash"
+            ],
+            "delivery_provider_breakdown": [
+              {
+                "provider_type": "other",
+                "provider_name": "Maxnim",
+                "amount": 90,
+                "display_label": "Maxnim (Other)"
+              }
+            ],
+            "payment_status": "paid",
+            "order_source": "in_store",
+            "source_label": "Delivery",
+            "order_method": "delivery",
+            "total_amount": 90,
+            "gross_sales": 90,
+            "net_sales": 90,
+            "discount_amount": 0,
+            "vatable_sales": 80.3571,
+            "vat_amount": 9.6429,
+            "refund_amount": 0,
+            "cogs": 0,
+            "pos_profit_loss": 90
+          },
+          {
+            "pos_transaction_id": 349,
+            "invoice_number": "NFS-000204",
+            "created_at": "2026-10-02T08:05:11.000Z",
+            "status": "completed",
+            "cashier_id": 6,
+            "cashier_name": "teamoleblanc",
+            "operator_session_id": null,
+            "attribution_type": "legacy_cashier_snapshot",
+            "payment_type": "cash",
+            "payment_methods": [
+              "cash"
+            ],
+            "delivery_provider_breakdown": [
+              {
+                "provider_type": "other",
+                "provider_name": "Maxnim",
+                "amount": 90,
+                "display_label": "Maxnim (Other)"
+              }
+            ],
+            "payment_status": "paid",
+            "order_source": "in_store",
+            "source_label": "Delivery",
+            "order_method": "delivery",
+            "total_amount": 90,
+            "gross_sales": 90,
+            "net_sales": 90,
+            "discount_amount": 0,
+            "vatable_sales": 80.3571,
+            "vat_amount": 9.6429,
+            "refund_amount": 0,
+            "cogs": 0,
+            "pos_profit_loss": 90
+          },
+          {
+            "pos_transaction_id": 350,
+            "invoice_number": "NFS-000205",
+            "created_at": "2026-10-02T08:05:11.000Z",
+            "status": "completed",
+            "cashier_id": 6,
+            "cashier_name": "teamoleblanc",
+            "operator_session_id": null,
+            "attribution_type": "legacy_cashier_snapshot",
+            "payment_type": "cash",
+            "payment_methods": [
+              "cash"
+            ],
+            "delivery_provider_breakdown": [
+              {
+                "provider_type": "other",
+                "provider_name": "Maxnim",
+                "amount": 90,
+                "display_label": "Maxnim (Other)"
+              }
+            ],
+            "payment_status": "refunded",
+            "order_source": "in_store",
+            "source_label": "Delivery",
+            "order_method": "delivery",
+            "total_amount": 0,
+            "gross_sales": 90,
+            "net_sales": 0,
+            "discount_amount": 0,
+            "vatable_sales": 0,
+            "vat_amount": 0,
+            "refund_amount": 90,
+            "cogs": 0,
+            "pos_profit_loss": 0
+          }
+        ],
+        "top_items": [
+          {
+            "item_id": 179,
+            "item_name": "Casino Ethyl Alcohol",
+            "sku_code": "PRD-CEA-001",
+            "category": "Alcohol",
+            "quantity": 20,
+            "quantity_sold": 20,
+            "gross_sales": 1800,
+            "net_sales": 1710,
+            "sales_share_percentage": 100,
+            "average_price": 85.5,
+            "orders": 20,
+            "cogs": 0,
+            "pos_profit_loss": 1710
+          }
+        ],
+        "trend": [
+          {
+            "period": "2026-10-02",
+            "label": "2026-10-02",
+            "gross_sales": 1800,
+            "net_sales": 1710,
+            "cogs": 0,
+            "pos_profit_loss": 1710,
+            "profit_margin": 100,
+            "total_transactions": 20,
+            "completed_transactions": 19,
+            "voided_refunded_transactions": 1,
+            "total_items_sold": 20,
+            "discounts": 0,
+            "refunds_voids": 90,
+            "vatable_sales": 1526.7849,
+            "vat": 183.2151,
+            "service_fees": 0,
+            "is_loss": false
+          }
+        ]
+      },
+      "cashier_lifecycle": {
+        "attendance": {
+          "rows": [],
+          "pagination": {
+            "page": 1,
+            "limit": 50,
+            "total": 0,
+            "total_pages": 1
+          }
+        },
+        "operators": {
+          "rows": [],
+          "pagination": {
+            "page": 1,
+            "limit": 50,
+            "total": 0,
+            "total_pages": 1
+          }
+        },
+        "handoffs": {
+          "rows": [],
+          "pagination": {
+            "page": 1,
+            "limit": 50,
+            "total": 0,
+            "total_pages": 1
+          }
+        },
+        "registers": [],
+        "reconciliation": {
+          "cashier_net_sales": 1710,
+          "register_transaction_net_sales": 1710,
+          "difference": 0,
+          "reconciled": true,
+          "exclusions": [
+            "cash drawer movements are register ledger entries, not sales"
+          ]
+        }
+      },
+      "monthly_report": {
+        "summary": {
+          "gross_sales": 1800,
+          "net_sales": 1710,
+          "cogs": 0,
+          "pos_profit_loss": 1710,
+          "profit_margin": 100,
+          "total_transactions": 20,
+          "completed_transactions": 19,
+          "voided_refunded_transactions": 1,
+          "total_items_sold": 20,
+          "discounts": 0,
+          "refunds_voids": 90,
+          "vatable_sales": 1526.7849,
+          "vat": 183.2151,
+          "service_fees": 0,
+          "is_loss": false
+        },
+        "sales_trend": [
+          {
+            "period": "2026-10",
+            "label": "2026-10",
+            "gross_sales": 1800,
+            "net_sales": 1710,
+            "cogs": 0,
+            "pos_profit_loss": 1710,
+            "profit_margin": 100,
+            "total_transactions": 20,
+            "completed_transactions": 19,
+            "voided_refunded_transactions": 1,
+            "total_items_sold": 20,
+            "discounts": 0,
+            "refunds_voids": 90,
+            "vatable_sales": 1526.7849,
+            "vat": 183.2151,
+            "service_fees": 0,
+            "is_loss": false
+          }
+        ],
+        "top_items": [
+          {
+            "item_id": 179,
+            "item_name": "Casino Ethyl Alcohol",
+            "sku_code": "PRD-CEA-001",
+            "category": "Alcohol",
+            "quantity": 20,
+            "quantity_sold": 20,
+            "gross_sales": 1800,
+            "net_sales": 1710,
+            "sales_share_percentage": 100,
+            "average_price": 85.5,
+            "orders": 20,
+            "cogs": 0,
+            "pos_profit_loss": 1710
+          }
+        ]
+      },
+      "yearly_report": {
+        "summary": {
+          "gross_sales": 1800,
+          "net_sales": 1710,
+          "cogs": 0,
+          "pos_profit_loss": 1710,
+          "profit_margin": 100,
+          "total_transactions": 20,
+          "completed_transactions": 19,
+          "voided_refunded_transactions": 1,
+          "total_items_sold": 20,
+          "discounts": 0,
+          "refunds_voids": 90,
+          "vatable_sales": 1526.7849,
+          "vat": 183.2151,
+          "service_fees": 0,
+          "is_loss": false
+        },
+        "yearly_series": [
+          {
+            "period": "2026",
+            "label": "2026",
+            "gross_sales": 1800,
+            "net_sales": 1710,
+            "cogs": 0,
+            "pos_profit_loss": 1710,
+            "profit_margin": 100,
+            "total_transactions": 20,
+            "completed_transactions": 19,
+            "voided_refunded_transactions": 1,
+            "total_items_sold": 20,
+            "discounts": 0,
+            "refunds_voids": 90,
+            "vatable_sales": 1526.7849,
+            "vat": 183.2151,
+            "service_fees": 0,
+            "is_loss": false
+          }
+        ],
+        "monthly_breakdown": [
+          {
+            "period": "2026-10",
+            "label": "2026-10",
+            "gross_sales": 1800,
+            "net_sales": 1710,
+            "cogs": 0,
+            "pos_profit_loss": 1710,
+            "profit_margin": 100,
+            "total_transactions": 20,
+            "completed_transactions": 19,
+            "voided_refunded_transactions": 1,
+            "total_items_sold": 20,
+            "discounts": 0,
+            "refunds_voids": 90,
+            "vatable_sales": 1526.7849,
+            "vat": 183.2151,
+            "service_fees": 0,
+            "is_loss": false
+          }
+        ],
+        "year_over_year": {
+          "current_year": "2026",
+          "previous_year": "2025",
+          "current": {
+            "gross_sales": 1800,
+            "net_sales": 1710,
+            "cogs": 0,
+            "pos_profit_loss": 1710,
+            "profit_margin": 100,
+            "total_transactions": 20,
+            "completed_transactions": 19,
+            "voided_refunded_transactions": 1,
+            "total_items_sold": 20,
+            "discounts": 0,
+            "refunds_voids": 90,
+            "vatable_sales": 1526.7849,
+            "vat": 183.2151,
+            "service_fees": 0,
+            "is_loss": false
+          },
+          "previous": {
+            "gross_sales": 0,
+            "net_sales": 0,
+            "cogs": 0,
+            "pos_profit_loss": 0,
+            "profit_margin": 0,
+            "total_transactions": 0,
+            "completed_transactions": 0,
+            "voided_refunded_transactions": 0,
+            "total_items_sold": 0,
+            "discounts": 0,
+            "refunds_voids": 0,
+            "vatable_sales": 0,
+            "vat": 0,
+            "service_fees": 0,
+            "is_loss": false
+          },
+          "sales_delta": 1710,
+          "profit_delta": 1710
+        },
+        "top_items": [
+          {
+            "item_id": 179,
+            "item_name": "Casino Ethyl Alcohol",
+            "sku_code": "PRD-CEA-001",
+            "category": "Alcohol",
+            "quantity": 20,
+            "quantity_sold": 20,
+            "gross_sales": 1800,
+            "net_sales": 1710,
+            "sales_share_percentage": 100,
+            "average_price": 85.5,
+            "orders": 20,
+            "cogs": 0,
+            "pos_profit_loss": 1710
+          }
+        ]
+      },
+      "sales_comparison": {
+        "flexible_range": {
+          "current": {
+            "gross_sales": 1800,
+            "net_sales": 1710,
+            "cogs": 0,
+            "pos_profit_loss": 1710,
+            "profit_margin": 100,
+            "total_transactions": 20,
+            "completed_transactions": 19,
+            "voided_refunded_transactions": 1,
+            "total_items_sold": 20,
+            "discounts": 0,
+            "refunds_voids": 90,
+            "vatable_sales": 1526.7849,
+            "vat": 183.2151,
+            "service_fees": 0,
+            "is_loss": false
+          },
+          "previous": {
+            "gross_sales": 0,
+            "net_sales": 0,
+            "cogs": 0,
+            "pos_profit_loss": 0,
+            "profit_margin": 0,
+            "total_transactions": 0,
+            "completed_transactions": 0,
+            "voided_refunded_transactions": 0,
+            "total_items_sold": 0,
+            "discounts": 0,
+            "refunds_voids": 0,
+            "vatable_sales": 0,
+            "vat": 0,
+            "service_fees": 0,
+            "is_loss": false
+          },
+          "sales_delta": 1710,
+          "profit_delta": 1710,
+          "sales_delta_percentage": 100,
+          "profit_delta_percentage": 100,
+          "current_range": {
+            "dateFrom": "2026-10-02",
+            "dateTo": "2026-10-02"
+          },
+          "previous_range": {
+            "dateFrom": "2026-10-01",
+            "dateTo": "2026-10-01"
+          }
+        },
+        "fixed_periods": [
+          {
+            "key": "today_vs_yesterday",
+            "label": "Today vs Yesterday",
+            "current": {
+              "gross_sales": 1800,
+              "net_sales": 1710,
+              "cogs": 0,
+              "pos_profit_loss": 1710,
+              "profit_margin": 100,
+              "total_transactions": 20,
+              "completed_transactions": 19,
+              "voided_refunded_transactions": 1,
+              "total_items_sold": 20,
+              "discounts": 0,
+              "refunds_voids": 90,
+              "vatable_sales": 1526.7849,
+              "vat": 183.2151,
+              "service_fees": 0,
+              "is_loss": false
+            },
+            "previous": {
+              "gross_sales": 0,
+              "net_sales": 0,
+              "cogs": 0,
+              "pos_profit_loss": 0,
+              "profit_margin": 0,
+              "total_transactions": 0,
+              "completed_transactions": 0,
+              "voided_refunded_transactions": 0,
+              "total_items_sold": 0,
+              "discounts": 0,
+              "refunds_voids": 0,
+              "vatable_sales": 0,
+              "vat": 0,
+              "service_fees": 0,
+              "is_loss": false
+            },
+            "sales_delta": 1710,
+            "profit_delta": 1710,
+            "sales_delta_percentage": 100,
+            "profit_delta_percentage": 100
+          },
+          {
+            "key": "this_week_vs_last_week",
+            "label": "This Week vs Last Week",
+            "current": {
+              "gross_sales": 1800,
+              "net_sales": 1710,
+              "cogs": 0,
+              "pos_profit_loss": 1710,
+              "profit_margin": 100,
+              "total_transactions": 20,
+              "completed_transactions": 19,
+              "voided_refunded_transactions": 1,
+              "total_items_sold": 20,
+              "discounts": 0,
+              "refunds_voids": 90,
+              "vatable_sales": 1526.7849,
+              "vat": 183.2151,
+              "service_fees": 0,
+              "is_loss": false
+            },
+            "previous": {
+              "gross_sales": 0,
+              "net_sales": 0,
+              "cogs": 0,
+              "pos_profit_loss": 0,
+              "profit_margin": 0,
+              "total_transactions": 0,
+              "completed_transactions": 0,
+              "voided_refunded_transactions": 0,
+              "total_items_sold": 0,
+              "discounts": 0,
+              "refunds_voids": 0,
+              "vatable_sales": 0,
+              "vat": 0,
+              "service_fees": 0,
+              "is_loss": false
+            },
+            "sales_delta": 1710,
+            "profit_delta": 1710,
+            "sales_delta_percentage": 100,
+            "profit_delta_percentage": 100
+          },
+          {
+            "key": "this_month_vs_last_month",
+            "label": "This Month vs Last Month",
+            "current": {
+              "gross_sales": 1800,
+              "net_sales": 1710,
+              "cogs": 0,
+              "pos_profit_loss": 1710,
+              "profit_margin": 100,
+              "total_transactions": 20,
+              "completed_transactions": 19,
+              "voided_refunded_transactions": 1,
+              "total_items_sold": 20,
+              "discounts": 0,
+              "refunds_voids": 90,
+              "vatable_sales": 1526.7849,
+              "vat": 183.2151,
+              "service_fees": 0,
+              "is_loss": false
+            },
+            "previous": {
+              "gross_sales": 0,
+              "net_sales": 0,
+              "cogs": 0,
+              "pos_profit_loss": 0,
+              "profit_margin": 0,
+              "total_transactions": 0,
+              "completed_transactions": 0,
+              "voided_refunded_transactions": 0,
+              "total_items_sold": 0,
+              "discounts": 0,
+              "refunds_voids": 0,
+              "vatable_sales": 0,
+              "vat": 0,
+              "service_fees": 0,
+              "is_loss": false
+            },
+            "sales_delta": 1710,
+            "profit_delta": 1710,
+            "sales_delta_percentage": 100,
+            "profit_delta_percentage": 100
+          },
+          {
+            "key": "this_year_vs_last_year",
+            "label": "This Year vs Last Year",
+            "current": {
+              "gross_sales": 1800,
+              "net_sales": 1710,
+              "cogs": 0,
+              "pos_profit_loss": 1710,
+              "profit_margin": 100,
+              "total_transactions": 20,
+              "completed_transactions": 19,
+              "voided_refunded_transactions": 1,
+              "total_items_sold": 20,
+              "discounts": 0,
+              "refunds_voids": 90,
+              "vatable_sales": 1526.7849,
+              "vat": 183.2151,
+              "service_fees": 0,
+              "is_loss": false
+            },
+            "previous": {
+              "gross_sales": 0,
+              "net_sales": 0,
+              "cogs": 0,
+              "pos_profit_loss": 0,
+              "profit_margin": 0,
+              "total_transactions": 0,
+              "completed_transactions": 0,
+              "voided_refunded_transactions": 0,
+              "total_items_sold": 0,
+              "discounts": 0,
+              "refunds_voids": 0,
+              "vatable_sales": 0,
+              "vat": 0,
+              "service_fees": 0,
+              "is_loss": false
+            },
+            "sales_delta": 1710,
+            "profit_delta": 1710,
+            "sales_delta_percentage": 100,
+            "profit_delta_percentage": 100
+          }
+        ],
+        "flexible_trend": [
+          {
+            "period_index": 0,
+            "label": "2026-10-02",
+            "current_period": "2026-10-02",
+            "previous_period": "2026-10-01",
+            "current_net_sales": 1710,
+            "previous_net_sales": 0,
+            "current_gross_sales": 1800,
+            "previous_gross_sales": 0,
+            "current_pos_profit_loss": 1710,
+            "previous_pos_profit_loss": 0,
+            "current_total_transactions": 20,
+            "previous_total_transactions": 0
+          }
+        ],
+        "weekly_trend": [
+          {
+            "period": "2026-09-28",
+            "label": "2026-09-28",
+            "gross_sales": 1800,
+            "net_sales": 1710,
+            "cogs": 0,
+            "pos_profit_loss": 1710,
+            "profit_margin": 100,
+            "total_transactions": 20,
+            "completed_transactions": 19,
+            "voided_refunded_transactions": 1,
+            "total_items_sold": 20,
+            "discounts": 0,
+            "refunds_voids": 90,
+            "vatable_sales": 1526.7849,
+            "vat": 183.2151,
+            "service_fees": 0,
+            "is_loss": false
+          }
+        ],
+        "monthly_trend": [
+          {
+            "period": "2026-10",
+            "label": "2026-10",
+            "gross_sales": 1800,
+            "net_sales": 1710,
+            "cogs": 0,
+            "pos_profit_loss": 1710,
+            "profit_margin": 100,
+            "total_transactions": 20,
+            "completed_transactions": 19,
+            "voided_refunded_transactions": 1,
+            "total_items_sold": 20,
+            "discounts": 0,
+            "refunds_voids": 90,
+            "vatable_sales": 1526.7849,
+            "vat": 183.2151,
+            "service_fees": 0,
+            "is_loss": false
+          }
+        ]
+      },
+      "profit_loss": {
+        "gross_sales": 1800,
+        "net_sales": 1710,
+        "cogs": 0,
+        "pos_profit_loss": 1710,
+        "profit_margin": 100,
+        "total_transactions": 20,
+        "completed_transactions": 19,
+        "voided_refunded_transactions": 1,
+        "total_items_sold": 20,
+        "discounts": 0,
+        "refunds_voids": 90,
+        "vatable_sales": 1526.7849,
+        "vat": 183.2151,
+        "service_fees": 0,
+        "is_loss": false,
+        "label": "POS Profit/Loss",
+        "rows": [
+          {
+            "rank": 1,
+            "item_id": 179,
+            "item_name": "Casino Ethyl Alcohol",
+            "category": "Alcohol",
+            "item_sold": 20,
+            "gross_sales": 1800,
+            "cogs": 0,
+            "net_sales": 1710,
+            "net_profit": 1710,
+            "loss": 0,
+            "profit_margin": 100,
+            "pos_profit_loss": 1710
+          }
+        ]
+      },
+      "date_bounds": {
+        "first_transaction_date": "2026-07-29",
+        "today": "2026-10-27"
+      },
+      "z_reading_reconciliation": {
+        "status": "not_comparable",
+        "comparison_basis": "completed_recognized_transaction_total",
+        "business_date": "2026-10-02",
+        "location_id": 3,
+        "reading_identifier": null,
+        "generated_at": null,
+        "evaluated_at": "2026-10-27T05:56:19.210Z",
+        "snapshot_persisted": false,
+        "report_recognized_sales": null,
+        "z_total_amount": null,
+        "variance": null,
+        "report_net_sales": 1710,
+        "report_refunds_voids": 90,
+        "report_adjustment_amount": 0,
+        "report_adjustment_net_sales_impact": 0,
+        "report_cash_refunds_voids": 90,
+        "report_voided_refunded_transactions": 1,
+        "reconciliation_inputs": {
+          "transactions": "PosTransaction.completed",
+          "payments": "PosTransaction.payment_breakdown",
+          "adjustments": "PosTransactionAdjustment.succeeded_or_reviewable",
+          "reading_snapshot": "PosZReadingSnapshot.summary",
+          "closed_shift_gate": "POS close-day usecase"
+        },
+        "adjustment_reconciliation": {
+          "status": "included",
+          "adjustment_count": 0,
+          "succeeded_amount": 0,
+          "net_sales_impact": 0,
+          "mutates_prior_z_reading": false
+        },
+        "z_payment_breakdown": [],
+        "z_void_transaction_count": null,
+        "z_void_amount": null,
+        "message": "Clear cashier, terminal, payment, source, and category filters to compare the full day with its Z-reading."
+      }
+    },
+    "message": null
+  }
+}

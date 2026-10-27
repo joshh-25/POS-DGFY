@@ -317,6 +317,55 @@ describe('extracted POS Settings workspace', () => {
     expect(screen.getByRole('button', { name: 'Set Up Now', exact: true })).toBeTruthy();
   });
 
+  it('uses explicit taxpayer choices and exposes fiscal setup readiness', () => {
+    const setPosForm = vi.fn();
+    render(<PosBusinessReceiptsSection
+      locked={false}
+      loading={false}
+      posForm={{ taxpayerType: 'VAT' }}
+      setPosForm={setPosForm}
+    />);
+
+    const taxpayerType = screen.getByRole('combobox', { name: 'Taxpayer Type' });
+    expect(taxpayerType.value).toBe('vat_registered');
+    expect(screen.getByTestId('fiscal-setup-readiness').dataset.readinessState).toBe('configured');
+    expect(screen.getByText('Taxpayer type configured')).toBeTruthy();
+  });
+
+  it('marks unknown stored taxpayer values for review without rewriting them', () => {
+    const setPosForm = vi.fn();
+    render(<PosBusinessReceiptsSection
+      locked={false}
+      loading={false}
+      posForm={{ taxpayerType: 'legacy-custom-value' }}
+      setPosForm={setPosForm}
+    />);
+
+    const taxpayerType = screen.getByRole('combobox', { name: 'Taxpayer Type' });
+    expect(taxpayerType.value).toBe('__needs_review__');
+    expect(screen.getByTestId('fiscal-setup-readiness').dataset.readinessState).toBe('needs_review');
+    expect(screen.getByText('Needs review')).toBeTruthy();
+
+    fireEvent.change(taxpayerType, { target: { value: 'non_vat_registered' } });
+    const updateForm = setPosForm.mock.calls.at(-1)[0];
+    expect(updateForm({ taxpayerType: 'legacy-custom-value' }).taxpayerType).toBe('non_vat_registered');
+  });
+
+  it('blocks POS setup save when a nonblank taxpayer value is unrecognized', async () => {
+    getAllSettings.mockResolvedValue({ pos_taxpayer_type: { value: 'legacy-custom-value' } });
+    render(<PosSettingsWorkspace {...buildProps({
+      initialTab: 'pos_setup',
+      terminalUser: { ...buildProps().terminalUser, is_master_admin: true }
+    })} />);
+
+    expect(await screen.findByTestId('fiscal-setup-readiness')).toBeTruthy();
+    fireEvent.change(await screen.findByPlaceholderText('e.g. Tinda Han'), { target: { value: 'Updated Style' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Save Changes', exact: true }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Choose VAT registered or Non-VAT registered before saving POS setup.'));
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
   it('keeps the canonical business name out of the OPIS receipt metadata editor', () => {
     const setPosForm = vi.fn();
     render(<PosBusinessReceiptsSection

@@ -15,6 +15,9 @@ const businessAdminService = readRepoFile('apps/dgfy-opis/src/features/businessA
 describe('Business Admin approval queue contract', () => {
     it('keeps approval review and decision actions on the OPIS Business Admin surface', () => {
         expect(businessAdminPage).toContain("activeSection === 'approvals'");
+        expect(businessAdminPage).toContain('data-testid="business-admin-administrative-tools"');
+        expect(businessAdminPage).toContain('data-testid={`business-admin-admin-tool-${tool.key}`}');
+        expect(businessAdminPage).toContain('onOpenAdministrativeTool={handleAdministrativeToolNavigate}');
         expect(businessAdminPage).toContain("businessAdminApi.approvals({ status: 'pending', limit: 100 }, requestConfig)");
         expect(businessAdminPage).toContain("businessAdminApi.decideApproval(id, decision, `${decision} requested from Back Office.`)");
         expect(businessAdminPage).toContain('Review the reason and target before deciding. POS and Inventory perform approved changes');

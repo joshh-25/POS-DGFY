@@ -32584,3 +32584,583 @@ Not complete. Record only after merge and implementation validation pass.
 ### Next phase number
 
 Phase 555. No explicit dependency.
+
+## Phase 555 - OPIS & POS BIR implementation — Step 01 baseline and source completeness
+
+### Initiative and release
+
+OPIS & POS BIR implementation plan dated 2026-10-26. Working revision:
+`d56cee18700989e75fac3ba8c1fce334c6224145` on `codex/updates-pos`.
+
+### Objective and scope
+
+Execute Step 01 of the approved BIR implementation plan: verify the complete source
+baseline, app build surfaces, critical frontend/backend tests, migration status, and local
+runtime health before fiscal behavior changes. This phase does not certify BIR compliance,
+invent tax rules, or alter production financial records.
+
+### Status
+
+`in_progress` — source completeness, runtime launch, focused backend baseline, source
+re-audit, local Redis/connection-budget profile, and authenticated local compliance
+preflight are verified. External release evidence is not claimed by this local-only
+phase.
+
+### Dependencies
+
+The current working tree contains pre-existing user changes and Phase 554 remains in progress.
+The baseline evidence was collected without resetting or overwriting those changes. Final
+integrated BIR validation must use an isolated, traceable revision after the current work is
+dispositioned.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0007](../architecture/adr/0007-dual-mode-pos-compliance-program.md),
+[ADR 0014](../architecture/adr/0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md),
+[ADR 0042](../architecture/adr/0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md),
+[ADR 0045](../architecture/adr/0045-shared-pos-receipt-renderer.md), and
+[ADR 0087](../architecture/adr/0087-dedicated-back-office-fourth-frontend-app-opis.md).
+Classification: within-existing-boundary for baseline verification; later fiscal model or
+policy changes may require cross-boundary review under ADR 0039.
+
+### Implementation targets
+
+Step 01 changed only the existing POS controller facade and its route-test mock to restore the
+already-declared handler/export contract; no fiscal logic or migration changed. Evidence:
+[posController.js](../../apps/dgfy-api/src/controllers/posController.js),
+[posVoid.route.transport.test.js](../../apps/dgfy-api/tests/posVoid.route.transport.test.js),
+[BIR Step 01 baseline](../compliance/evidence/bir-step-01-baseline-2026-10-26.md).
+
+### Acceptance and validation evidence
+
+- [x] Complete API, migration-runner, POS, OPIS, receipt, shared-core, and shared-constants
+  source units are present in the working checkout.
+- [x] Architecture and documentation/ADR gates pass.
+- [x] POS, OPIS, Storefront, and IMS builds pass.
+- [x] POS and OPIS unit suites pass.
+- [x] Backend BIR/compliance/fiscal/offline-focused suites pass (29 suites / 234 tests).
+- [x] Local migrations report fully up; MySQL and all local app/API/device health endpoints
+  respond successfully.
+- [x] Compliance impact declaration is reconciled by the authenticated local preflight
+  for the pre-existing sensitive working-tree changes; no Docker or staging environment
+  is required for this local-only evidence.
+- [x] POS void transport suite is unblocked and passes after the controller-facade/test-mock
+  compatibility repair.
+- [x] Missing original BIR source-audit input is independently re-audited in the current
+  checkout; the replacement does not claim to reproduce the unavailable A01–A15 file.
+- [x] Redis and connection-budget environment findings are dispositioned for the local test
+  profile: Redis connected and `10 x 4 + 20 = 60 <= 151`.
+
+### Completion date
+
+Local baseline closure completed on 2026-10-27. External release evidence and formal
+review remain outside this local-only change.
+
+### Post-merge verification
+
+- [ ] Re-run the complete G0 evidence set against the exact release revision before any fiscal
+  release decision.
+- [ ] Confirm deployed API, POS, OPIS, printer package, and schema versions match the evidence
+  manifest.
+
+### Next phase number
+
+Phase 556. Step 02 — reviewed fiscal document specification.
+
+## Phase 556 - OPIS & POS BIR implementation — Step 02 fiscal specification draft
+
+### Initiative and release
+
+OPIS & POS BIR implementation plan dated 2026-10-26. Drafting follows Phase 555's passing
+code/test baseline; fiscal release evidence remains held.
+
+### Objective and scope
+
+Prepare a non-authoritative Fiscal Document Specification v1 that captures existing repository
+contracts and exposes every unresolved tax, numbering, printing, discount, adjustment, X/Z,
+eJournal/eSales, hardware, and offline decision for qualified review. Do not implement or infer
+statutory behavior from the draft.
+
+### Status
+
+`in_progress` — draft created; G1 remains pending product and tax/accounting review.
+This is an external approval gate, not a local POS/API/OPIS implementation blocker.
+
+### Dependencies
+
+Phase 555's local code/test baseline, source re-audit, and compliance declaration
+reconciliation are complete. Final fiscal code decisions depend on the approved
+specification and its examples; that reviewer work is outside the local-only change.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0007](../architecture/adr/0007-dual-mode-pos-compliance-program.md),
+[ADR 0014](../architecture/adr/0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md),
+[ADR 0033](../architecture/adr/0033-commercial-promo-and-statutory-pos-discount-boundaries.md),
+[ADR 0042](../architecture/adr/0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md),
+[ADR 0045](../architecture/adr/0045-shared-pos-receipt-renderer.md), and
+[Fiscal Document Specification v1](../compliance/FISCAL_DOCUMENT_SPEC_V1.md).
+Classification: cross-layer fiscal/compliance contract; any change to binding ADR clauses
+requires the ADR 0039 path and tech-lead approval.
+
+### Implementation targets
+
+[FISCAL_DOCUMENT_SPEC_V1.md](../compliance/FISCAL_DOCUMENT_SPEC_V1.md). No source, model, or
+migration behavior is changed by this phase.
+
+### Acceptance and validation evidence
+
+- [x] Existing server-owned fiscal/document contracts are recorded without changing them.
+- [x] All unresolved legal/product decisions are explicit and assigned to a reviewer.
+- [ ] Tax/accounting reviewer approves the fiscal document specification and examples.
+- [ ] Product owner approves supported hardware, offline, numbering, and release identity.
+- [ ] G1 is recorded as PASS with the final version and evidence manifest.
+
+### Completion date
+
+Not complete. Record after reviewer decisions and G1 validation.
+
+### Post-merge verification
+
+- [ ] Confirm the implemented release uses the approved specification version.
+- [ ] Confirm the evidence bundle contains the reviewer-approved examples and no fabricated
+  identifiers or unsupported statutory categories.
+
+### Next phase number
+
+Phase 557. Step 03 — fail-safe fiscal and business setup.
+
+## Phase 557 - OPIS & POS BIR implementation — Step 03 fiscal renderer fail-safe slice
+
+### Initiative and release
+
+OPIS & POS BIR implementation plan dated 2026-10-26. This phase begins the approved
+Step 03 work with local POS/OPIS validation; Docker and deployed-environment checks
+are not prerequisites for this local-only implementation.
+
+### Objective and scope
+
+Prevent POS receipt preview and iMin physical printing from silently treating a blank
+or arbitrary taxpayer setting as VAT. This is a renderer/printer safety slice only; it
+does not choose the final statutory enum, tax policy, fiscal identifiers, or migration
+strategy.
+
+### Status
+
+`in_progress` — the shared receipt surfaces now fail closed and the remaining
+server/client work is implemented by Phases 558–560. Tax/accounting approval and
+later release/regulatory evidence remain external review work, not local blockers.
+
+### Dependencies
+
+Phase 556 remains in progress. The renderer accepts existing repository spellings for
+backward-compatible reads (`VAT`, `VAT_REGISTERED`, `vat_registered`, and recognized
+non-VAT equivalents), but unknown values resolve to no classification. The
+authenticated local compliance preflight is reconciled against the worktree API;
+no Docker or staging environment is required for this local scope.
+
+### Implementation targets
+
+- `packages/pos-receipt/src/index.js` — shared taxpayer-type resolver and fail-closed
+  HTML/thermal rendering.
+- `packages/web-core/src/features/pos/components/ReceiptPrintView.jsx` — retained
+  legacy renderer guard for parity.
+- `packages/web-core/src/features/pos/utils/iminHardwareBridge.js` — physical print
+  text guard and no-command issuance result for incomplete fiscal setup.
+- `packages/web-core/src/features/pos/__tests__/receiptContractConformance.contract.test.js`
+  — explicit VAT/non-VAT fixtures and unknown-type regression coverage.
+- [Fiscal renderer impact declaration](../compliance/impact-declarations/2026-10-26-fiscal-renderer-taxpayer-fail-safe.md).
+
+### Acceptance and validation evidence
+
+- [x] Blank or unknown taxpayer type no longer defaults to VAT in the shared HTML
+  renderer.
+- [x] Blank or unknown taxpayer type no longer defaults to VAT in iMin text output.
+- [x] iMin fiscal print command is blocked with `FISCAL_SETUP_INCOMPLETE` when setup
+  is incomplete.
+- [x] Explicit VAT and non-VAT legacy values render the corresponding label.
+- [x] Focused receipt contract validation passed: 2 files / 25 tests.
+- [x] POS/OPIS settings expose explicit taxpayer choices and a fiscal setup
+  readiness status without silently rewriting stored legacy values.
+- [x] POS/OPIS client save validation blocks newly submitted unknown nonblank taxpayer
+  values; server-side validation is covered by Phases 559–560.
+- [x] Server-enforced taxpayer validation is implemented and covered by the local
+  API/migration/preflight evidence; statutory approval remains external.
+- [x] Server-side fiscal issuance boundary enforcement; implemented and covered by
+  Phase 559 API and POS checkout contracts.
+- [x] Existing-setting migration/readiness review without silent tenant rewriting;
+  completed by the Phase 559 idempotent local migration run.
+- [ ] Tax/accounting and product approval of the fiscal specification and examples
+  remain external review work.
+- [ ] G2 evidence and later release acceptance remain outside this local-only change.
+
+### Completion date
+
+Local implementation and validation are complete across Phases 557–560 on
+2026-10-27. Formal approval and later release evidence are intentionally not
+claimed here.
+
+### Post-merge verification
+
+- [x] Verify locally that a fiscal preview and iMin print are blocked for
+  blank/unknown taxpayer type.
+- [x] Verify locally that explicit VAT and non-VAT settings render only their
+  approved internal labels and identifier vocabulary.
+- [x] Reconcile the impact declaration with the authenticated local preflight;
+  later promotion evidence is outside this local-only scope.
+
+### Next phase number
+
+Phase 558. Complete Step 03 business setup validation and issuance-boundary work.
+
+## Phase 558 - OPIS & POS BIR implementation — POS/OPIS fiscal setup readiness slice
+
+### Initiative and release
+
+OPIS & POS BIR implementation plan dated 2026-10-26. This phase continues Step 03
+within the POS/OPIS-facing settings boundary only.
+
+### Objective and scope
+
+Make taxpayer classification explicit in the existing POS Setup / Business & Receipts
+settings surface consumed by both standalone POS and OPIS. Preserve legacy stored
+aliases for read compatibility, identify unknown values for review, and block POS/OPIS
+client saves that submit an unrecognized nonblank classification. No API, database,
+Storefront, or IMS source is changed by this slice.
+
+### Status
+
+`in_progress` — the POS/OPIS presentation and client guard are implemented, and
+the server validation, migration review, and fiscal issuance enforcement are
+closed by Phases 559–560. Later release/regulatory evidence remains deferred.
+
+### Dependencies
+
+Phase 557's shared renderer resolver is the read/validation vocabulary. The final
+stored enum remains subject to the approved Fiscal Document Specification and
+tax/accounting review. Existing unrelated dirty API/Storefront changes are outside
+this phase and were not modified.
+
+### Implementation targets
+
+- `packages/web-core/src/features/pos/settings/PosBusinessReceiptsSection.jsx` —
+  explicit VAT/non-VAT selector and Fiscal Setup Readiness status.
+- `packages/web-core/src/features/pos/settings/PosSettingsWorkspace.jsx` —
+  POS/OPIS client-side save guard for unknown nonblank taxpayer values.
+- `packages/web-core/src/features/pos/__tests__/PosSettingsWorkspace.behavior.test.jsx`
+  — configured, needs-review, selection, and save-blocking coverage.
+
+### Acceptance and validation evidence
+
+- [x] Recognized legacy `VAT` values display as the canonical VAT option without
+  changing the stored value until the user selects and saves a new option.
+- [x] Unknown stored values display `Needs review` and remain unchanged until the
+  user chooses an explicit option.
+- [x] POS/OPIS client save blocks unknown nonblank taxpayer values with an actionable
+  message.
+- [x] Targeted settings tests passed: 3 taxpayer/readiness tests; the full settings
+  behavior file passed 46/46 when run with the receipt suite.
+- [x] Server/API save validation and read-only projection enforcement; completed in
+  Phase 559 without changing persisted raw values.
+- [x] Existing-setting migration/readiness assignment without silent rewriting;
+  completed by the Phase 559 idempotent local migration run.
+- [ ] G2 fiscal issuance and later release acceptance remain outside this
+  local-only change; they are not a staging blocker.
+
+### Completion date
+
+Local implementation and validation are complete on 2026-10-27. Formal approval
+and later release evidence are intentionally not claimed here.
+
+### Post-merge verification
+
+- [x] Verify POS and OPIS both show the same readiness state for a legacy alias and
+  an unknown value in the local reload matrix.
+- [x] Verify local readiness/selection behavior persists through reload in both
+  surfaces.
+- [x] Verify locally that a fiscal receipt cannot issue until the server-side
+  taxpayer setup contract is present.
+
+### Next phase number
+
+Phase 559. Server-side fiscal setup validation and migration review after approval.
+
+## Phase 559 - OPIS & POS BIR implementation — server fiscal setup enforcement
+
+### Initiative and release
+
+OPIS & POS BIR implementation plan dated 2026-10-26. This phase is the approved
+API and migration-runner continuation of Step 03 after the POS/OPIS presentation
+and client guard work in Phase 558.
+
+### Objective and scope
+
+Make taxpayer classification a server-owned fiscal setup prerequisite while
+preserving existing recognized aliases. Reject unknown nonblank values on both
+settings write paths, expose canonical/readiness projections without rewriting
+the raw setting, block new fiscal issuance when setup is incomplete, and seed the
+tenant-scoped EAV setting idempotently across landlord and active tenant schemas.
+Non-fiscal checkout and historical idempotent replay remain unchanged.
+
+### Status
+
+`in_progress` — the scoped API, shared resolver, compliance policy, issuance
+guard, migration, local database execution, and authenticated local preflight are
+complete. Tax/accounting approval and later deployed/regulatory evidence remain
+outside this local-only change and are not local implementation blockers.
+
+### Dependencies
+
+Phase 557's fail-closed renderer and Phase 558's POS/OPIS readiness UI provide the
+shared vocabulary and presentation. The Fiscal Document Specification remains a
+draft and does not authorize new statutory tax semantics. Existing unrelated
+Storefront/IMS changes in the worktree remain outside this phase.
+
+### Implementation targets
+
+- `packages/shared-constants/src/posTaxpayerType.js` — canonical values, legacy
+  aliases, resolver, and readiness contract shared by API and receipt rendering.
+- `apps/dgfy-api/src/validators/settingsValidator.js` and settings use cases —
+  bulk/single write validation plus raw-preserving read projections.
+- `apps/dgfy-api/src/modules/compliance/policy/policyPacks.js` and
+  `compliancePolicyEngine.js` — taxpayer-type activation requirement and unknown
+  value handling.
+- `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js` — final fiscal issuance
+  guard after the server-owned receipt contract resolves.
+- `apps/dgfy-migration-runner/migrations/20261026000002-add-pos-taxpayer-type-setting.cjs`
+  — idempotent landlord/active-tenant seed with data-preserving rollback.
+- `docs/compliance/impact-declarations/2026-10-26-pos-fiscal-setup-server-enforcement.md`.
+
+### Acceptance and validation evidence
+
+- [x] Bulk and single settings writes reject unknown nonblank taxpayer values;
+  recognized legacy aliases and blank/not-configured values are handled explicitly.
+- [x] Settings reads expose canonical taxpayer resolution and fiscal setup
+  readiness without changing the persisted raw value.
+- [x] Compliance activation readiness marks blank/unknown taxpayer values as an
+  incomplete fiscal setting.
+- [x] New fiscal issuance fails with `FISCAL_SETUP_INCOMPLETE` when taxpayer
+  classification is unavailable; non-fiscal checkout is not changed.
+- [x] Migration harness proves landlord/active-tenant seeding, idempotency,
+  existing-value preservation, and data-preserving rollback.
+- [x] API BIR-focused suite passed locally: 6 suites / 104 tests.
+- [x] POS production build passed; OPIS production build passed; shared POS
+  settings/receipt tests passed: 2 files / 65 tests.
+- [x] Local non-production migration run completed against `sku_inventory_manager`;
+  the landlord schema and all 17 active tenant schemas contain the setting, and a
+  second run reported no pending migrations.
+- [x] Authenticated local compliance preflight passed for the two BIR declarations
+  with HTTP 200, `no_breach`, `can_proceed=true`, and `ALLOWED`; references are
+  recorded in the declaration front matter.
+- [ ] Tax/accounting and product approval of the fiscal specification and examples
+  remain external review work, not a local implementation blocker.
+- [ ] Deployed G2 fiscal issuance and non-fiscal regression evidence is deferred
+  outside this local-only change and is not a staging requirement for this work.
+
+### Completion date
+
+Local implementation and validation completed on 2026-10-27. The phase remains
+`in_progress` until this working-tree change follows the repository's normal
+commit/merge process; no PR or deployment is created by this local validation.
+
+### Post-merge verification
+
+- [x] Verify the migration adds `pos_taxpayer_type` to landlord and active tenant
+  schemas while preserving any existing alias or selected value; local verification
+  covered the landlord schema plus all 17 active tenant schemas.
+- [x] Verify POS and OPIS show the same readiness state for blank, legacy alias,
+  and unknown values after a local API reload.
+- [x] Verify a fiscal invoice cannot issue until the server-side taxpayer setup
+  requirement is configured, while non-fiscal checkout still succeeds locally.
+- [x] Reconcile the impact declaration with the authenticated local preflight;
+  any deployed promotion gate remains outside this local-only scope.
+
+### Next phase number
+
+Phase 560. Local POS fiscal setup preflight. Deployed G2 acceptance remains a later
+release gate after the local preflight is complete.
+
+## Phase 560 - OPIS & POS BIR implementation — local POS fiscal setup preflight
+
+### Initiative and release
+
+OPIS & POS BIR implementation plan dated 2026-10-26. This phase is intentionally
+local-only and does not depend on a develop, staging, or production environment.
+
+### Objective and scope
+
+Prove the Phase 559 taxpayer-type and fiscal-issuance safeguards against the local
+POS/API/migration stack before any external release activity. Validate the local
+POS operator experience, API behavior, migration state, and non-fiscal continuity
+with disposable local data. Do not call this phase deployed G2 certification.
+
+### Status
+
+`in_progress` — local stack, the full authenticated POS Settings regression
+(13/13), the disposable database fiscal-block/non-fiscal-success scenarios, and
+the fresh POS/OPIS three-state readiness matrix are green. OPIS local navigation
+and the device-bridge/iMin contract checks are green, and the POS admin
+readiness browser path now reaches the blank-state readiness panel after the
+branch-directory dismissal fix. No native iMin wrapper is available in
+Chromium for physical receipt evidence.
+
+### Local preflight execution record — 2026-10-26
+
+- The branch-scoped local smoke command now derives the catalog `location_id`
+  from the configured location, active shift, or first active tenant location;
+  the previous unscoped catalog request was the source of the
+  `POS_LOCATION_ACCESS_DENIED` smoke failure.
+- The focused API contract run passed 4 suites and 86 tests, including a
+  controlled fiscal-checkout guard asserting `FISCAL_SETUP_INCOMPLETE`, rollback,
+  and no transaction, inventory, or fiscal-event writes. Existing non-fiscal
+  checkout coverage continues to assert explicit `non_fiscal` persistence and
+  expected stock mutations.
+- The earlier authenticated local smoke run passed 10/10 checks. Its POS
+  Settings subset passed 2/2 authenticated browser checks; OPIS login/register
+  smoke passed 2/2;
+  targeted OPIS stability/settings tests passed 18/18; the OPIS production build
+  completed successfully.
+- The live Masu Cafe fiscal probe returned HTTP 403
+  `NON_COMPLIANT_FISCAL_DOCUMENT_BLOCKED` before the taxpayer-type guard because
+  the tenant is currently `non_compliant_active`. It did not create a financial
+  or stock mutation, but it is not evidence of the later
+  `FISCAL_SETUP_INCOMPLETE` branch.
+- Authenticated settings readback currently matches POS and the shared API
+  projection: raw taxpayer type is blank, resolved type is null, and readiness
+  is `not_configured` with `POS_TAXPAYER_TYPE_NOT_CONFIGURED`. Legacy-alias and
+  unknown persisted states were not written to the local tenant during this
+  run.
+- The new disposable MySQL integration gate passed 3/3 tests in
+  `apps/dgfy-api/tests/posTaxpayerTypeLocalPreflight.db.integration.test.js`.
+  Against a uniquely named migrated test database, a blank-taxpayer fiscal
+  requests with blank and unknown taxpayer values returned
+  `FISCAL_SETUP_INCOMPLETE` with unchanged transaction,
+  transaction-line, fiscal-event, item-stock, location-stock, and stock-movement
+  state; a non-fiscal checkout then succeeded with an explicit
+  `non_fiscal_slip`; and the real settings use case projected blank,
+  `VAT_REGISTERED`, and `legacy_unknown` as `not_configured`, `configured`, and
+  `needs_review`. The database was dropped during cleanup. The redacted evidence
+  manifest is [pos-taxpayer-type-local-preflight-2026-10-26.json](../compliance/evidence/pos-taxpayer-type-local-preflight-2026-10-26.json).
+- OPIS was exercised on the local 5176 surface by selecting Masu Cafe Indian
+  Foodszt from `/dgfy/companies`, then opening the dashboard and
+  `/settings/profile`. The settings check recorded no page errors or HTTP 5xx
+  responses. Reusing the POS browser state also produced one HTTP 400 on
+  `/api/v1/auth/refresh-token`, so this is not a clean cross-surface
+  authentication certification.
+- The local device bridge health endpoint returned HTTP 200 on port 5101.
+  The iMin native-driver, printer-availability, hardware-registry, receipt,
+  and Web POS ready-signal checks passed 31/31. Chromium does not expose a
+  native `window.iMinBridge`; native iMin evidence is explicitly deferred
+  because no iMin device or wrapper is available in the local environment.
+- A Windows driver test page was submitted to the installed Brother DCP-T720DW
+  printer through its WSD/IPP transport; the driver reported one page printed
+  and the queue cleared. This proves Windows printer transport only. The POS
+  device bridge still detected zero USB ESC/POS printers, and its test-print
+  command returned `TEST_PRINT_FAILED: No USB ESC/POS printers were detected`.
+  The wireless browser-print path remains the applicable local printer path;
+  USB ESC/POS bridge evidence is deferred because no compatible device is
+  available. Operator confirmation of paper output is pending.
+- The first fresh authenticated POS settings attempt reproduced a real
+  branch-directory race: an explicit directory dismissal was followed by a
+  late hydration reopen that intercepted Settings/POS Setup navigation.
+  `TerminalPage` now remembers an explicit directory dismissal for the current
+  session, resets it on an intentional directory open or session end, and the
+  branch-directory helper has a regression contract for the suppression rule.
+  Selecting `View Branch` remains intentionally read-only and was not used as a
+  workaround.
+- After that fix, a fresh local admin path completed authentication and tenant
+  selection, kept the branch directory closed after the hydration wait, handled
+  the admin-only `Skip for Admin` shift gate, opened Settings → POS Setup →
+  Business & Receipts, and read fiscal readiness as `not_configured`. The final
+  authenticated Settings regression file passed 13/13. No page errors or HTTP
+  5xx responses were recorded after sign-in; the initial unauthenticated shell
+  may issue a 401 while it restores the local session.
+- A fresh local browser matrix reloaded POS on port 5174 and OPIS on port 5176
+  for blank, `VAT_REGISTERED`, and `legacy_unknown` values. POS and OPIS both
+  projected `not_configured`, `configured`, and `needs_review` respectively;
+  POS kept the branch selector closed after hydration for all three states, and
+  neither surface recorded authenticated runtime errors. The original blank
+  tenant setting was restored after the matrix.
+- The authenticated Settings regression setup now waits for delayed startup
+  branch hydration before clicking Settings. This removes a harness race where
+  stored-auth tests could click behind a still-opening branch dialog; it does
+  not weaken the product dialog or permission behavior.
+
+### Worktree-local revalidation — 2026-10-27
+
+- The worktree API on `127.0.0.1:5002` passed the authenticated POS smoke path:
+  health, DGFY login, company selection, tenant session, locations, current
+  shift, user/settings, catalog, and device status all returned HTTP 200.
+- The worktree POS on `127.0.0.1:5180` passed the three-state browser matrix:
+  blank → `not_configured`, `VAT_REGISTERED` → `configured`, and
+  `legacy_unknown` → `needs_review`. The branch dialog remained closed after
+  hydration and the runtime capture recorded no page errors, console errors,
+  failed requests, or HTTP 5xx responses.
+- The worktree OPIS on `127.0.0.1:5181` passed the same three-state matrix;
+  each settings projection returned HTTP 200 with the expected readiness state,
+  and the runtime capture recorded no errors or HTTP 5xx responses.
+- Both browser runs restored the local tenant's original blank taxpayer setting.
+  These worktree ports supersede the earlier shared-XAMPP-port observations;
+  no staging or deployed environment was used.
+
+### Dependencies
+
+Phase 559 local implementation and migration validation. No branch promotion,
+remote deployment, external tenant, or tax/accounting sign-off is required for
+this local preflight.
+
+### Acceptance and validation evidence
+
+- [x] Local POS, API, device bridge, Storefront, SKUpervisor, and MySQL services
+  start and respond on their configured local ports.
+- [x] Local migration runner applies the taxpayer-type setting idempotently across
+  the landlord and active tenant schemas; a second run reports no pending work.
+- [x] Authenticated local POS Settings regression suite passed 13/13 after the
+  branch-directory dismissal fix, including responsive navigation, keyboard
+  focus, branch editing, uploads, pagination, and the all-settings smoke path.
+- [x] Local POS login, smoke, security-header, input-safety, and long-input tests
+  passed: 6 tests.
+- [x] With a disposable local tenant, prove blank and unknown taxpayer setup blocks
+  fiscal issuance with `FISCAL_SETUP_INCOMPLETE` and causes no financial or stock
+  mutation.
+- [x] With the same controlled local setup, prove non-fiscal checkout still
+  succeeds and remains explicitly non-fiscal.
+- [x] At the local API settings boundary, prove blank, recognized legacy-alias,
+  and unknown taxpayer values produce deterministic readiness projections.
+- [x] Reload POS and OPIS after blank, recognized legacy-alias, and unknown values
+  and capture matching readiness states.
+- [x] Validate the local receipt-renderer/browser-print contract and the installed
+  Windows wireless printer transport. Physical paper confirmation remains
+  operator evidence, not a local code blocker.
+
+### Explicitly deferred hardware evidence
+
+- Native iMin wrapper and physical iMin receipt evidence are deferred until an
+  iMin device/wrapper is available. This is an environment limitation, not a
+  failed POS/OPIS implementation test.
+- Direct USB ESC/POS device-bridge evidence is deferred because the available
+  local printer uses WSD/IPP wireless transport. The existing POS browser-print
+  fallback is the applicable local path for this printer.
+
+### Completion date
+
+Local engineering scope complete on 2026-10-27. The phase remains `in_progress`
+until the working-tree change follows the repository's normal commit/merge
+process; no staging or production validation is required for this local phase.
+
+### Post-merge verification
+
+- [x] Preserve the local evidence manifest with the exact local commit, migration
+  result, test commands, redacted tenant identifier, and before/after mutation
+  checks.
+- [ ] Keep later release/regulatory fiscal acceptance separate; local completion
+  must not be used as deployed or formal BIR certification.
+
+### Next phase number
+
+No additional local phase. Later release/regulatory acceptance is deferred outside
+this local-only change and is not a staging blocker.

@@ -1,0 +1,4 @@
+status=PASS
+environment=LOCAL_ONLY
+evidence_label=LOCAL TEST - NOT FOR SUBMISSION
+reason=The software operating manual is factual and local; no unverified machine brochure is claimed.

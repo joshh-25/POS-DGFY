@@ -368,6 +368,45 @@ describe('StorefrontBusinessGrowPage — three-step company registration', () =>
     expect(companyName.value).toBe('Acme Corp');
   });
 
+  it('shows conflict recovery and reloads the latest draft without overwriting local edits', async () => {
+    const latestDraft = makeDraft({
+      payload: {
+        ...makeDraft().payload,
+        business: { company_name: 'Latest Cafe', industry_key: 'micro_fnb' }
+      }
+    });
+    apiMock.get.mockImplementation(async (url) => {
+      if (url === '/registration/industries') {
+        return {
+          data: {
+            data: {
+              industries: [{ key: 'micro_fnb', label: 'Micro Food & Beverage', summary: 'Food and beverage businesses' }]
+            }
+          }
+        };
+      }
+      if (url === '/registration/drafts/draft-1') return { data: { success: true, data: latestDraft } };
+      throw new Error(`Unexpected GET ${url}`);
+    });
+    const conflict = new Error('This registration draft changed. Reload it before saving again.');
+    conflict.response = { status: 409, data: { message: conflict.message } };
+    apiMock.patch.mockRejectedValueOnce(conflict);
+
+    renderPage();
+
+    const companyName = await screen.findByLabelText('Company name');
+    fireEvent.change(companyName, { target: { value: 'Local Cafe' } });
+    await waitFor(() => expect(screen.getByText('This registration changed elsewhere.')).toBeTruthy(), { timeout: 3000 });
+    expect(companyName.value).toBe('Local Cafe');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Review my unsaved edits' }));
+    expect(companyName.value).toBe('Local Cafe');
+    fireEvent.click(screen.getByRole('button', { name: 'Reload latest' }));
+    await waitFor(() => expect(apiMock.get).toHaveBeenCalledWith('/registration/drafts/draft-1', expect.anything()));
+    await waitFor(() => expect(companyName.value).toBe('Latest Cafe'));
+    expect(screen.queryByText('This registration changed elsewhere.')).toBeNull();
+  });
+
   it('saves each step and submits the draft with separate legal consents', async () => {
     const savedStorefrontValues = {
       delivery_partners: [{ partner: 'grab', label: 'Grab', url: 'https://www.grab.com' }],
@@ -503,7 +542,7 @@ describe('StorefrontBusinessGrowPage — three-step company registration', () =>
     expect(screen.queryByLabelText(/latitude/i)).toBeNull();
     expect(screen.queryByLabelText(/longitude/i)).toBeNull();
     const mapPicker = await screen.findByRole('group', { name: 'Map picker test controls' });
-    expect(mapPicker.getAttribute('data-map-height-class')).toBe('h-[150px] rounded-xl sm:h-[340px] lg:h-[420px]');
+    expect(mapPicker.getAttribute('data-map-height-class')).toBe('h-[260px] rounded-xl sm:h-[340px] lg:h-[420px]');
     expect(screen.getByText('Search for an address below or click the map to place a pin. Then add it as your first branch location.')).toBeTruthy();
     const businessHoursHeading = screen.getByRole('heading', { name: 'Business Hours', exact: true });
     const businessHoursIntroHeader = businessHoursHeading.parentElement?.parentElement?.parentElement;
@@ -515,7 +554,7 @@ describe('StorefrontBusinessGrowPage — three-step company registration', () =>
     expect(screen.getByText('Max 10 MB each, up to 5 files')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'browse computer storage' })).toBeTruthy();
     expect(screen.getByRole('list', { name: 'Supported menu file types' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /submit and create company/i }).disabled).toBe(true);
+    expect(screen.getByRole('button', { name: /submit registration/i }).disabled).toBe(true);
 
     fireEvent.click(screen.getByRole('button', { name: 'Place map pin' }));
     const addBranchButton = screen.getByRole('button', { name: 'Add branch location' });
@@ -555,8 +594,8 @@ describe('StorefrontBusinessGrowPage — three-step company registration', () =>
     expect(await screen.findByRole('button', { name: 'Change branch location' })).toBeTruthy();
     fireEvent.click(screen.getByLabelText(/Company Registration Terms/i));
     fireEvent.click(screen.getByLabelText(/Marketplace Terms/i));
-    expect(screen.getByRole('button', { name: /submit and create company/i }).disabled).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: /submit and create company/i }));
+    expect(screen.getByRole('button', { name: /submit registration/i }).disabled).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: /submit registration/i }));
 
     await waitFor(() => expect(apiMock.post).toHaveBeenCalledWith('/registration/drafts/draft-1/submit', expect.objectContaining({
       accepted_company_terms: true,

@@ -1,0 +1,139 @@
+{
+  "schema_version": "pos-taxpayer-type-local-preflight-v1",
+  "phase": 560,
+  "scope": "local-only",
+  "source_commit": "d56cee18700989e75fac3ba8c1fce334c6224145",
+  "worktree_dirty_at_capture": true,
+  "generated_at": "2026-10-27",
+  "test_file": "apps/dgfy-api/tests/posTaxpayerTypeLocalPreflight.db.integration.test.js",
+  "command": "npm test -- --runTestsByPath tests/posTaxpayerTypeLocalPreflight.db.integration.test.js --runInBand",
+  "database": {
+    "engine": "local MySQL",
+    "name_pattern": "test_pos_taxpayer_preflight_<run-specific-suffix>",
+    "disposable": true,
+    "cleanup_confirmed": true
+  },
+  "results": {
+    "tests": 3,
+    "passed": 3,
+    "fiscal_blank_taxpayer": {
+      "result": "blocked",
+      "reason_code": "FISCAL_SETUP_INCOMPLETE",
+      "financial_mutation": false,
+      "fiscal_event_mutation": false,
+      "stock_mutation": false,
+      "unknown_taxpayer_repeat": {
+        "raw_value": "legacy_unknown",
+        "result": "blocked",
+        "reason_code": "FISCAL_SETUP_INCOMPLETE",
+        "financial_mutation": false,
+        "fiscal_event_mutation": false,
+        "stock_mutation": false
+      }
+    },
+    "non_fiscal_checkout": {
+      "result": "succeeded",
+      "document_type": "non_fiscal_slip",
+      "document_context": "non_fiscal",
+      "stock_mutation": true
+    },
+    "taxpayer_readiness_projection": [
+      { "raw_value": "", "status": "not_configured" },
+      { "raw_value": "VAT_REGISTERED", "status": "configured", "resolved_value": "vat_registered" },
+      { "raw_value": "legacy_unknown", "status": "needs_review" }
+    ]
+  },
+  "browser_readiness_matrix": {
+    "command_pos": "node apps/dgfy-pos/scripts/phase560-pos-branch-matrix.mjs",
+    "command_opis": "node apps/dgfy-pos/scripts/phase560-opis-readiness-matrix.mjs",
+    "pos_base_url": "http://127.0.0.1:5174",
+    "opis_base_url": "http://127.0.0.1:5176",
+    "states": [
+      {
+        "raw_value": "",
+        "expected": "not_configured",
+        "pos_status": "not_configured",
+        "opis_status": "not_configured",
+        "pos_branch_closed_after_hydration": true,
+        "pos_runtime_errors": [],
+        "opis_runtime_errors": []
+      },
+      {
+        "raw_value": "VAT_REGISTERED",
+        "expected": "configured",
+        "pos_status": "configured",
+        "opis_status": "configured",
+        "pos_branch_closed_after_hydration": true,
+        "pos_runtime_errors": [],
+        "opis_runtime_errors": []
+      },
+      {
+        "raw_value": "legacy_unknown",
+        "expected": "needs_review",
+        "pos_status": "needs_review",
+        "opis_status": "needs_review",
+        "pos_branch_closed_after_hydration": true,
+        "pos_runtime_errors": [],
+        "opis_runtime_errors": []
+      }
+    ],
+    "cleanup_confirmed": true
+  },
+  "authenticated_pos_settings_regression": {
+    "command": "npx playwright test tests/e2e/auth/settings-regression.authenticated.spec.js --project=authenticated-google-chrome",
+    "tests": 13,
+    "passed": 13,
+    "runtime_errors": [],
+    "scope": "local-only"
+  },
+  "hardware_surface_probe": {
+    "scope": "local-only",
+    "windows_printer": {
+      "name": "Brother DCP-T720DW Printer",
+      "transport": "WSD/IPP via Microsoft IPP Class Driver",
+      "work_offline": false,
+      "windows_test_page": {
+        "submitted": true,
+        "driver_reported_pages_printed": 1,
+        "queue_cleared": true
+      }
+    },
+    "pos_device_bridge": {
+      "health_http_status": 200,
+      "usb_escpos_printers_detected": 0,
+      "test_print": {
+        "result": "blocked",
+        "error": "TEST_PRINT_FAILED",
+        "message": "No USB ESC/POS printers were detected."
+      }
+    },
+    "acceptance": {
+      "physical_paper_confirmation": "pending_operator",
+      "wireless_browser_print_path": "available_via_windows_default_printer",
+      "usb_escpos_bridge_evidence": "deferred_no_compatible_device",
+      "imin_evidence": "deferred_no_device"
+    }
+  },
+  "worktree_revalidation": {
+    "date": "2026-10-27",
+    "api_base_url": "http://127.0.0.1:5002",
+    "pos_base_url": "http://127.0.0.1:5180",
+    "opis_base_url": "http://127.0.0.1:5181",
+    "authenticated_smoke_checks": 10,
+    "pos_readiness_states": {
+      "blank": "not_configured",
+      "VAT_REGISTERED": "configured",
+      "legacy_unknown": "needs_review"
+    },
+    "opis_readiness_states": {
+      "blank": "not_configured",
+      "VAT_REGISTERED": "configured",
+      "legacy_unknown": "needs_review"
+    },
+    "runtime_errors": [],
+    "settings_restored_after_matrix": true,
+    "scope": "local-worktree-only"
+  },
+  "not_deployed_certification": true,
+  "not_tax_accounting_approval": true
+}

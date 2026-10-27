@@ -67,6 +67,30 @@ describe('staff capability contract', () => {
     expect(permissions).not.toContain('items:edit');
     expect(permissions).not.toContain('items:delete');
   });
+  test('legacy explicit permissions fail closed when an assigned role is inactive', () => {
+    expect(resolveEffectivePermissions({
+      role: 'staff',
+      staff_role_id: 4,
+      permissions: ['pos:view', 'pos:transact'],
+      staffRole: { staff_role_id: 4, is_active: false, capabilities: ['orders:pack'] }
+    })).toEqual([]);
+  });
+  test('pre-resolved permissions cannot bypass a missing or mismatched assigned role', () => {
+    expect(resolveEffectivePermissions({
+      role: 'staff',
+      staff_role_id: 4,
+      permissions_resolved: true,
+      permissions: ['pos:view'],
+      staffRole: null
+    })).toEqual([]);
+    expect(resolveEffectivePermissions({
+      role: 'staff',
+      staff_role_id: 4,
+      permissions_resolved: true,
+      permissions: ['pos:view'],
+      staffRole: { staff_role_id: 9, is_active: true, capabilities: ['orders:pack'] }
+    })).toEqual([]);
+  });
   test('cashier account with no staff-role assignment keeps the full cashier preset (#1901)', () => {
     const permissions = resolveEffectivePermissions({ role: 'cashier', permissions: [] });
     expect(permissions).toContain('pos:transact');

@@ -21,7 +21,7 @@ describe('OPIS Business Admin stability contract', () => {
         expect(pageSource).toContain('const controller = typeof AbortController');
         expect(pageSource).toContain('signal: controller.signal');
         expect(pageSource).toContain('sectionAbortRef.current?.abort();');
-        expect(pageSource).toContain('if (sectionError && !canKeepSectionWorkspace)');
+        expect(pageSource).toContain('if (sectionError && !canKeepSectionWorkspace && !sectionLoading)');
         expect(pageSource).not.toContain('key={workspaceTransitionKey}');
     });
 

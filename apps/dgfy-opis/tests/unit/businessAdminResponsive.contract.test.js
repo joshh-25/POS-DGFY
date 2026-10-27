@@ -51,6 +51,15 @@ describe('Business Admin responsive layout contract', () => {
     expect(businessAdminCss).toContain('.business-admin-table { width: 100%; min-width: 560px;');
   });
 
+  it('keeps expense void actions usable as touch targets', () => {
+    const voidRule = businessAdminCss.match(
+      /\.business-admin-expense-void-button,[\s\S]*?\.business-admin-expense-void-link \{([\s\S]*?)\n\}/
+    )?.[1] || '';
+    expect(voidRule).toContain('min-height: 44px;');
+    expect(voidRule).toContain('display: inline-flex;');
+    expect(businessAdminCss).toContain('.business-admin-expense-void-link:focus-visible');
+  });
+
   it('keeps the Branches workspace visually responsive', () => {
     expect(businessAdminCss).toContain('.business-admin-branches-workspace { display: grid; gap: 16px; }');
     expect(businessAdminCss).toContain('.business-admin-branches-summary { display: grid;');

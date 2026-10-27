@@ -34,12 +34,15 @@ describe('DGFY POS administrator bypass contract', () => {
     expect(terminalPageSource).toContain('<Dialog open={shiftOpeningModalOpen} onOpenChange={handleShiftOpeningModalOpenChange}>');
   });
 
-  it('restores permission-backed bypass on refresh but not across manual lock', () => {
+  it('restores permission-backed bypass and the saved open shift on refresh', () => {
     expect(terminalPageSource).toContain('const [dgfyAdminBypassActive, setDgfyAdminBypassActive] = useState(false);');
     expect(terminalPageSource).toContain('const userPermissions = parseUserPermissions(user);');
     expect(terminalPageSource).toContain("userPermissions.includes('settings:view')");
     expect(terminalPageSource).toContain('setDgfyAdminBypassActive(userCanAccessSettings && !storedLockActive);');
-    expect(terminalPageSource).toContain('&& !userCanAccessSettings');
+    expect(terminalPageSource).toContain('const shouldRestoreStoredTerminal = (');
+    expect(terminalPageSource).toContain('let restoredStoredTerminalContext = false;');
+    expect(terminalPageSource).toContain('restoredStoredTerminalContext = true;');
+    expect(terminalPageSource).toContain('if (!restoredStoredTerminalContext && shouldOpenBranchDirectoryOnHydrate({');
     expect(terminalPageSource).toContain('const adminLock = terminalUser?.is_master_admin === true || dgfyAdminBypassActive;');
     expect(terminalPageSource).toContain('if (hasOpenShift && !adminLock) {');
     expect(terminalPageSource).toContain('setDgfyAdminBypassActive(false);');
@@ -59,7 +62,7 @@ describe('DGFY POS administrator bypass contract', () => {
 
   it('routes administrators to branch review before cashier shift resume', () => {
     const adminEntryIndex = terminalPageSource.indexOf('if (selectedCanAccessSettings) {');
-    const branchSelectorIndex = terminalPageSource.indexOf("openBranchSelector({ mode: 'directory' })");
+    const branchSelectorIndex = terminalPageSource.indexOf("openBranchSelector({ mode: 'directory', resetDirectoryDismissal: true });");
     const onboardingRedirectIndex = terminalPageSource.indexOf('selectedTenantSetupStep !== POS_TERMINAL_SETUP_STEPS.COMPLETE');
     const activeShiftResumeIndex = terminalPageSource.indexOf('if (selectedActiveShift) {');
 
@@ -72,9 +75,10 @@ describe('DGFY POS administrator bypass contract', () => {
     expect(terminalPageSource).toContain("selectedPermissionList.includes('pos:branch_view')");
     expect(terminalPageSource).toContain('effectiveSelectedTenantUser?.is_master_admin === true');
     expect(terminalPageSource).toContain('selectedCanAccessBranchDirectory');
-    expect(terminalPageSource).toContain("openBranchSelector({ mode: 'directory' })");
+    expect(terminalPageSource).toContain("openBranchSelector({ mode: 'directory', resetDirectoryDismissal: true });");
+    expect(terminalPageSource).toContain('resetDirectoryDismissal = false');
     expect(terminalPageSource).toContain('Review branches and shifts before operating a terminal.');
-    expect(terminalPageSource).toContain('if (shouldOpenBranchDirectoryOnHydrate({');
+    expect(terminalPageSource).toContain('shouldOpenBranchDirectoryOnHydrate({');
   });
 
   it('keeps branch selection and read-only branch view above the shift-opening prompt', () => {
@@ -90,7 +94,7 @@ describe('DGFY POS administrator bypass contract', () => {
     const exitHandlerSource = terminalPageSource.slice(exitHandlerStart, exitHandlerEnd);
 
     expect(exitHandlerStart).toBeGreaterThan(-1);
-    expect(exitHandlerSource).toContain("openBranchSelector({ mode: 'directory' });");
+    expect(exitHandlerSource).toContain("openBranchSelector({ mode: 'directory', resetDirectoryDismissal: true });");
     expect(exitHandlerSource).toContain('void refreshBranchDirectory({ silent: true });');
   });
 

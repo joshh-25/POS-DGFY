@@ -389,6 +389,8 @@ export default {
     getDeliveryCompletionEvidenceImage,
     getDeliveryCompletionEvidenceSignature,
     assignDeliveryPersonnel,
+    completeDirectDeliveryOrder,
+    failDirectDeliveryOrder,
     updateDeliveryJobStatus,
     updateOnlineOrderStatus,
     updateOnlineOrderDeliveryAddress,

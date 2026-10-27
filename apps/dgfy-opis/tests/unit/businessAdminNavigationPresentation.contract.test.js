@@ -19,7 +19,9 @@ describe('Business Admin navigation presentation contract', () => {
     expect(businessAdminPage).toContain('const workspaceBusy = Boolean(');
     expect(businessAdminPage).toContain('data-testid="business-admin-workspace"');
     expect(businessAdminPage).toContain('aria-busy={workspaceBusy ? \'true\' : \'false\'}');
-    expect(businessAdminPage).toContain('const [loadedSection, setLoadedSection] = useState(\'\');');
+    expect(businessAdminPage).toContain('const [loadedResult, setLoadedResult] = useState(null);');
+    expect(businessAdminPage).toContain('const canDisplayLoadedResult = isBusinessAdminSectionResultCurrent({');
+    expect(businessAdminPage).toContain('const loadedSection = canDisplayLoadedResult ? activeSection : \'\';');
     expect(businessAdminPage).toContain('if (loadedSection !== activeSection) return <WorkspaceLoading label={`Loading ${meta.title}…`} />;');
     expect(businessAdminPage).toContain('sectionLoading && loadedSection === activeSection && sectionData');
   });

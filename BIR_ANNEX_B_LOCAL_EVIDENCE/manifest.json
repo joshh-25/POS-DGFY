@@ -1,0 +1,29 @@
+{
+  "schema_version": "opis-pos-bir-annex-b-local-evidence-v1",
+  "environment": "LOCAL_ONLY",
+  "plan_scope": "Annex B items 03-14 only",
+  "generated_at": "2026-10-27T05:56:18.762Z",
+  "source_revision": "2ac2c03bf01e9d27ddeb2fcd8d1c2b9d5e43b60d9446590a2dfcb1c4ba29dafd",
+  "api_base_url": "http://127.0.0.1:5002",
+  "pos_base_url": "http://127.0.0.1:5182",
+  "company_name": "Masu Cafe Indian Foodszt",
+  "business_date": "2026-10-02",
+  "location_id": 3,
+  "terminal_id": "COUNTER-01",
+  "external_review_status": "required_before_external_submission",
+  "approval_claim": "none",
+  "statuses": {
+    "3": "BLOCKED",
+    "4": "BLOCKED",
+    "5": "BLOCKED",
+    "6": "BLOCKED",
+    "7": "PASS",
+    "8": "BLOCKED",
+    "9": "PASS",
+    "10": "PASS",
+    "11": "PASS",
+    "12": "PASS",
+    "13": "PASS",
+    "14": "PASS"
+  }
+}

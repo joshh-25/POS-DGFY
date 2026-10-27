@@ -32,7 +32,7 @@ export function BusinessRegistrationSubmissionPage() {
           <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-[#667085] sm:text-base">
             {autoApproved
               ? "Your business was approved automatically. We're preparing your POS onboarding access."
-              : 'Thanks! We&apos;ve received your business registration and it&apos;s now under review.'}
+              : "Thanks! We've received your business registration and it's now under review."}
           </p>
           <p className="mt-2 text-sm leading-6 text-[#667085] sm:text-base">
             {autoApproved
