@@ -4212,7 +4212,7 @@ export default function BusinessAdminPage() {
                     onNavigate={handleWorkspaceTabNavigate}
                 />
                 {showDateFilters ? (
-                    <div className={`business-admin-filter-card ${activeSection === 'locations' ? 'business-admin-branches-filter-card' : ''}`}>
+                    <div className={`business-admin-filter-card ${activeSection === 'locations' ? 'business-admin-branches-filter-card' : ''} ${activeSection === 'fiscal' ? 'business-admin-fiscal-filter-card' : ''}`}>
                         {showHistoricalRangePreset ? (
                             <div className="business-admin-field">
                                 <label htmlFor="ba-date-range"><CalendarDays size={12} className="inline mr-1" /> Date range</label>
