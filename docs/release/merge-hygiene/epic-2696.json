@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "intentional_deletions": [
+    {
+      "path": "apps/dgfy-admin/src/pages/__tests__/TenantManager.capabilities.integration.test.jsx",
+      "decision": "combine",
+      "reason": "Wave 3 (#2756) moved capability and readiness controls from the combined directory into TenantAccess. TenantAccess.integration.test.jsx now covers reasoned writes, targeted read-back, readiness modes, unavailable-read fail-closed behavior, and audit loading; directory-specific search and facet coverage remains in TenantManager.directory.integration.test.jsx."
+    },
+    {
+      "path": "apps/dgfy-admin/src/pages/__tests__/TenantManager.compliancePartialLoad.integration.test.jsx",
+      "decision": "combine",
+      "reason": "Compliance moved from the combined TenantManager modal into the Compliance detail section. TenantDetailSections.integration.test.jsx covers partial panel failure while retaining successful panels and server eligibility behavior."
+    },
+    {
+      "path": "apps/dgfy-admin/src/pages/__tests__/TenantManager.complianceReviewContracts.test.js",
+      "decision": "combine",
+      "reason": "Compliance presentation and review behavior now belong to the detail route. compliancePresentation.test.js covers status normalization, filtering, checklist progress, and incident summaries; TenantDetailSections.integration.test.jsx covers the rendered review, audit, and incident flows."
+    }
+  ],
+  "accepted_reversions": [],
+  "intentional_dropped_additions": [
+    {
+      "path": "apps/dgfy-admin/Pages/TenantAccessGate.jsx",
+      "decision": "combine",
+      "reason": "This interim holding panel was superseded by the Access detail section in Wave 3 (#2756). The final section preserves the release safeguard: unavailable capability reads remain unknown and disable writes until a fresh targeted read succeeds; outstanding #1923, #2633, and #2639 verification remains documented."
+    },
+    {
+      "path": "docs/compliance/impact-declarations/2026-10-25-admin-tenant-directory-billing-phase-547.md",
+      "decision": "combine",
+      "reason": "The #2776 regulatory declaration and its no_breach preflight evidence are retained at docs/compliance/impact-declarations/2026-10-25-admin-tenant-directory-billing-phase-561.md. The path, declaration ID, and body phase reference were updated as concurrent develop phase claims were reconciled; the preflight run reference and timestamp remain unchanged."
+    }
+  ]
+}

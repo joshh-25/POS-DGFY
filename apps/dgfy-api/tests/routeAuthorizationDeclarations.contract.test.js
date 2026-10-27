@@ -42,6 +42,20 @@ describe('admin assisted provisioning route contracts', () => {
   });
 });
 
+describe('admin tenant detail route contract', () => {
+  const routeSource = fs.readFileSync(path.resolve(__dirname, '../src/routes/adminTenants.js'), 'utf8');
+
+  it('mounts the targeted tenant detail read behind admin authentication after static GET routes', () => {
+    const staticPricingRoute = routeSource.indexOf("router.get('/pricing', authenticateAdmin, getPricingSettings)");
+    const detailRoute = routeSource.indexOf("router.get('/:id', authenticateAdmin, getTenant)");
+    const nestedTenantRoute = routeSource.indexOf("router.get('/:id/registration', authenticateAdmin, getAdminCompanyRegistration)");
+
+    expect(staticPricingRoute).toBeGreaterThanOrEqual(0);
+    expect(detailRoute).toBeGreaterThan(staticPricingRoute);
+    expect(detailRoute).toBeLessThan(nestedTenantRoute);
+  });
+});
+
 describe('POS setup cashier route', () => {
   // #1451: replaces posSetupCashierRoute.transport.test.js, which booted the full app via
   // supertest + src/server.js to prove only that these two routes are mounted (not 404). Same

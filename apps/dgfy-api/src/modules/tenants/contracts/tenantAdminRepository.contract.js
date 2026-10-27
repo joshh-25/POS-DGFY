@@ -6,6 +6,7 @@
  * - findTenantByName(name)
  * - createTenant(payload)
  * - findTenantById(tenantId)
+ * - findAdminTenantById(tenantId) -- the safe, targeted projection used by the Platform Admin detail read
  * - listTenants(where)
  * - updateTenant(tenant, payload)
  * - removeTenantDependencies(tenantId)
@@ -23,6 +24,7 @@ export const TenantAdminRepositoryContract = Object.freeze([
     'findTenantByName',
     'createTenant',
     'findTenantById',
+    'findAdminTenantById',
     'listTenants',
     'updateTenant',
     'removeTenantDependencies',

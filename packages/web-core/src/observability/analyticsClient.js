@@ -1,3 +1,5 @@
+import { scrubTelemetryUrl } from './scrubTelemetryUrl.js';
+
 const TRUE_VALUES = new Set(['1', 'true', 'yes', 'on']);
 const FALSE_VALUES = new Set(['0', 'false', 'no', 'off']);
 
@@ -25,6 +27,47 @@ let posthogModule = null;
 let initPromise = null;
 let sessionReplayEnabledForInstance = false;
 let sensitiveAnalyticsRoute = false;
+
+const URL_PROPERTY_PATTERN = /(url|referrer)/i;
+
+const scrubUrlProperties = (value, inheritedUrlField = false, seen = new WeakMap()) => {
+  if (typeof value === 'string') {
+    return inheritedUrlField ? scrubTelemetryUrl(value) : value;
+  }
+  if (!value || typeof value !== 'object') return value;
+
+  if (Array.isArray(value)) {
+    if (seen.has(value)) return seen.get(value);
+    const copy = [];
+    seen.set(value, copy);
+    value.forEach((entry, index) => {
+      copy[index] = scrubUrlProperties(entry, inheritedUrlField, seen);
+    });
+    return copy;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return value;
+  if (seen.has(value)) return seen.get(value);
+
+  const copy = Object.create(prototype);
+  seen.set(value, copy);
+  Object.entries(value).forEach(([key, entry]) => {
+    copy[key] = scrubUrlProperties(entry, inheritedUrlField || URL_PROPERTY_PATTERN.test(key), seen);
+  });
+  return copy;
+};
+
+/** Scrub URL/referrer fields in PostHog event and person-property payloads. */
+export const scrubPostHogCapture = (captureResult) => {
+  if (!captureResult || typeof captureResult !== 'object') return captureResult;
+  try {
+    return scrubUrlProperties(captureResult);
+  } catch {
+    // A malformed SDK payload must not interrupt event delivery.
+    return captureResult;
+  }
+};
 
 const parseBooleanFlag = (value, fallback = false) => {
   const normalized = String(value ?? '').trim().toLowerCase();
@@ -166,9 +209,11 @@ export const initBrowserAnalytics = ({ env = import.meta.env, surface, consent =
         // capturePageview() so it can carry route/business-mode properties
         // the auto-fired event can't know about.
         capture_pageleave: true,
+        before_send: config.surface === 'admin'
+          ? (event) => scrubPostHogCapture(sanitizePostHogEventUrls(event))
+          : sanitizePostHogEventUrls,
         person_profiles: 'identified_only',
         autocapture: config.autocapture,
-        before_send: sanitizePostHogEventUrls,
         // Errors are Sentry's job -- keep the two tools' responsibilities
         // separate rather than double-capturing exceptions into PostHog.
         capture_exceptions: false,

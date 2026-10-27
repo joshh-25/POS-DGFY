@@ -1,4 +1,5 @@
 import { GATEWAY_FAILURE_STATUS_CODES } from '../services/backendReachability.js';
+import { scrubTelemetryUrl } from './scrubTelemetryUrl.js';
 
 const TRUE_VALUES = new Set(['1', 'true', 'yes', 'on']);
 const FALSE_VALUES = new Set(['0', 'false', 'no', 'off']);
@@ -283,6 +284,19 @@ export const sanitizeSentryEvent = (rawEvent) => {
   };
 };
 
+export const sanitizeSentryEventForSurface = (rawEvent, surface) => {
+  const event = sanitizeSentryEvent(rawEvent);
+  if (surface !== 'admin' || !event?.request || typeof event.request.url !== 'string') return event;
+
+  return {
+    ...event,
+    request: {
+      ...event.request,
+      url: scrubTelemetryUrl(event.request.url)
+    }
+  };
+};
+
 // Exposes window.__sentryTestError() so a DSN can be proven end-to-end from
 // the browser console (or chrome://inspect on a WebView, e.g. the iMin
 // POS terminal) without shipping a trigger to PROD. `import.meta.env.DEV`
@@ -423,7 +437,7 @@ export const initBrowserSentry = ({
         debug: config.debug,
         integrations,
         tracePropagationTargets: config.tracePropagationTargets,
-        beforeSend: sanitizeSentryEvent,
+        beforeSend: (event) => sanitizeSentryEventForSurface(event, config.surface),
         initialScope: {
           tags: {
             surface: config.surface,

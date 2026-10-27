@@ -2,6 +2,7 @@
 'use strict';
 
 const { spawnSync } = require('node:child_process');
+const fs = require('node:fs');
 const path = require('node:path');
 const {
   RESERVED_NAME_PATTERN,
@@ -272,6 +273,23 @@ function parseJsonCommand(command, args, options = {}) {
   }
 }
 
+function mergeHygieneArgs(branch, headSha, {
+  repoRoot = REPO_ROOT,
+  justification = process.env.MERGE_HYGIENE_JUSTIFICATION,
+} = {}) {
+  const args = ['run', 'check:merge-hygiene', '--', '--base', 'origin/develop', '--head', headSha || 'HEAD'];
+  let justificationPath = justification || null;
+  if (!justificationPath) {
+    const parsed = parseReservedName(branch);
+    if (parsed) {
+      const candidate = path.join('docs', 'release', 'merge-hygiene', `${parsed.prefix}-${parsed.issueNumber}.json`);
+      if (fs.existsSync(path.resolve(repoRoot, candidate))) justificationPath = candidate;
+    }
+  }
+  if (justificationPath) args.push('--justification', justificationPath);
+  return args;
+}
+
 function createGithubLookups({ repoRoot = REPO_ROOT, now = () => Date.now() } = {}) {
   const ghJson = (args) => parseJsonCommand('gh', args, { cwd: repoRoot });
   const getIssue = (issueNumber) => {
@@ -323,7 +341,7 @@ function createGithubLookups({ repoRoot = REPO_ROOT, now = () => Date.now() } = 
       });
     },
     checkMergeHygiene(branch, headSha) {
-      const result = run('npm', ['run', 'check:merge-hygiene', '--', '--base', 'origin/develop', '--head', headSha || 'HEAD'], { cwd: repoRoot });
+      const result = run('npm', mergeHygieneArgs(branch, headSha, { repoRoot }), { cwd: repoRoot });
       return result.ok;
     },
     getOpenPullRequestsForBase(branch) {
@@ -452,6 +470,7 @@ module.exports = {
   hasBlockingFindings,
   exitCodeForResult,
   createGithubLookups,
+  mergeHygieneArgs,
   parseArgs,
   resolveContext,
   checkIntegrationBranch,
