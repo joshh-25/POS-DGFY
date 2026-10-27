@@ -376,6 +376,21 @@ export const listCompanyRegistrationDrafts = async (status = 'pending_review') =
     })).data
 );
 
+export const listDglaundryRegistrationIntents = async ({ search = '', status = 'pending', limit = 20, offset = 0 } = {}) => (
+    (await adminApi.get('/admin/tenants/dglaundry-registration-intents', {
+        ...requireAdminAuthConfig(),
+        params: { q: search, status, limit, offset }
+    })).data
+);
+
+export const getDglaundryRegistrationIntent = async (intentId) => (
+    (await adminApi.get(`/admin/tenants/dglaundry-registration-intents/${encodeURIComponent(intentId)}`, requireAdminAuthConfig())).data
+);
+
+export const decideDglaundryRegistrationIntent = async (intentId, decision) => (
+    (await adminApi.post(`/admin/tenants/dglaundry-registration-intents/${encodeURIComponent(intentId)}/decision`, decision, requireAdminAuthConfig())).data
+);
+
 export const listCompanyRegistrationUploads = async ({ tenantId = null, draftId = null } = {}) => {
     const path = tenantId
         ? `/admin/tenants/${tenantId}/registration-uploads`

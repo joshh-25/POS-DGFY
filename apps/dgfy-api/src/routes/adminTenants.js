@@ -51,6 +51,11 @@ import { authenticateDgfyAccount } from '../middleware/dgfyAuth.js';
 import { getAdminCompanyRegistration, downloadAdminCompanyRegistrationUpload, revokeAdminCompanyRegistrationUpload } from '../modules/tenants/controllers/companyRegistrationHandlers.js';
 import { tenantRegistrationLimiter } from '../middleware/rateLimiter.js';
 import {
+    listLaundryRegistrationIntentsForAdmin,
+    getLaundryRegistrationIntentForAdmin,
+    decideLaundryRegistrationIntentForAdmin
+} from '../modules/dgfyLaundry/controllers/dgfyLaundryProviderHandlers.js';
+import {
     validateComplianceArtifactIdParam,
     validateCompliancePeripheralIdParam,
     validateComplianceVerificationAction,
@@ -101,6 +106,11 @@ router.get('/registration-drafts/:draftId/uploads/download-all', authenticateAdm
 router.get('/registration-drafts/:draftId/uploads/:uploadId/download', authenticateAdmin, downloadCompanyRegistrationUpload);
 router.post('/registration-drafts/:draftId/approve', authenticateAdmin, approveAdminCompanyRegistrationDraft);
 router.post('/registration-drafts/:draftId/retry-materialization', authenticateAdmin, retryAdminCompanyRegistrationDraftMaterialization);
+
+// ADMIN: Review DGLaundry provider registrations separately from tenant rows and Storefront drafts.
+router.get('/dglaundry-registration-intents', authenticateAdmin, listLaundryRegistrationIntentsForAdmin);
+router.get('/dglaundry-registration-intents/:intentId', authenticateAdmin, getLaundryRegistrationIntentForAdmin);
+router.post('/dglaundry-registration-intents/:intentId/decision', authenticateAdmin, decideLaundryRegistrationIntentForAdmin);
 
 // ADMIN: Review uploads after the draft has been materialized to a tenant.
 router.get('/:id/registration-uploads', authenticateAdmin, listCompanyRegistrationUploads);
