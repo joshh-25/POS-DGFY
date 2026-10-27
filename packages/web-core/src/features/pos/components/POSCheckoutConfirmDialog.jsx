@@ -109,6 +109,9 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
         isCashPayment,
         isCheckoutWorkflowValid,
         isExistingOrderCheckout = false,
+        workflowUnresolved = false,
+        workflowLoading = false,
+        onRetryWorkflow = () => {},
         isCustomerPaymentSufficient,
         isEmployeeCreditPayment,
         isMsmeMode,
@@ -534,6 +537,9 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                                 isTabletViewport={isTabletViewport}
                                 disabled={posActionsBlocked || checkoutLoading || isExistingOrderCheckout}
                                 cartItemCount={safeCart.length}
+                                workflowUnresolved={workflowUnresolved}
+                                workflowLoading={workflowLoading}
+                                onRetryWorkflow={onRetryWorkflow}
                             />
                         </Suspense>
                     </div>
@@ -843,6 +849,11 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                 </div>
 
                 <DialogFooter className="pos-checkout-mobile-footer shrink-0 grid grid-cols-3 gap-2 border-t border-slate-200 px-4 py-3 bg-white">
+                    {workflowUnresolved && (
+                        <p className="col-span-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-900" role="alert" data-testid="pos-checkout-workflow-unresolved">
+                            Store settings haven&apos;t loaded. Reconnect to continue.
+                        </p>
+                    )}
                     {checkoutError && (
                         <p className="col-span-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-semibold text-rose-700" role="alert" data-testid="pos-checkout-error">
                             {checkoutError}
@@ -873,7 +884,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                     <Button
                         type="button"
                         onClick={splitPaymentReady ? () => handleCompletePreparedSplitPayment() : confirmCheckout}
-                        disabled={posActionsBlocked || checkoutLoading || discountModalOpen || safeCart.length === 0 || !isCheckoutWorkflowValid || Boolean(deliveryProviderValidationMessage) || (!splitPaymentReady && !paymentIsSufficient) || (existingNonCashPayment && !existingOrderPaymentConfirmed)}
+                        disabled={posActionsBlocked || checkoutLoading || workflowUnresolved || discountModalOpen || safeCart.length === 0 || !isCheckoutWorkflowValid || Boolean(deliveryProviderValidationMessage) || (!splitPaymentReady && !paymentIsSufficient) || (existingNonCashPayment && !existingOrderPaymentConfirmed)}
                         title={discountModalOpen ? 'Apply or cancel the discount draft before confirming checkout.' : undefined}
                         className="h-10 rounded-lg bg-[#1A4E8D] px-3 text-[13px] font-extrabold text-white shadow-lg shadow-blue-900/20 transition hover:bg-[#143F73] disabled:cursor-not-allowed disabled:bg-[#1A4E8D] disabled:opacity-60"
                     >
