@@ -96,6 +96,27 @@ export const getLaundryRegistrationIntent = getLaundryIntentByType('registration
 export const getLaundryLocationIntent = getLaundryIntentByType('location');
 export const getLaundryStaffInvitationIntent = getLaundryIntentByType('staff_invitation');
 
+export const listLaundryRegistrationIntentsForAdmin = (req, res, next) => run(
+    dgfyLaundryProviderUseCases.listRegistrationIntents,
+    { search: req.query?.q, status: req.query?.status, limit: req.query?.limit, offset: req.query?.offset },
+    res,
+    next
+);
+
+export const getLaundryRegistrationIntentForAdmin = (req, res, next) => run(
+    dgfyLaundryProviderUseCases.getRegistrationIntentForAdmin,
+    { intentId: req.params.intentId },
+    res,
+    next
+);
+
+export const decideLaundryRegistrationIntentForAdmin = (req, res, next) => run(
+    dgfyLaundryProviderUseCases.decideRegistrationIntent,
+    { ...req.body, intentId: req.params.intentId, adminId: req.admin?.id || req.admin?.username || null },
+    res,
+    next
+);
+
 export const createLaundryMapping = (req, res, next) => run(
     dgfyLaundryProviderUseCases.createMapping,
     { body: req.body, partner: req.partnerIdentity },
