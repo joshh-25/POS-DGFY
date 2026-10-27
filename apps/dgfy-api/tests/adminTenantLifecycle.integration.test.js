@@ -298,6 +298,26 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
         expect(ids).not.toContain(activeTenant.id);
     });
 
+    it('reads one tenant through the authenticated detail endpoint without private fields', async () => {
+        const tenant = await createAdminTestTenant({ status: 'pending' });
+
+        const response = await request(app)
+            .get(`/api/v1/admin/tenants/${tenant.id}`)
+            .set('Authorization', `Bearer ${adminApiToken}`);
+
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.data.id).toBe(tenant.id);
+        expect(response.body.data.registrationApplication).toEqual(expect.objectContaining({
+            review_status: 'pending',
+            provisioning_status: 'not_started'
+        }));
+        expect(response.body.data).not.toHaveProperty('settings');
+        expect(response.body.data).not.toHaveProperty('db_name');
+        expect(response.body.data).not.toHaveProperty('company_token');
+        expect(response.body.data).not.toHaveProperty('admin_password_hash');
+    });
+
     it('gets and updates pricing settings', async () => {
         const getResponse = await request(app)
             .get('/api/v1/admin/tenants/pricing')

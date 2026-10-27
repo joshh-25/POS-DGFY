@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -15,12 +16,17 @@ const lastDeliveryStatus = (deliveries) => (deliveries?.length ? deliveries[deli
 const INITIAL_FORM = { registration_application_id: '', gross_pesos: '', buyer_address: '', buyer_tin: '' };
 
 export default function InvoiceManager() {
+  const [searchParams] = useSearchParams();
+  const requestedTenantId = searchParams.get('tenant_id') || '';
+  const requestedApplicationId = searchParams.get('registration_application_id') || '';
   const [invoices, setInvoices] = useState([]);
   const [eligibleApplications, setEligibleApplications] = useState([]);
   const [form, setForm] = useState(INITIAL_FORM);
   const [showBuyerDetails, setShowBuyerDetails] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const [preselectionMessage, setPreselectionMessage] = useState('');
+  const preselectionResolved = useRef(false);
   const [busy, setBusy] = useState(false);
   const [action, setAction] = useState(null);
   const [actionForm, setActionForm] = useState({ gross_pesos: '', cash_pesos: '', reason: '', change_returned_confirmed: false });
@@ -31,8 +37,36 @@ export default function InvoiceManager() {
   const load = useCallback(async () => {
     const [invoiceResponse, eligibleResponse] = await Promise.all([adminService.listPlatformInvoices(), adminService.listEligiblePlatformInvoiceApplications()]);
     setInvoices(invoiceResponse.data || []);
-    setEligibleApplications(eligibleResponse.data || []);
-  }, []);
+    const eligible = eligibleResponse.data || [];
+    setEligibleApplications(eligible);
+    if (!preselectionResolved.current && (requestedTenantId || requestedApplicationId)) {
+      let matching = [];
+      if (requestedApplicationId) {
+        matching = eligible.filter((entry) => String(entry.id) === String(requestedApplicationId)
+          && (!requestedTenantId || String(entry.tenant?.id || entry.tenant_id || '') === String(requestedTenantId)));
+        if (matching.length === 1) {
+          setForm((current) => ({ ...current, registration_application_id: String(matching[0].id) }));
+          setPreselectionMessage('The eligible registration application from this link is selected. Creating an invoice still requires an explicit submit.');
+        } else {
+          setForm((current) => ({ ...current, registration_application_id: '' }));
+          setPreselectionMessage('The linked registration application is unavailable, ineligible, or does not belong to the requested tenant. Choose an eligible company manually.');
+        }
+      } else {
+        matching = eligible.filter((entry) => String(entry.tenant?.id || entry.tenant_id || '') === String(requestedTenantId));
+        if (matching.length === 1) {
+          setForm((current) => ({ ...current, registration_application_id: String(matching[0].id) }));
+          setPreselectionMessage('The unique eligible registration application for this tenant is selected. Creating an invoice still requires an explicit submit.');
+        } else if (matching.length > 1) {
+          setForm((current) => ({ ...current, registration_application_id: '' }));
+          setPreselectionMessage('More than one eligible registration application belongs to this tenant. Choose the intended application manually.');
+        } else {
+          setForm((current) => ({ ...current, registration_application_id: '' }));
+          setPreselectionMessage('No eligible registration application is available for the linked tenant. Choose an eligible company manually.');
+        }
+      }
+      preselectionResolved.current = true;
+    }
+  }, [requestedApplicationId, requestedTenantId]);
 
   useEffect(() => {
     let active = true;
@@ -92,7 +126,7 @@ export default function InvoiceManager() {
   const actionsFor = (invoice) => <div className="flex flex-wrap gap-2">{invoice.invoice_status === 'draft' && <><Button size="sm" variant="outline" disabled={busy} onClick={() => openAction('edit', invoice)}>Edit</Button><Button size="sm" variant="outline" disabled={busy} onClick={() => openAction('discard', invoice)}>Discard</Button><Button size="sm" disabled={busy} onClick={() => openAction('issue', invoice)}>Record cash & issue</Button></>}{invoice.invoice_status === 'issued' && invoice.payment_status !== 'paid' && <Button size="sm" disabled={busy} onClick={() => openAction('payment', invoice)}>Record cash payment</Button>}{invoice.invoice_status === 'issued' && <><Button size="sm" variant="outline" disabled={busy || !(invoice.artifacts || []).length} onClick={() => download(invoice)}>PDF</Button><Button size="sm" variant="outline" disabled={busy || !(invoice.artifacts || []).length} onClick={() => email(invoice)}>Email</Button><Button size="sm" variant="outline" disabled={busy} onClick={() => openAction('credit', invoice)}>Full credit</Button></>}{invoice.invoice_status === 'fully_credited' && <Button size="sm" variant="outline" disabled={busy} onClick={() => openAction('replacement', invoice)}>Replacement draft</Button>}</div>;
 
   return <section className="mx-auto max-w-6xl space-y-5 pb-24"><header><p className="text-sm font-medium text-[#1A4E8D]">QA-only landlord billing</p><h1 className="text-3xl font-semibold text-slate-900">Platform invoices</h1><p className="mt-2 text-sm text-slate-600">Create TEST-only one-time cash records. This is not a live fiscal invoicing tool.</p></header>
-    {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}{notice && <p className="rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-800">{notice}</p>}
+    {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}{notice && <p className="rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-800">{notice}</p>}{preselectionMessage && <p role="status" className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">{preselectionMessage}</p>}
     <aside className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900"><p className="font-semibold">TEST ONLY — fiscal seller details still incomplete</p><p className="mt-1">Sieitz Solutions OPC and the supplied logo are included. ATP/OCN, BIR permit, approved series, and CAS/EIS authority appear in red on every PDF until genuine records are provided.</p></aside>
     <form onSubmit={createDraft} className="space-y-4 rounded-xl border bg-white p-4 shadow-sm"><div className="grid gap-3 md:grid-cols-2"><label className="space-y-1 text-sm font-medium text-slate-700"><span>Approved company</span><select required className="h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-base" value={form.registration_application_id} onChange={(event) => setForm({ ...form, registration_application_id: event.target.value })}><option value="">Choose an approved company</option>{eligibleApplications.map((application) => <option key={application.id} value={application.id}>{application.tenant?.name || application.id}</option>)}</select></label><label className="space-y-1 text-sm font-medium text-slate-700"><span>Amount (PHP)</span><Input required inputMode="decimal" placeholder="0.00" value={form.gross_pesos} onChange={(event) => setForm({ ...form, gross_pesos: event.target.value })} /></label></div>
       {selectedApplication && <div className="rounded-lg bg-slate-50 p-3 text-sm"><p className="font-semibold text-slate-900">{selectedCompanyName}</p><p className="mt-1 text-slate-600">Registration email: {selectedEmail || 'No registration email available'}</p></div>}

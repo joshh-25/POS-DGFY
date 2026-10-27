@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import MockAdapter from 'axios-mock-adapter';
-import { adminApi, getCurrentAdmin, getFeedback, login, logout, setAuthFailureCallback } from '../adminService.js';
+import { adminApi, getCurrentAdmin, getFeedback, login, logout, setAuthFailureCallback, updateTenantCapabilities } from '../adminService.js';
 
 const listeners = {};
 
@@ -13,6 +13,9 @@ Object.defineProperty(globalThis, 'window', {
     removeEventListener: (type, fn) => {
       listeners[type] = (listeners[type] || []).filter((f) => f !== fn);
     },
+  Event: class Event {
+    constructor(type) { this.type = type; }
+  },
     dispatchEvent: (event) => {
       (listeners[event.type] || []).forEach((fn) => fn(event));
     }
@@ -119,6 +122,17 @@ describe('adminService interceptor global error behavior', () => {
     await expect(getFeedback()).rejects.toBeTruthy();
     expect(onApiError).not.toHaveBeenCalled();
     expect(onLegacy).not.toHaveBeenCalled();
+  });
+
+  it('invalidates the tenant directory after successful tenant mutations', async () => {
+    const onInvalidated = vi.fn();
+    window.addEventListener('admin:tenant-directory-invalidated', onInvalidated);
+    mockAdminApi.onPatch('/admin/tenants/tenant-1/capabilities').reply(200, { success: true });
+
+    await updateTenantCapabilities('tenant-1', { ims_enabled: true });
+
+    expect(onInvalidated).toHaveBeenCalledTimes(1);
+    window.removeEventListener('admin:tenant-directory-invalidated', onInvalidated);
   });
 
   it('does not report an expired session when the initial session probe finds no cookie', async () => {

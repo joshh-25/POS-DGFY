@@ -3,12 +3,11 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
-import TenantManager from '../../../Pages/TenantManager.jsx';
+import { MemoryRouter, Outlet, Route, Routes, useLocation } from 'react-router-dom';
+import AddTenant from '../../../Pages/AddTenant.jsx';
 
 const mocks = vi.hoisted(() => ({
   adminService: {
-    getTenants: vi.fn(),
     createAdminProvisionedTenant: vi.fn(),
     createAdminProvisionedAccountAndTenant: vi.fn()
   },
@@ -18,51 +17,57 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/services/adminService', () => mocks.adminService);
 vi.mock('sonner', () => ({ toast: mocks.toast }));
 
-const fillShared = async (user) => {
-  await user.type(screen.getByPlaceholderText('Company name'), 'Assisted Foods');
-  await user.type(screen.getByPlaceholderText('Audit reason'), 'Merchant onboarding');
+const ProfileOutlet = ({ profile }) => <Outlet context={{ adminProfile: profile }} />;
+const DirectoryStub = () => {
+  const location = useLocation();
+  return <div>Tenant directory <output data-testid="return-search">{location.search}</output></div>;
 };
-const renderTenantManager = () => render(<MemoryRouter><TenantManager /></MemoryRouter>);
 
-describe('TenantManager assisted provisioning', () => {
+const renderAddTenant = ({
+  profile = { is_master: true, permissions: [] },
+  initialEntry = '/admin/tenants/new'
+} = {}) => render(
+  <MemoryRouter initialEntries={[initialEntry]}>
+    <Routes>
+      <Route path="/admin" element={<ProfileOutlet profile={profile} />}>
+        <Route path="tenants/new" element={<AddTenant />} />
+        <Route path="tenants" element={<DirectoryStub />} />
+      </Route>
+    </Routes>
+  </MemoryRouter>
+);
+
+const fillCompany = async (user, { name = 'Assisted Foods', reason = 'Merchant onboarding' } = {}) => {
+  await user.type(screen.getByPlaceholderText('Company name'), name);
+  await user.type(screen.getByPlaceholderText('Audit reason'), reason);
+};
+
+const fillAccount = async (user) => {
+  await user.type(screen.getByPlaceholderText('DGFY first name'), 'Ada');
+  await user.type(screen.getByPlaceholderText('DGFY last name'), 'Lovelace');
+  await user.type(screen.getByPlaceholderText('DGFY email'), 'ada@example.test');
+  await user.type(screen.getByPlaceholderText('DGFY phone'), '+639222222222');
+};
+
+describe('Add tenant assisted provisioning', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.adminService.getTenants.mockResolvedValue({ data: [] });
-    mocks.adminService.createAdminProvisionedTenant.mockResolvedValue({ data: {} });
+    mocks.adminService.createAdminProvisionedTenant.mockResolvedValue({
+      data: { tenant: { id: 'tenant-new', name: 'Assisted Foods' }, temporary_password: 'OneTime123!' }
+    });
     mocks.adminService.createAdminProvisionedAccountAndTenant.mockResolvedValue({
-      data: { temporary_password: 'OneTime123!' }
+      data: { tenant: { id: 'tenant-new', name: 'Assisted Foods' }, temporary_password: 'OneTime123!' }
     });
   });
 
   afterEach(cleanup);
 
-  it('removes the legacy add-tenant entry point while retaining unrelated controls', async () => {
-    renderTenantManager();
-    await screen.findByText('Assisted provisioning');
-
-    expect(screen.queryByText('+ Add Tenant')).toBeNull();
-    expect(screen.queryByRole('heading', { name: 'Add New Tenant' })).toBeNull();
-    // The tenant-revenue workspace card below also has its own Refresh
-    // button, so scope to the page header card that owns this one.
-    const header = screen.getByRole('heading', { name: 'Tenant Management' }).closest('div.bg-white');
-    expect(within(header).getByRole('button', { name: 'Refresh' })).toBeTruthy();
-    expect(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Company only' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'DGFY + Company' })).toBeTruthy();
-    expect(screen.getByText(/DGFY login, company switching, owner actions, and POS access require owner assignment/)).toBeTruthy();
-  });
-
-  it('switches modes without submitting and posts company-only data to the retained service', async () => {
+  it('posts company-only provisioning and leaves success with an explicit Overview link', async () => {
     const user = userEvent.setup();
-    renderTenantManager();
-    await screen.findByText('Assisted provisioning');
+    renderAddTenant({ initialEntry: '/admin/tenants/new?status=active&custom=keep' });
+    await screen.findByRole('heading', { name: 'Add tenant' });
 
-    await user.click(screen.getByRole('button', { name: 'DGFY + Company' }));
-    await user.click(screen.getByRole('button', { name: 'Company only' }));
-    expect(mocks.adminService.createAdminProvisionedTenant).not.toHaveBeenCalled();
-    expect(mocks.adminService.createAdminProvisionedAccountAndTenant).not.toHaveBeenCalled();
-
-    await fillShared(user);
+    await fillCompany(user);
     await user.type(screen.getByPlaceholderText('Admin email'), 'OPS@EXAMPLE.TEST');
     await user.type(screen.getByPlaceholderText('Admin phone'), '+639111111111');
     await user.type(screen.getByPlaceholderText('Temporary password'), 'Company123!');
@@ -77,84 +82,100 @@ describe('TenantManager assisted provisioning', () => {
       adminPassword: 'Company123!',
       reason: 'Merchant onboarding'
     }));
+    expect(await screen.findByRole('heading', { name: 'Tenant created' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Open tenant overview' }).getAttribute('href'))
+      .toBe('/admin/tenants/tenant-new?status=active&custom=keep');
+    expect(await screen.findByText(/OneTime123!/)).toBeTruthy();
     expect(mocks.toast.success).toHaveBeenCalledWith('Assisted provisioning completed');
   });
 
-  it('posts DGFY plus company data and clears the one-time password on the next attempt', async () => {
+  it('requires both page grants before combined DGFY account provisioning is available', async () => {
+    renderAddTenant({ profile: { permissions: ['admin.tenants'] } });
+    const combinedMode = screen.getByRole('button', { name: 'DGFY + Company' });
+    expect(combinedMode.disabled).toBe(true);
+    expect(screen.getByText(/requires both tenant and DGFY account access/)).toBeTruthy();
+
+    cleanup();
+    renderAddTenant({ profile: { permissions: ['admin.tenants', 'admin.dgfy_accounts'] } });
+    expect(screen.getByRole('button', { name: 'DGFY + Company' }).disabled).toBe(false);
+  });
+
+  it('posts the combined payload, keeps its one-time password visible, and clears it before retry', async () => {
     const user = userEvent.setup();
-    renderTenantManager();
-    await screen.findByText('Assisted provisioning');
+    renderAddTenant();
     await user.click(screen.getByRole('button', { name: 'DGFY + Company' }));
-    await fillShared(user);
-    await user.type(screen.getByPlaceholderText('DGFY first name'), 'Ada');
-    await user.type(screen.getByPlaceholderText('DGFY last name'), 'Lovelace');
-    await user.type(screen.getByPlaceholderText('DGFY email'), 'ada@example.test');
-    await user.type(screen.getByPlaceholderText('DGFY phone'), '+639222222222');
+    await fillCompany(user);
+    await fillAccount(user);
     await user.click(screen.getByRole('button', { name: 'Provision' }));
 
     expect(await screen.findByText(/OneTime123!/)).toBeTruthy();
-    expect(mocks.adminService.createAdminProvisionedAccountAndTenant).toHaveBeenCalledWith(expect.objectContaining({
-      dgfy_account: expect.objectContaining({ email: 'ada@example.test' }),
+    expect(mocks.adminService.createAdminProvisionedAccountAndTenant).toHaveBeenCalledWith({
+      reason: 'Merchant onboarding',
+      dgfy_account: {
+        first_name: 'Ada', middle_name: '', last_name: 'Lovelace', email: 'ada@example.test',
+        phone: '+639222222222', temporary_password: ''
+      },
       company: { name: 'Assisted Foods', workflowMode: 'food_manufacturing', templateKey: null }
-    }));
+    });
 
-    mocks.adminService.createAdminProvisionedAccountAndTenant.mockRejectedValueOnce(new Error('duplicate account'));
-    await user.type(screen.getByPlaceholderText('Company name'), 'Retry Foods');
-    await user.type(screen.getByPlaceholderText('Audit reason'), 'Retry onboarding');
-    await user.type(screen.getByPlaceholderText('DGFY first name'), 'Ada');
-    await user.type(screen.getByPlaceholderText('DGFY last name'), 'Lovelace');
-    await user.type(screen.getByPlaceholderText('DGFY email'), 'ada@example.test');
-    await user.type(screen.getByPlaceholderText('DGFY phone'), '+639222222222');
+    let rejectRetry;
+    mocks.adminService.createAdminProvisionedAccountAndTenant.mockReturnValueOnce(new Promise((_, reject) => { rejectRetry = reject; }));
+    await fillCompany(user, { name: 'Retry Foods', reason: 'Retry onboarding' });
+    await fillAccount(user);
     await user.click(screen.getByRole('button', { name: 'Provision' }));
-    await waitFor(() => expect(screen.queryByText(/OneTime123!/)).toBeNull());
+    expect(screen.queryByText(/OneTime123!/)).toBeNull();
+    expect((await screen.findByRole('button', { name: 'Provisioning...' })).disabled).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'Provisioning...' }));
+    expect(mocks.adminService.createAdminProvisionedAccountAndTenant).toHaveBeenCalledTimes(2);
+    rejectRetry(new Error('duplicate account'));
+    expect((await screen.findByRole('alert')).textContent).toContain('duplicate account');
     expect(mocks.toast.error).toHaveBeenCalledWith(expect.stringContaining('duplicate account'));
   }, 15000);
 
-  // Phase 40: closes the coverage gap noted since Phase 33 - TenantManager
-  // is the one IndustryPicker consumer that reads the derived
-  // workflow_mode/template_key fields (assisted provisioning sends those
-  // directly, never industryKey, so hidden-industry enforcement in
-  // registerCompanyRequestUseCase.js can't affect it - see Phase 39).
-  it('derives workflowMode/templateKey from an Industry selection and sends no industryKey', async () => {
+  it('uses the IndustryPicker workflow and template values without submitting during selection', async () => {
     const user = userEvent.setup();
-    renderTenantManager();
-    await screen.findByText('Assisted provisioning');
-
-    await user.click(screen.getByRole('radio', { name: /Micro Food & Beverage/i }));
-    await fillShared(user);
+    renderAddTenant();
+    await user.click(await screen.findByRole('radio', { name: /Micro Food & Beverage/i }));
+    expect(mocks.adminService.createAdminProvisionedTenant).not.toHaveBeenCalled();
+    await fillCompany(user);
     await user.type(screen.getByPlaceholderText('Admin email'), 'ops@example.test');
     await user.type(screen.getByPlaceholderText('Admin phone'), '+639111111111');
     await user.type(screen.getByPlaceholderText('Temporary password'), 'Company123!');
     await user.click(screen.getByRole('button', { name: 'Provision' }));
 
     await waitFor(() => expect(mocks.adminService.createAdminProvisionedTenant).toHaveBeenCalledWith({
-      name: 'Assisted Foods',
-      workflowMode: 'fnb',
-      templateKey: 'fnb_counter_service',
-      adminEmail: 'ops@example.test',
-      adminPhone: '+639111111111',
-      adminPassword: 'Company123!',
+      name: 'Assisted Foods', workflowMode: 'fnb', templateKey: 'fnb_counter_service',
+      adminEmail: 'ops@example.test', adminPhone: '+639111111111', adminPassword: 'Company123!',
       reason: 'Merchant onboarding'
     }));
-    const payload = mocks.adminService.createAdminProvisionedTenant.mock.calls[0][0];
-    expect(payload).not.toHaveProperty('industryKey');
+    expect(mocks.adminService.createAdminProvisionedTenant.mock.calls[0][0]).not.toHaveProperty('industryKey');
   });
 
-  it('shows loading state and reports API validation failures without a success toast', async () => {
+  it('keeps mode controls out of form submission and requires an audit reason', async () => {
     const user = userEvent.setup();
-    let rejectRequest;
-    mocks.adminService.createAdminProvisionedTenant.mockReturnValue(new Promise((_, reject) => { rejectRequest = reject; }));
-    renderTenantManager();
-    await screen.findByText('Assisted provisioning');
-    await fillShared(user);
+    renderAddTenant();
+    const form = screen.getByPlaceholderText('Company name').closest('form');
+    expect(within(form).getByRole('button', { name: 'Company only' }).getAttribute('type')).toBe('button');
+    await user.click(screen.getByRole('button', { name: 'DGFY + Company' }));
+    await user.click(screen.getByRole('button', { name: 'Company only' }));
+    expect(mocks.adminService.createAdminProvisionedTenant).not.toHaveBeenCalled();
+    expect(mocks.adminService.createAdminProvisionedAccountAndTenant).not.toHaveBeenCalled();
+
+    await user.type(screen.getByPlaceholderText('Company name'), 'No Reason Foods');
     await user.type(screen.getByPlaceholderText('Admin email'), 'ops@example.test');
     await user.type(screen.getByPlaceholderText('Admin phone'), '+639111111111');
     await user.type(screen.getByPlaceholderText('Temporary password'), 'Company123!');
     await user.click(screen.getByRole('button', { name: 'Provision' }));
+    expect(mocks.adminService.createAdminProvisionedTenant).not.toHaveBeenCalled();
+  });
 
-    expect((await screen.findByRole('button', { name: 'Provisioning...' })).hasAttribute('disabled')).toBe(true);
-    rejectRequest(new Error('Company name is required'));
-    await waitFor(() => expect(mocks.toast.error).toHaveBeenCalledWith(expect.stringContaining('Company name is required')));
-    expect(mocks.toast.success).not.toHaveBeenCalled();
+  it('returns to the directory with its original search context without submitting', async () => {
+    const user = userEvent.setup();
+    renderAddTenant({ initialEntry: '/admin/tenants/new?q=North&status=active&unrelated=kept' });
+    await user.click(screen.getByRole('link', { name: 'Cancel' }));
+    expect(await screen.findByText('Tenant directory')).toBeTruthy();
+    expect(screen.getByTestId('return-search').textContent).toBe('?q=North&status=active&unrelated=kept');
+    expect(mocks.adminService.createAdminProvisionedTenant).not.toHaveBeenCalled();
+    expect(mocks.adminService.createAdminProvisionedAccountAndTenant).not.toHaveBeenCalled();
   });
 });

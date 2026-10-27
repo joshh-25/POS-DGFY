@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation, Outlet } from 'react-router-dom';
+import { Navigate, useNavigate, useLocation, Outlet } from 'react-router-dom';
 import {
     Lock,
     LogOut,
@@ -25,6 +25,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import * as adminService from '@/services/adminService';
+import { canAccessAdminRoute, resolveAdminRoute } from '../features/admin/adminRoutePolicy.js';
+import { TenantDirectoryProvider } from '../features/admin/tenantDirectory/TenantDirectoryContext.jsx';
 
 const SIDEBAR_ITEMS = [
     { path: '/admin/feedback', label: 'Feedback', icon: MessageSquare, permission: 'admin.feedback' },
@@ -57,7 +59,7 @@ export default function AdminLayout() {
     const [passwordChange, setPasswordChange] = useState({ current_password: '', new_password: '', confirmation: '' });
     const [passwordChangeError, setPasswordChangeError] = useState('');
     const [passwordChanging, setPasswordChanging] = useState(false);
-    const allowedItems = SIDEBAR_ITEMS.filter((item) => adminProfile?.is_master || (!item.masterOnly && adminProfile?.permissions?.includes(item.permission)));
+    const allowedItems = SIDEBAR_ITEMS.filter((item) => canAccessAdminRoute(item, adminProfile));
 
     // Sidebar state
     const [sidebarCollapsed, setSidebarCollapsed] = useState(() => (
@@ -71,13 +73,6 @@ export default function AdminLayout() {
         media.addEventListener?.('change', syncMobileSidebar);
         return () => media.removeEventListener?.('change', syncMobileSidebar);
     }, []);
-
-    useEffect(() => {
-        if (!isAuthenticated || !adminProfile) return;
-        const requestedItem = SIDEBAR_ITEMS.find((item) => item.path === location.pathname);
-        const permitted = requestedItem && allowedItems.some((item) => item.path === requestedItem.path);
-        if (!permitted && allowedItems[0]) navigate(allowedItems[0].path, { replace: true });
-    }, [adminProfile, isAuthenticated, location.pathname, navigate]);
 
     // Rehydrate only through the HttpOnly-cookie-backed identity endpoint.
     useEffect(() => {
@@ -235,6 +230,11 @@ export default function AdminLayout() {
         );
     }
 
+    const requestedRoute = resolveAdminRoute(location.pathname);
+    if (adminProfile && requestedRoute && !canAccessAdminRoute(requestedRoute, adminProfile) && allowedItems[0]) {
+        return <Navigate to={allowedItems[0].path} replace />;
+    }
+
     // Admin Portal Layout
     return (
         <div className="min-h-screen bg-slate-50 flex">
@@ -265,7 +265,8 @@ export default function AdminLayout() {
                 <nav className="flex-1 p-2 space-y-1">
                     {allowedItems.map(item => {
                         const Icon = item.icon;
-                        const isActive = location.pathname === item.path;
+                        const currentRoutePath = resolveAdminRoute(location.pathname)?.path;
+                        const isActive = currentRoutePath === item.path || currentRoutePath?.startsWith(`${item.path}/`);
                         return (
                             <button
                                 key={item.path}
@@ -306,7 +307,7 @@ export default function AdminLayout() {
                     {!adminProfile?.is_master && <Button type="button" size="sm" variant="outline" onClick={() => setShowPasswordChange((value) => !value)}>Change password</Button>}
                 </div>
                 {showPasswordChange && !adminProfile?.is_master && <form onSubmit={handlePasswordChange} className="mb-4 max-w-xl space-y-3 rounded-lg border bg-white p-4 shadow-sm"><h2 className="font-semibold text-slate-900">Change password</h2><p className="text-sm text-slate-600">Use your current password and a new password of at least 8 characters. For security, this revokes every active session, including this one, so you will sign in again.</p>{passwordChangeError && <p role="alert" className="text-sm text-red-700">{passwordChangeError}</p>}<Input required type="password" autoComplete="current-password" value={passwordChange.current_password} onChange={(event) => setPasswordChange({ ...passwordChange, current_password: event.target.value })} placeholder="Current password"/><Input required minLength={8} type="password" autoComplete="new-password" value={passwordChange.new_password} onChange={(event) => setPasswordChange({ ...passwordChange, new_password: event.target.value })} placeholder="New password (8+ characters)"/><Input required minLength={8} type="password" autoComplete="new-password" value={passwordChange.confirmation} onChange={(event) => setPasswordChange({ ...passwordChange, confirmation: event.target.value })} placeholder="Confirm new password"/><div className="flex gap-2"><Button disabled={passwordChanging} type="submit">{passwordChanging ? 'Changing…' : 'Change password'}</Button><Button type="button" variant="outline" onClick={() => setShowPasswordChange(false)}>Cancel</Button></div></form>}
-                {allowedItems.length ? <Outlet context={{ adminProfile }} /> : <section className="mx-auto max-w-xl rounded-xl border border-amber-200 bg-white p-6 shadow-sm"><h1 className="text-xl font-semibold text-slate-900">No page access assigned</h1><p className="mt-2 text-sm text-slate-600">Your Platform Admin account is active, but the Platform Master Admin has not assigned any page permissions. Contact the Platform Master Admin to request access.</p></section>}
+                {allowedItems.length ? <TenantDirectoryProvider><Outlet context={{ adminProfile }} /></TenantDirectoryProvider> : <section className="mx-auto max-w-xl rounded-xl border border-amber-200 bg-white p-6 shadow-sm"><h1 className="text-xl font-semibold text-slate-900">No page access assigned</h1><p className="mt-2 text-sm text-slate-600">Your Platform Admin account is active, but the Platform Master Admin has not assigned any page permissions. Contact the Platform Master Admin to request access.</p></section>}
             </main>
         </div>
     );

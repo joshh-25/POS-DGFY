@@ -3,8 +3,10 @@ import {
   identifyAnalyticsUser,
   isSensitiveAnalyticsPath,
   resolvePostHogBrowserConfig,
-  sanitizePostHogEventUrls
+  sanitizePostHogEventUrls,
+  scrubPostHogCapture
 } from '../analyticsClient.js';
+import { scrubTelemetryUrl } from '../scrubTelemetryUrl.js';
 
 describe('browser PostHog config', () => {
   it('is inactive by default even when a key/host exist', () => {
@@ -131,6 +133,132 @@ describe('browser PostHog config', () => {
     expect(resolvePostHogBrowserConfig({
       VITE_POSTHOG_SESSION_REPLAY: 'true'
     }, 'skupervisor').sessionReplayEnabled).toBe(true);
+  });
+});
+
+describe('Admin telemetry URL redaction', () => {
+  it('removes query strings from absolute, relative, and malformed URL values while preserving fragments', () => {
+    expect(scrubTelemetryUrl('https://admin.example.test/admin/tenants?q=owner@example.test#section?keep=1'))
+      .toBe('https://admin.example.test/admin/tenants#section?keep=1');
+    expect(scrubTelemetryUrl('/admin/tenants?q=owner@example.test')).toBe('/admin/tenants');
+    expect(scrubTelemetryUrl('not a url?secret=value#fragment?retained=yes')).toBe('not a url#fragment?retained=yes');
+    expect(scrubTelemetryUrl(null)).toBeNull();
+  });
+
+  it('scrubs nested event and person URL properties without changing event identity or unrelated values', () => {
+    const capture = {
+      uuid: 'capture-uuid',
+      event: '$pageleave',
+      properties: {
+        $current_url: 'https://admin.example.test/admin/tenants?q=private',
+        $referrer: '/previous?email=private#tab',
+        details: { source_url: '/admin/tenants/tenant-1?token=private' },
+        business_mode: 'retail'
+      },
+      $set: { $initial_referrer: 'https://admin.example.test/?email=private' },
+      $set_once: { profile: { initial_url: '/admin?code=private' } }
+    };
+
+    const scrubbed = scrubPostHogCapture(capture);
+
+    expect(scrubbed).toMatchObject({
+      uuid: 'capture-uuid',
+      event: '$pageleave',
+      properties: {
+        $current_url: 'https://admin.example.test/admin/tenants',
+        $referrer: '/previous#tab',
+        details: { source_url: '/admin/tenants/tenant-1' },
+        business_mode: 'retail'
+      },
+      $set: { $initial_referrer: 'https://admin.example.test/' },
+      $set_once: { profile: { initial_url: '/admin' } }
+    });
+    expect(capture.properties.$current_url).toContain('?q=private');
+  });
+
+  it('handles null and circular capture payloads without throwing', () => {
+    const capture = { event: '$pageview', properties: {} };
+    capture.properties.self = capture.properties;
+
+    expect(scrubPostHogCapture(null)).toBeNull();
+    const scrubbed = scrubPostHogCapture(capture);
+    expect(scrubbed.properties.self).toBe(scrubbed.properties);
+  });
+});
+
+describe('PostHog before_send initialization', () => {
+  it('scrubs Admin pageleave payloads at the SDK send hook', async () => {
+    const init = vi.fn();
+    const register = vi.fn();
+    vi.doMock('posthog-js', () => ({ default: { init, register } }));
+    vi.resetModules();
+    const freshModule = await import('../analyticsClient.js');
+    const browserWindow = { location: { href: 'https://admin.example.test/admin/tenants?q=private' } };
+    vi.stubGlobal('window', browserWindow);
+
+    freshModule.initBrowserAnalytics({
+      env: { VITE_POSTHOG_ENABLED: 'true', VITE_POSTHOG_KEY: 'phc_admin' },
+      surface: 'admin'
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const options = init.mock.calls[0][1];
+    expect(options.capture_pageleave).toBe(true);
+    expect(options.before_send).toBeTypeOf('function');
+    const sent = options.before_send({
+      uuid: 'leave-uuid',
+      event: '$pageleave',
+      properties: {
+        $current_url: 'https://admin.example.test/admin/tenants?q=private#session=private',
+        $referrer: '/admin/login?email=private#ticket=private',
+        value: 'retained'
+      }
+    });
+    expect(sent.uuid).toBe('leave-uuid');
+    expect(sent.event).toBe('$pageleave');
+    expect(sent.properties).toEqual({
+      $current_url: 'https://admin.example.test/admin/tenants',
+      $referrer: '/admin/login',
+      value: 'retained'
+    });
+    const pageview = options.before_send({
+      uuid: 'view-uuid',
+      event: '$pageview',
+      properties: { $current_url: 'https://admin.example.test/admin/tenants?q=private#session=private' }
+    });
+    expect(pageview.event).toBe('$pageview');
+    expect(pageview.properties.$current_url).toBe('https://admin.example.test/admin/tenants');
+    expect(browserWindow.location.href).toBe('https://admin.example.test/admin/tenants?q=private');
+    vi.doUnmock('posthog-js');
+    vi.unstubAllGlobals();
+  });
+
+  it('sanitizes automatic page URLs on non-Admin surfaces', async () => {
+    const init = vi.fn();
+    vi.doMock('posthog-js', () => ({ default: { init, register: vi.fn() } }));
+    vi.resetModules();
+    const freshModule = await import('../analyticsClient.js');
+
+    freshModule.initBrowserAnalytics({
+      env: { VITE_POSTHOG_ENABLED: 'true', VITE_POSTHOG_KEY: 'phc_pos' },
+      surface: 'pos'
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const beforeSend = init.mock.calls[0][1].before_send;
+    expect(beforeSend).toBe(freshModule.sanitizePostHogEventUrls);
+    const sent = beforeSend({
+      event: '$pageview',
+      properties: {
+        $current_url: 'https://pos.example.test/terminal?secret=value#session',
+        $referrer: 'https://pos.example.test/login?token=private'
+      }
+    });
+    expect(sent.properties).toEqual({
+      $current_url: 'https://pos.example.test/terminal',
+      $referrer: 'https://pos.example.test/login'
+    });
+    vi.doUnmock('posthog-js');
   });
 });
 

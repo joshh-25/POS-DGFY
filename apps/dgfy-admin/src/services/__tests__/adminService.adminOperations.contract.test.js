@@ -36,6 +36,7 @@ describe('adminService admin operation contracts', () => {
     ['updateTenantPosMetadata', 'patch', '/admin/tenants/tenant-1/pos-metadata', () => adminService.updateTenantPosMetadata('tenant-1', { pending_action: 'approve' })],
     ['createAdminProvisionedTenant', 'post', '/admin/tenants/admin-provision', () => adminService.createAdminProvisionedTenant({ name: 'QA Tenant' })],
     ['createAdminProvisionedAccountAndTenant', 'post', '/admin/tenants/admin-provision-with-account', () => adminService.createAdminProvisionedAccountAndTenant({ name: 'QA Tenant' })],
+    ['getTenant', 'get', '/admin/tenants/tenant-1', () => adminService.getTenant('tenant-1')],
     ['assignTenantOwner', 'post', '/admin/tenants/tenant-1/owner', () => adminService.assignTenantOwner('tenant-1', { dgfy_account_id: 'acct-1', reason: 'handover' })],
     ['listStorefrontDomains', 'get', '/admin/tenants/tenant-1/storefront-domains', () => adminService.listStorefrontDomains('tenant-1')],
     ['createStorefrontDomain', 'post', '/admin/tenants/tenant-1/storefront-domains', () => adminService.createStorefrontDomain('tenant-1', { hostname: 'grandmatador.com', role: 'canonical', reason: 'pilot' })],
@@ -101,7 +102,25 @@ describe('adminService admin operation contracts', () => {
     expect(adminService.isAuthenticated()).toBe(false);
 
     await expect(adminService.listDgfyAccounts()).rejects.toThrow('Admin authentication required');
+    await expect(adminService.getTenant('tenant-1')).rejects.toThrow('Admin authentication required');
     expect(mockAdminApi.history.get).toHaveLength(0);
+  });
+
+  it('encodes the tenant id in a single path segment', async () => {
+    mockAdminApi.onGet('/admin/tenants/a%2Fb').reply(200, { success: true, data: { id: 'a/b' } });
+    await expect(adminService.getTenant('a/b')).resolves.toMatchObject({ data: { id: 'a/b' } });
+    expect(mockAdminApi.history.get[0].url).toBe('/admin/tenants/a%2Fb');
+  });
+
+  it('can request a lightweight tenant directory without capability reads', async () => {
+    mockAdminApi.onGet('/admin/tenants').reply((config) => {
+      expect(config.params.toString()).toBe('include_capabilities=false');
+      return [200, { success: true, data: [] }];
+    });
+
+    await expect(adminService.getTenants('all', { includeCapabilities: false })).resolves.toMatchObject({ data: [] });
+    expect(mockAdminApi.history.get[0].url).toBe('/admin/tenants');
+    expect(mockAdminApi.history.get[0].params.get('include_capabilities')).toBe('false');
   });
 
   it('sends diagnostic test notifications to an enrolled device without a request body', async () => {

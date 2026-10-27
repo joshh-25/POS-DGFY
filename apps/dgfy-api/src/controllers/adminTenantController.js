@@ -5,6 +5,7 @@
 export {
     registerCompanyRequest,
     listTenants,
+    getTenant,
     listAdminCompanyRegistrationDrafts,
     listCompanyRegistrationUploads,
     downloadCompanyRegistrationUpload,
@@ -52,6 +53,7 @@ export {
 import {
     registerCompanyRequest,
     listTenants,
+    getTenant,
     listAdminCompanyRegistrationDrafts,
     listCompanyRegistrationUploads,
     downloadCompanyRegistrationUpload,
@@ -98,6 +100,7 @@ import {
 export default {
     registerCompanyRequest,
     listTenants,
+    getTenant,
     listAdminCompanyRegistrationDrafts,
     listCompanyRegistrationUploads,
     downloadCompanyRegistrationUpload,

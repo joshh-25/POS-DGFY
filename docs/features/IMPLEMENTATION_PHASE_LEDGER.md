@@ -33074,3 +33074,355 @@ passes.
 ### Next phase number
 
 Phase 560. No explicit dependency.
+
+---
+
+**Dated note, 2026-10-26 — Phase-number collision between the #2696 tenant-management epic branch and `develop`, resolved per the Phase Sequencing and Lifecycle Rules (the `develop` reservation wins; unmerged collisions move to the next free number):**
+
+The shared base ended at Phase 551. `develop` now reserves Phases 552–554 for storefront order-confirmation presentation parity (#532), its customer-facing refinements (#532), and custom staff-role invitations (#2812). The epic branch's unmerged tenant-console integration cleanup and URL-privacy entry (#2757/#2748/#2750) moves from Phase 552 to **Phase 555**; its efficient tenant directory and Billing workspace entry (#2776) moves from Phase 553 to **Phase 556**. Existing epic phases 542–544 remain unchanged. This is a documentation renumber only; implementation and PR history retain their authored numbers.
+
+| Phase | Owner | Disposition |
+|---:|---|---|
+| 552 | Storefront order-confirmation presentation parity (#532) | unchanged — reserved on `develop` |
+| 553 | Storefront order-confirmation refinements (#532) | unchanged — reserved on `develop` |
+| 554 | Custom staff-role invitations (#2812) | unchanged — reserved on `develop` |
+| 555 | Tenant-console integration cleanup and URL privacy (#2757, #2748, #2750) | **moved from 552** |
+| 556 | Efficient tenant directory and Billing workspace (#2776) | **moved from 553** |
+
+---
+
+**Dated note, 2026-10-26 (second develop sync) — the #2696 epic phase reservations collided again with new entries on `develop`:**
+
+The preceding note records the first sync, which moved the epic's unmerged phases to 555 and 556 after develop had reserved 552–554. Before the epic entries landed on `develop`, develop added Phase 555 for the POS branch-entry integration-test mock (#2767) and Phase 556 for connecting independently hosted Surebiz DGLaundry to DGFY DEV (#2387). Per the ledger rule, those develop entries keep their numbers. The epic's tenant-console integration cleanup moves from Phase 555 to **Phase 557**; its efficient tenant directory and Billing workspace moves from Phase 556 to **Phase 558**. Epic phases 542–544 remain unchanged.
+
+| Phase | Owner | Disposition |
+|---:|---|---|
+| 555 | POS branch entry and shared contracts (#2767) | unchanged — reserved on `develop` |
+| 556 | Connect independently hosted Surebiz DGLaundry to DGFY DEV (#2387) | unchanged — reserved on `develop` |
+| 557 | Tenant-console integration cleanup and URL privacy (#2757, #2748, #2750) | **moved from 555**; originally assigned 552 in the first sync |
+| 558 | Efficient tenant directory and Billing workspace (#2776) | **moved from 556**; originally assigned 553 in the first sync |
+
+---
+
+**Dated note, 2026-10-27 (third develop sync) — the #2696 phase reservations collided with three newer entries on `develop`:**
+
+Since the prior sync, `develop` assigned Phase 557 to DGFY outbound email branding (#2830), Phase 558 to Storefront OIDC browser interaction (#2837), and Phase 559 to making external partner listings opt-in (#2833). Per the ledger rules, those develop assignments keep their numbers. The epic's still-unmerged tenant-console cleanup moves from Phase 557 to **Phase 560**; its efficient tenant directory and Billing workspace moves from Phase 558 to **Phase 561**. Epic phases 542–544 remain unchanged. The preceding dated notes record the earlier allocations at the time of those syncs.
+
+| Phase | Owner | Disposition |
+|---:|---|---|
+| 557 | DGFY outbound email branding (#2830) | unchanged — reserved on `develop` |
+| 558 | DGFY Storefront OIDC browser interaction (#2837) | unchanged — reserved on `develop` |
+| 559 | Make external partner listings opt-in in Storefront discovery (#2833) | unchanged — reserved on `develop` |
+| 560 | Tenant-console integration cleanup and URL privacy (#2757, #2748, #2750) | moved from Phase 557 |
+| 561 | Efficient tenant directory and Billing workspace (#2776) | moved from Phase 558 |
+
+---
+
+## Phase 560 - Tenant-console integration cleanup and URL privacy (#2757, #2748, #2750)
+
+### Initiative and release
+
+DGFY Admin tenant management UX / Wave 4 of epic #2696.
+
+### Objective and scope
+
+Reconcile the tenant-console action inventory to the integrated Wave 1–3 routes; remove unused
+Admin-only service wrappers for legacy plan-change and PayPal setup actions while retaining their
+backend APIs; repair the ambiguous Retail row selectors tracked by #2750; render an explicit empty
+state when the existing registration-review API reports no application; and remove query strings
+from Admin PostHog URL/referrer properties and Sentry `request.url` without changing browser URLs,
+event identity, unrelated telemetry properties, or non-Admin behavior. No API, permission, schema,
+migration, provider, or app-version change is in scope. The combined Activity page and payload
+decoupling remain deferred. Classification: `regulatory`.
+
+### Status
+
+`in_progress` — scoped implementation merged into the registered epic branch through PR #2771 on
+2026-10-25 at merge commit `e6ee1b315053f9f54704dadef315b7c70dd19dce`. Validation remains incomplete:
+the focused Testing Agent gate reported 27 failing suites in the 872-file fast tier, and the failure
+origin was not baseline-compared. The issues remain open and In Progress while this validation gap is
+resolved; deployment and operational verification remain tracked below.
+
+### Dependencies
+
+- Phase 543 / PR #2760 and Phase 544 / PR #2764 provide the integrated detail routes, directory
+  context restoration, Add tenant flow, and Access controls that this phase reconciles and verifies.
+- #2748 is included in this Wave 4 PR by the dated 2026-10-25 scope updates on #2757 and #2748; no
+  separate privacy implementation is to be duplicated.
+- #2750 bounds the StoreTemplateManager change to test selectors. Product behavior, row assertions,
+  and existing mutation checks remain unchanged.
+- No earlier unfinished phase blocks this work. Deployment-specific #1923, #2633, and #2639
+  verification remains separate release work.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0047](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md),
+[ADR 0089](../architecture/adr/0089-platform-admin-fifth-frontend-app-cross-host-admin-routing.md),
+[Platform Admin route permission matrix](../testing/platform-admin-route-permission-matrix.md),
+[Platform Admin Tenant Console](PLATFORM_ADMIN_TENANT_CONSOLE.md), [Tenant Management](TENANT_MANAGEMENT.md),
+[PR conventions](../ai/PR.md), and issues #2757, #2748, and #2750. Classification: `regulatory`; the
+reconciled preflight is recorded in
+[`2026-10-25-admin-tenant-console-integration-cleanup.md`](../compliance/impact-declarations/2026-10-25-admin-tenant-console-integration-cleanup.md).
+
+### Implementation targets
+
+`packages/web-core/src/observability/analyticsClient.js`, `sentryClient.js`, and the shared URL
+scrubber and tests; Admin `TenantRegistration.jsx`, unused legacy service wrappers, #2750's
+registration-industry integration test, relevant Admin integration tests; the 27-action inventory,
+Tenant Management reference, phase ledger, and compliance declaration. No backend production files,
+permission-matrix rules, endpoint contracts, or app-version files are changed.
+
+### Acceptance and validation evidence
+
+- [x] Current epic head, registered route, and issue scope were revalidated before editing. The
+  active board card remains In Progress.
+- [x] All 27 inventory rows were checked against the integrated section and global-tool placement.
+  Rows 24–25 remain API-only; row 26 documents the frontend wrapper removal and unchanged backend
+  routes; Activity and payload decoupling remain deferred.
+- [x] A repository-wide caller search found no production use of `setupPayPalRecurring` or
+  `adminChangePlan` in the Admin app; backend route/use-case code remains untouched. No relocated
+  tenant-console import or source-text assertion was found in tracked IMS tests.
+- [x] Admin selector and registration empty/error/retry coverage passes in the 29-file/212-test
+  Admin suite; the focused selector/registration files pass 25 tests. Shared PostHog/Sentry tests
+  pass 86 tests, including direct `before_send` checks for `$pageview` and `$pageleave`, nested
+  URL/referrer and person properties, Sentry composition, and unchanged non-Admin behavior.
+- [x] Admin lint passes with one existing warning in unchanged `src/main.jsx`; the changed
+  `Pages/TenantRegistration.jsx` and shared observability files lint cleanly. Admin, OPIS, POS,
+  Storefront, and IMS builds pass. Architecture (63 modules/799 code files, 115 controllers),
+  docs/strict ADR (37 governed docs/105 ADRs), compliance, and app-version checks against the epic
+  base pass. The pre-commit compliance and whitespace checks also pass.
+- [x] Synthetic-fixture browser journey passes at 1440×1000 and 390×844: directory filters remain
+  intact through all five detail sections, return navigation, Back/Forward, direct registration
+  route, and reload; both viewports have no horizontal overflow, console errors, or page errors.
+  Evidence: `.tmp/tenant-console-journey-report.json` and `.tmp/tenant-console-*-registration.png`.
+  Payload redaction is verified through the shared SDK hook unit tests; the browser experiment only
+  observed PostHog feature-flag traffic and did not observe a network event payload. No deployed
+  DEV evidence is claimed; this Worker does not deploy.
+- [x] The disposable Testing Agent DB tier passed all 34 test files across eight groups, including
+  `adminTenantLifecycle.integration.test.js` and registration-upload coverage. The earlier direct
+  host run passed four suites/27 tests but could not connect to host MySQL for the lifecycle suite;
+  the DB-tier rerun used the repository's isolated runner with MySQL 8 and Redis 7 and passed.
+- [ ] The focused Testing Agent gate is not fully green: the 872-file fast tier has 27 failing
+  backend suites across POS, delivery, migrations, compliance, billing, and other areas. No backend
+  production file changed in this phase, and these failures have not been baseline-compared, so
+  their origin is left unclassified. SHA-bound evidence: `.tmp/release-gates/cc125a40a/`.
+- [x] `npm run check:merge-hygiene -- --base origin/epic/2696-admin-tenant-management-ux --head HEAD`
+  passes. `git diff --check` passes and the final changed-file debug-marker scan found no matches.
+- [x] No merge, deployment, shared tenant write, billing/provider operation, or STAGING/PROD change
+  is performed in this phase's Worker session.
+
+### Risks and decisions
+
+- PostHog's installed SDK types expose `before_send` as a capture-result transformation. The Admin
+  surface is selected from resolved app initialization, not an event property; nested URL/referrer
+  values and `$set`/`$set_once` person properties are included. Sentry's existing PII and secret
+  sanitizer remains composed with Admin request-URL redaction.
+- The registration endpoint returns its existing `RESOURCE_NOT_FOUND` 404 when no review
+  application exists. Only that response becomes the empty state; 401/403, network, and 5xx errors
+  retain their messages and Retry action.
+- The prior full Admin run's six #2750 failures are historical evidence only; this phase must run
+  the repaired standalone suite and full Admin suite on its own SHA.
+- #1923 STAGING persistence/publication checks, #2633/#2639 deployed evidence, and PROD
+  capability-read recovery remain explicit release-verification follow-ups. No release readiness
+  or deployed acceptance is claimed by this child PR.
+
+### Evidence
+
+The required local request-time compliance preflight passed before implementation against
+disposable API/MySQL/Redis fixtures: `no_breach`, reason `ALLOWED`, at
+`2026-10-24T16:34:12.472Z`, reference
+`PREFLIGHT-LOCAL-1792859561527-2026-10-25-ADMIN-TENANT-CONSOLE-INTEGRATION-CLEANUP`. Implementation
+commits are `cdb5c0a0f` (shared telemetry URL redaction) and `cc125a40a` (Admin registration
+journey and reconciled compliance declaration). The Admin suite passed 29 files/212 tests; the
+focused selector/registration files passed 25 tests; shared observability passed 2 files/86 tests.
+Five affected builds, lint, architecture, docs/strict ADR, compliance, and unchanged-version checks
+passed. The synthetic browser journey passed on desktop/mobile with query/history preservation and
+no page/console errors or horizontal overflow; its report and screenshots are under `.tmp/`.
+PostHog URL redaction was verified at `before_send` in the shared-client tests; live network event
+delivery was not observed in the browser run. The Testing Agent focused gate targeted at
+`cc125a40a` completed with `FAIL`: all 34 DB-tier test files passed, including
+`adminTenantLifecycle.integration.test.js`, while 27 suites failed in the 872-file fast tier.
+Failure origin was not baseline-compared. Full logs and `local_readiness.json` are under
+`.tmp/release-gates/cc125a40a/`. Child merge-hygiene passes against the registered epic base;
+`git diff --check` passes and the final changed-file debug-marker scan found no matches.
+
+### Post-merge verification
+
+- [ ] `deployment` — an authorized deployment role verifies the tested child SHA in DEV and records
+  the successful workflow URL and running Admin image/build identity; owner: deployment role; this
+  does not substitute for the aggregate soak.
+- [ ] `deployment` — after Wave 4 merges into the epic, obtain a qualifying DEV soak from the final
+  epic SHA under the release policy; verify the tenant journey on desktop and mobile and bind the
+  evidence to that SHA; owner: deployment role; blocks the aggregate PR readiness.
+- [ ] `operational` — retain #1923 STAGING persistence/publication, #2633/#2639 deployed evidence,
+  and PROD capability-read recovery as outstanding release verification; owner: existing issue
+  owners; blocks release qualification.
+- [ ] `compliance` — confirm the aggregate commit retains this declaration's reconciled preflight
+  reference and the compliance gate passes; owner: compliance sweep.
+
+### Next phase number
+
+Phase 561. Phase 560 depends on integrated Phases 543 and 544; no other explicit dependency blocks
+implementation.
+
+---
+
+## Phase 561 - Efficient tenant directory and Billing workspace (#2776)
+
+### Initiative and release
+
+DGFY Admin tenant management UX / Wave 5 of epic #2696.
+
+### Objective and scope
+
+Make `/admin/tenants` a lightweight, reusable directory view and move Revenue & Settlement into a
+master-only global Billing page and tenant-scoped detail section. Preserve current financial
+actions, reasons, audit behavior, and backend authority. Add validated browser sorting and paging,
+collapsible filters, a single keyboard-accessible tenant card link, and authenticated in-memory
+directory reuse. Archived tenant Billing is read-only. Classification: within existing Admin/API
+boundaries; no ADR change, tenant schema change, migration, or new financial action.
+
+### Status
+
+`completed` — scoped implementation validation passed, and child PR #2783 merged into the
+registered epic branch on 2026-10-25 at merge commit
+`6f3dcd31d5143b9e54b06ac07cce68bec1897548`. The outstanding DEV, performance, and operational checks
+remain tracked below and do not change implementation completion.
+
+### Dependencies
+
+- Phases 543–544 and 557 / Waves 2–4 are present on the registered epic base; the route foundation,
+  sections, and integration cleanup are available to this wave.
+- This entry moved from Phase 553 to Phase 561 across the dated 2026-10-26 collision notes above;
+  `develop` already reserves Phases 552–556.
+- Phase 546 (#2769) is already recorded on `origin/develop`; it is unrelated and does not block this
+  issue. No explicit dependency on #2769 exists. #1923 STAGING persistence/publication checks,
+  #2633/#2639 deployed capability evidence, and PROD capability-read recovery remain
+  release-verification work.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR Index](../architecture/adr/INDEX.md), [ADR 0047](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md),
+[ADR 0052](../architecture/adr/0052-tenant-revenue-ledger-and-settlement.md),
+[ADR 0089](../architecture/adr/0089-platform-admin-fifth-frontend-app-cross-host-admin-routing.md),
+[Platform Admin route permission matrix](../testing/platform-admin-route-permission-matrix.md),
+[Platform Admin Tenant Console](PLATFORM_ADMIN_TENANT_CONSOLE.md), and live issue #2776. The live
+tenant-revenue API fallback remains Platform Master-only; frontend route checks are usability
+guards, not a substitute for API authorization.
+
+### Implementation targets
+
+Admin: `Pages/TenantManager.jsx`, `Pages/TenantDetailLayout.jsx`, `Pages/TenantOverview.jsx`, the new
+global and detail Billing pages, `src/main.jsx`, `src/components/AdminLayout.jsx`,
+`src/features/admin/tenantDirectory/*`, `src/features/admin/tenantRevenue/*`, route policy/label
+tests, and affected integration tests. API: the tenant list transport/use case and focused tests.
+Docs: this entry, the tenant-console reference, and route permission matrix. No tenant migration,
+schema, API grant, or app-version change is in scope.
+
+### Implementation and test links
+
+- Admin directory and cache: [TenantManager](../../apps/dgfy-admin/Pages/TenantManager.jsx),
+  [directory context](../../apps/dgfy-admin/src/features/admin/tenantDirectory/TenantDirectoryContext.jsx),
+  [directory state](../../apps/dgfy-admin/src/features/admin/tenantDirectory/tenantDirectory.js),
+  and [toolbar](../../apps/dgfy-admin/src/features/admin/tenantDirectory/TenantDirectoryToolbar.jsx).
+- Billing and routing: [global Billing page](../../apps/dgfy-admin/Pages/TenantBilling.jsx),
+  [tenant Billing page](../../apps/dgfy-admin/Pages/TenantBillingDetail.jsx),
+  [read-only archived view](../../apps/dgfy-admin/src/features/admin/tenantRevenue/TenantRevenueReadOnlyPanel.jsx),
+  [route policy](../../apps/dgfy-admin/src/features/admin/adminRoutePolicy.js), and
+  [API list handler](../../apps/dgfy-api/src/modules/tenants/controllers/adminTenantHandlers.js)
+  with [list use case](../../apps/dgfy-api/src/modules/tenants/usecases/listTenantsUseCase.js).
+- Admin tests: [directory journey](../../apps/dgfy-admin/src/pages/__tests__/TenantManager.directory.integration.test.jsx),
+  [Billing journey](../../apps/dgfy-admin/src/pages/__tests__/TenantBilling.integration.test.jsx),
+  [route policy](../../apps/dgfy-admin/src/features/admin/adminRoutePolicy.test.js), and
+  [directory state](../../apps/dgfy-admin/src/features/admin/tenantDirectory/__tests__/tenantDirectory.test.js).
+- API tests: [list use case](../../apps/dgfy-api/tests/listTenants.usecase.test.js) and
+  [transport handler](../../apps/dgfy-api/tests/adminTenantHandlers.transport.test.js).
+- Child implementation PR: [#2783](https://github.com/Sieitzz/dgfy-platform/pull/2783).
+
+### Acceptance and validation evidence
+
+- [x] API lightweight transport skips all tenant capability connector calls, preserves safe list
+  shape/redaction, and leaves existing enriched behavior as the default; controller parses the
+  opt-in query correctly.
+- [x] Admin directory starts with one lightweight list request and no finance requests; the global
+  Billing route loads finance only when entered; master preselection begins with tenant-scoped
+  requests; delegates cannot mount Billing pages or trigger finance reads.
+- [x] Active detail Billing is locked to the route tenant; archived detail renders scoped read-only
+  records with no mutation actions.
+- [x] Directory filters stay collapsed by default; 10/20/50 page sizes, sorting, stable ties,
+  capability enrichment/loading/error states, archived behavior, URL/back/forward, card keyboard
+  navigation, and page → detail → back cache reuse are covered.
+- [x] Focused API/Admin tests, Admin build, changed API `node --check`, architecture, route-policy,
+  docs, compliance, app-version, and whitespace checks pass.
+- [x] Desktop and mobile rendered local journeys pass with request counts/timing recorded as
+  synthetic or local evidence; no deployed DEV or p95 claim is made before an authorized deployment
+  and Verifier observation.
+
+### Risks and decisions
+
+- Client-side paging remains appropriate for the current 67-row reference sample, but is not a
+  server-side search/pagination contract. The default list avoids per-active-tenant database reads;
+  requesting a capability facet still fetches enriched values and can remain costly.
+- In-memory list reuse may be stale after changes made by another admin. Manual Refresh, logout,
+  session-expiry, and successful tenant-mutation invalidation provide the refresh paths; finance
+  responses are not retained in the directory context or persistent browser storage.
+- Archived detail read-only presentation is not an API-level write prohibition. Existing
+  status-specific backend behavior and the separately tracked archived-state API question remain
+  unchanged.
+- The live issue and explicit operator direction choose one child PR into the registered epic
+  branch. The issue REST parent field was absent, while the open #2696 issue has the exact registered
+  branch marker and #2776's live body directs the epic route; implementation follows that explicit
+  route evidence.
+
+### Evidence
+
+The local request-time compliance preflight passed against disposable MySQL/Redis/API fixtures:
+`no_breach`, reason `ALLOWED`, at `2026-10-25T08:26:04.800Z`, reference
+`PREFLIGHT-LOCAL-1792916646344-2026-10-25-ADMIN-TENANT-DIRECTORY-BILLING-PHASE-547`; the
+declaration check passed for all three sensitive source files. The full Admin Vitest suite passed
+30 files/229 tests, including the updated archived Billing
+presentation assertion. Focused API Jest suites passed 2 suites/21 tests, and both changed API
+source files passed `node --check`. The Admin production build, architecture guardrails and
+controller-boundary checks, strict docs/ADR lint, compliance declaration check, app-version check,
+Admin lint (zero errors; one existing unused-helper warning in `src/main.jsx`), and `git diff
+--check` passed. The full API Jest suite was also attempted but its database-backed suites could not
+connect to local MySQL; the focused changed-surface suites passed independently.
+
+The local Chromium journey used 67 synthetic rows: one initial light-list request (`19,586`
+uncompressed JSON bytes, `include_capabilities=false`), zero finance reads on the directory, no
+repeat list request after returning from Billing, and six tenant-detail finance reads all scoped to
+the selected fixture ID. Global Billing produced ten fixture reads in Vite development because
+React StrictMode replays its five read effects. The route-fixture fulfill handler took 1.55 ms for
+the initial list, which is harness timing rather than API latency. Desktop and 390 px mobile views
+had no page errors or horizontal overflow; screenshots are retained in the ignored local
+`apps/dgfy-admin/.tmp/qa-2776/` directory. No DEV/PROD performance or p95 claim is made. No merge,
+deployment, production data access, or financial mutation occurred in this Worker session.
+
+### Completion date
+
+2026-10-25 — PR #2783 merged into the registered epic branch at
+`6f3dcd31d5143b9e54b06ac07cce68bec1897548`; scoped implementation validation passed.
+
+### Post-merge verification
+
+- [ ] `deployment` — after the child PR integrates into the epic, the authorized deployment role
+  verifies the tested epic SHA in DEV and records the workflow and running Admin build identity;
+  owner: deployment role.
+- [ ] `verification` — verify master and delegate route access, one scoped active Billing view, and
+  archived read-only presentation against the deployed epic candidate; owner: Verifier; blocks
+  tenant-console aggregate acceptance.
+- [ ] `performance` — capture default list request count, response bytes, and timing in the deployed
+  DEV environment and compare with the pre-change healthy baseline when available; owner: Verifier
+  with API owner; no local synthetic result substitutes for this evidence.
+- [ ] `operational` — retain #1923 STAGING persistence/publication checks, #2633/#2639 deployed
+  capability evidence, and PROD capability-read recovery as outstanding release verification;
+  owner: existing issue owners.
+
+### Next phase number
+
+Phase 562. Phase 561 depends on the Wave 2–4 routes integrated on the epic branch; Phase 546 on
+`origin/develop` is unrelated and creates no additional dependency.
