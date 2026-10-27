@@ -1,4 +1,0 @@
-status=BLOCKED
-environment=LOCAL_ONLY
-evidence_label=LOCAL TEST - NOT FOR SUBMISSION
-reason=The official Annex C pro forma and executed signatures/authorization documents were not supplied locally; no legal form was fabricated.

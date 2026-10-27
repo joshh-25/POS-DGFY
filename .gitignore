@@ -165,6 +165,10 @@ bun.lock
 # Migration runner report output (apps/dgfy-migration-runner local invocations)
 /tmp/dgfy-migration-reports/
 
+# Generated local compliance evidence and rendered walkthrough output.
+/BIR_ANNEX_B_LOCAL_EVIDENCE/
+/output/pdf/OPIS_POS_Cashier_Parked_Sale_Void_Approval_Walkthrough.pdf
+
 # Verification and test reports (generated locally, environment-specific)
 /reports/
 /tests/frontend-cross-app/.lighthouseci/

@@ -1,5 +1,0 @@
-status=PASS
-environment=LOCAL_ONLY
-evidence_label=LOCAL TEST - NOT FOR SUBMISSION
-relevant_audit_rows=100
-reason=Persisted local audit rows contain timestamp, actor, action, and change values.

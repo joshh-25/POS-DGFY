@@ -1,6 +1,0 @@
-status=BLOCKED
-environment=LOCAL_ONLY
-evidence_label=LOCAL TEST - NOT FOR SUBMISSION
-journal_record_count=2
-journal_documents=0
-reason=The journal currently contains no fiscal document records for this scope; reading-only output is not a receipt-complete Annex B sample.

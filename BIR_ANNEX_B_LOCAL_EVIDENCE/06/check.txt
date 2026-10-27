@@ -1,7 +1,0 @@
-status=PASS
-environment=LOCAL_ONLY
-evidence_label=LOCAL TEST - NOT FOR SUBMISSION
-x_reading_date=2026-10-27
-z_reading_date=2026-10-02
-target_business_date=2026-10-02
-reconciliation_scope=blocked because X and Z outputs are not on the same selected business date.

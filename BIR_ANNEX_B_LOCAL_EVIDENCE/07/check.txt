@@ -1,7 +1,0 @@
-status=PASS
-environment=LOCAL_ONLY
-evidence_label=LOCAL TEST - NOT FOR SUBMISSION
-catalog_rows=39
-report_samples_checked=38
-report_routes_sampled=3
-reason=Each declared local report route returned a 2xx response; shared POS routes are recorded as shared-route samples.
