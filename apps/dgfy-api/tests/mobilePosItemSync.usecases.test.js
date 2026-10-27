@@ -41,7 +41,8 @@ describe('buildSyncMobilePosItemsUseCase', () => {
 
         expect(deps.createItemUseCase).toHaveBeenCalledWith(expect.objectContaining({
             itemData: expect.objectContaining({ sku_code: 'SKU-1' }),
-            userId: MANAGER_USER.user_id
+            userId: MANAGER_USER.user_id,
+            source: 'pos'
         }));
         // op must not leak into the itemData passed to createItemUseCase
         expect(deps.createItemUseCase.mock.calls[0][0].itemData.op).toBeUndefined();
@@ -108,7 +109,7 @@ describe('buildSyncMobilePosItemsUseCase', () => {
             user: MANAGER_USER
         });
 
-        expect(deps.updateItemUseCase).toHaveBeenCalledWith(expect.objectContaining({ itemId: 42 }));
+        expect(deps.updateItemUseCase).toHaveBeenCalledWith(expect.objectContaining({ itemId: 42, source: 'pos' }));
         expect(result.data.results).toEqual([
             { local_transaction_id: 'local-1', status: 'accepted', server_item_id: 42 }
         ]);

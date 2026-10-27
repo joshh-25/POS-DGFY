@@ -1,8 +1,11 @@
 {
   "name": "@sieitzz/pos-receipt",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Dependency-free HTML and thermal POS receipt renderer.",
   "type": "module",
+  "dependencies": {
+    "@sieitzz/shared-constants": "file:../shared-constants"
+  },
   "exports": {
     ".": {
       "types": "./src/index.d.ts",

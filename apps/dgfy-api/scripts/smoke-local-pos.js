@@ -10,13 +10,14 @@ dotenv.config({ path: join(__dirname, '..', '.env') });
 // explicit smoke credentials. This keeps the smoke command runnable with the
 // same local account used by the POS browser tests without copying secrets
 // into the API .env file or source code.
-dotenv.config({ path: process.env.SMOKE_ENV_FILE || join(repoRoot, 'dgfy-web', '.env.e2e') });
+dotenv.config({ path: process.env.SMOKE_ENV_FILE || join(repoRoot, 'dgfy-pos', '.env.e2e') });
 
 const API_BASE = (process.env.SMOKE_API_BASE || 'http://localhost:5000').replace(/\/$/, '');
 const DGFY_EMAIL = process.env.SMOKE_DGFY_EMAIL || process.env.SMOKE_EMAIL || process.env.E2E_TEST_USER_EMAIL || '';
 const DGFY_PASSWORD = process.env.SMOKE_DGFY_PASSWORD || process.env.SMOKE_PASSWORD || process.env.E2E_TEST_USER_PASSWORD || '';
 const TENANT_ID = process.env.SMOKE_TENANT_ID || process.env.E2E_TEST_TENANT_ID || '';
 const COMPANY_NAME = process.env.SMOKE_COMPANY_NAME || process.env.E2E_TEST_COMPANY_NAME || '';
+const LOCATION_ID = process.env.SMOKE_LOCATION_ID || process.env.E2E_TEST_LOCATION_ID || '';
 
 const results = [];
 
@@ -39,15 +40,19 @@ const printResults = () => {
 };
 
 const fetchJson = async (path, options = {}) => {
-  const response = await fetch(`${API_BASE}${path}`, options);
-  const text = await response.text();
-  let body = null;
   try {
-    body = text ? JSON.parse(text) : null;
-  } catch {
-    body = { raw: text };
+    const response = await fetch(`${API_BASE}${path}`, options);
+    const text = await response.text();
+    let body = null;
+    try {
+      body = text ? JSON.parse(text) : null;
+    } catch {
+      body = { raw: text };
+    }
+    return { response, body };
+  } catch (error) {
+    throw new Error(`Request ${path} via ${API_BASE} failed: ${error.message}`);
   }
-  return { response, body };
 };
 
 const resolveSmokeCompany = (companies) => {
@@ -161,13 +166,50 @@ const run = async () => {
       'x-company-token': companyToken
     };
 
+    // POS catalog reads are branch-scoped. Keep the smoke check aligned with
+    // the active shift/terminal instead of exercising the API with an
+    // unscoped request that is expected to return POS_LOCATION_ACCESS_DENIED.
+    const locationsEndpoint = '/api/v1/tenant-locations?include_inactive=false';
+    const locationsResult = await fetchJson(locationsEndpoint, { headers: authHeaders });
+    const locationRows = [
+      ...(Array.isArray(locationsResult.body?.data) ? locationsResult.body.data : []),
+      ...(Array.isArray(locationsResult.body?.data?.locations) ? locationsResult.body.data.locations : [])
+    ];
+    pushResult(
+      `GET ${locationsEndpoint}`,
+      locationsResult.response.status >= 200 && locationsResult.response.status < 300,
+      locationsResult.response.status
+    );
+
+    const currentShiftEndpoint = '/api/v1/pos/terminal/shifts/current';
+    const currentShiftResult = await fetchJson(currentShiftEndpoint, { headers: authHeaders });
+    const currentShift = currentShiftResult.body?.data?.shift
+      || currentShiftResult.body?.data?.current_shift
+      || currentShiftResult.body?.data
+      || null;
+    pushResult(
+      `GET ${currentShiftEndpoint}`,
+      currentShiftResult.response.status >= 200 && currentShiftResult.response.status < 300,
+      currentShiftResult.response.status
+    );
+
+    const configuredLocationId = String(LOCATION_ID || '').trim();
+    const activeShiftLocationId = String(currentShift?.location_id || '').trim();
+    const firstActiveLocationId = String(
+      locationRows.find((location) => location?.is_active !== false)?.location_id
+        || locationRows.find((location) => location?.is_active !== false)?.id
+        || ''
+    ).trim();
+    const catalogLocationId = configuredLocationId || activeShiftLocationId || firstActiveLocationId;
+    const catalogEndpoint = catalogLocationId
+      ? `/api/v1/pos/catalog?limit=5&location_id=${encodeURIComponent(catalogLocationId)}`
+      : '/api/v1/pos/catalog?limit=5';
+
     const authenticatedChecks = [
       '/api/v1/users/me',
-      '/api/v1/tenant-locations?include_inactive=false',
       '/api/v1/settings',
-      '/api/v1/pos/catalog?limit=5',
-      '/api/v1/pos/device/status',
-      '/api/v1/pos/terminal/shifts/current'
+      catalogEndpoint,
+      '/api/v1/pos/device/status'
     ];
 
     for (const endpoint of authenticatedChecks) {

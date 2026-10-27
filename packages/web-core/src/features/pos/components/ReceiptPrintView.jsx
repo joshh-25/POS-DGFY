@@ -1,6 +1,6 @@
 import React from 'react';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
-import { renderPosReceiptHtml } from '@sieitzz/pos-receipt';
+import { renderPosReceiptHtml, resolveTaxpayerType } from '@sieitzz/pos-receipt';
 
 const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const displayDiscountType = (value) => String(value || '').trim().toLowerCase() === 'manual'
@@ -112,8 +112,21 @@ export function LegacyReceiptPrintView({ transaction, businessSettings = {}, rec
         .filter((entry) => Number(entry?.amount || 0) > 0);
     const documentType = resolveDocumentType({ transaction, receiptContract });
     const isFiscal = documentType === 'fiscal_invoice';
-    const taxpayerType = String(businessSettings.pos_taxpayer_type || '').trim().toLowerCase();
-    const isVatRegistered = !taxpayerType.includes('non');
+    const taxpayerType = resolveTaxpayerType(businessSettings.pos_taxpayer_type);
+    const isVatRegistered = taxpayerType === 'vat_registered';
+    if (isFiscal && !taxpayerType) {
+        return (
+            <div
+                role="alert"
+                className="mx-auto box-border w-full max-w-full rounded-lg border border-orange-300 bg-orange-50 p-4 font-sans text-sm leading-5 text-orange-900"
+                data-fiscal-setup-ready="false"
+            >
+                <strong className="block text-[13px]">FISCAL SETUP INCOMPLETE</strong>
+                <p className="mt-1">A recognized taxpayer type is required before a fiscal invoice can be previewed or printed.</p>
+                <p className="mt-1">Set the business taxpayer type to VAT or non-VAT, then try again.</p>
+            </div>
+        );
+    }
     const documentLabel = isFiscal ? (isVatRegistered ? 'VAT INVOICE' : 'NON-VAT INVOICE') : '';
     const restaurantServiceChargeAmount = Number(transaction.restaurant_service_charge_amount || 0);
     const governedDiscount = transaction.discount && typeof transaction.discount === 'object' ? transaction.discount : null;

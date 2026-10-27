@@ -256,6 +256,40 @@ the DGFY session token. Cookie-authenticated writes retain the global CSRF contr
 | GET | `/dead-letters?company_id=&location_id=&direction=&limit=` | DGFY laundry company owner/admin | `authenticateDgfyAccount`, accepted membership + active mapping |
 | POST | `/dead-letters/{id}/redrive` | DGFY laundry company owner/admin | `authenticateDgfyAccount`, accepted membership + active mapping + CSRF for cookie sessions |
 
+### DGLaundry company registration review
+
+Registration submissions carry the configured DGFY OIDC `issuer` and the exact applicant
+`subject`. DGFY resolves that pair to an active account; request-supplied company, tenant, location,
+membership IDs, email, name, and slug do not establish identity or select an existing company.
+Pending registrations are durable admin work items and do not use the older 15-minute partner
+intent expiry.
+
+`GET /registration-intents/{intentId}` returns the current `intentId`, status, reason, nullable
+company/location/membership IDs, exact issuer and subject, membership/company/business/connection
+statuses, `statusVersion`, and `companyAccessVersion`. Pending, correction-required, and rejected
+responses have no company, provider location, or membership IDs. Approval returns DGFY-generated
+company, provider-location, and accepted owner-membership IDs. A provider location ID is never
+substituted with a DGLaundry branch ID.
+
+DGFY Platform Admin exposes a separate queue under Tenant Management. Its API routes are under
+`/api/v1/admin/tenants/dglaundry-registration-intents` and require the live `admin.tenants`
+permission. Queue search and status filters read registration intents separately from tenant rows
+and Storefront registration drafts. The decision request is
+`{ decision, expectedStatusVersion, reason }`, where decision is `approve`, `reject`, or
+`request_correction`. Rejection and correction require a reason. DGFY checks the expected version
+under a row lock; stale decisions return `409`. An exact retry of the recorded decision is
+idempotent. Approval atomically creates the active DGFY laundry company, its first DGFY-owned
+provider location, the applicant's accepted owner membership, the incremented status/access
+versions, and an admin audit record. Rejection and correction create no company, location, or
+membership.
+
+DGLaundry's existing status refresh is the only reconciliation path into the local workspace. It
+must match the saved intent and exact local account issuer/subject, observe a non-regressing
+status version, and verify active company, accepted membership, laundry mode, active connection,
+and all three authoritative IDs before local organization/branch creation. Repeated refresh returns
+the original local workspace. Surebiz demo provisioning stays mock-backed and does not call this
+connected DGFY approval flow.
+
 The order lookup uses `company_id` and `location_id` as the canonical scope query parameters. The
 query-only `companyId` and `locationId` aliases remain temporarily compatible because the complete
 target URI is signed; conflicting or repeated values are rejected. Unsigned
@@ -368,7 +402,7 @@ flagged for reconciliation, not yet an active contract item.
   currently emit this shape on `/api/v1/partners/dglaundry/*` — recorded as a gap, not a contract
   DGFY already satisfies.
 
-## Known gaps (verified in source, 2026-10-08)
+## Known gaps (verified in source, 2026-10-27)
 
 The administration and permission boundary is defined separately in
 [`PARTNER_ADMINISTRATION_MATRIX.md`](PARTNER_ADMINISTRATION_MATRIX.md) for issue #2379. That matrix
@@ -381,6 +415,7 @@ configuration-only, and what does not exist, rather than implying full readiness
 
 | Gap | Status | Tracking |
 |---|---|---|
+| Tenant Management's separate DGLaundry registration queue, versioned admin decisions, and atomic DGFY company/location/owner-membership approval | ✅ source implementation and local API/admin checks passed on the current branch; staging deployment and synthetic end-to-end qualification remain outstanding | This change; staging release owner |
 | DEV JWKS and discovery require the independent DEV OIDC signing registration/key; the DEV connection is not live until configuration, key delivery, and authenticated qualification complete | ⚠️ registration and hosted verification remain open | #2387, #2304 |
 | Staging/production JWKS returns `503 oidc_keys_not_configured` until a real keypair is installed — shared key resolution, staging bind mounts, and production SOPS-to-Compose-secret delivery are implemented, but no live key installation or deployment has been verified | ⚠️ operator key provisioning and deployment remain | #2303 |
 | DEV uses separate `dglaundry-web-dev` / `dglaundry-machine-dev` / `dglaundry-service-dev` IDs; staging and production retain their existing client labels in independent registrations. Registration and live callback verification remain outstanding | ⚠️ contract agreed; host registration and verification remain open | #2387, #2304, #519 |

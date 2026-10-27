@@ -2,6 +2,23 @@ import { buildDgfyLaundryProviderUseCases } from '../src/modules/dgfyLaundry/use
 import { jest } from '@jest/globals';
 
 const account = { id: 'account-1', email: 'owner@example.test', first_name: 'Demo', last_name: 'Owner' };
+const issuer = process.env.DGFY_OIDC_ISSUER || 'https://api.dgfy.ph/oidc';
+const makeRegistrationAuthority = (overrides = {}) => ({
+    row: {
+        id: 'intent-1', intent_type: 'registration', status: 'pending', decision: null,
+        status_version: 1, company_access_version: 0, decision_reason: null,
+        expires_at: new Date('2026-11-26T00:00:00Z')
+    },
+    payload: { organizationName: 'Laundry A', branchName: 'Main', branchCode: 'MAIN' },
+    issuer,
+    subject: account.id,
+    account: { ...account, is_active: true, deleted_at: null },
+    company: null,
+    membership: null,
+    location: null,
+    businessMode: 'laundry',
+    ...overrides
+});
 const companies = [
     { company_id: 'company-a', company_name: 'Laundry A', membership_id: 11, membership_status: 'accepted', role: 'admin', business_mode: 'laundry', runtime_owner: 'dglaundry', dgfy_storefront: true, ims: false, pos: false, operations_url: 'https://laundry.surebizcorp.com', status: 'active' },
     { company_id: 'company-b', company_name: 'Laundry B', membership_id: 12, membership_status: 'accepted', role: 'staff', business_mode: 'laundry', runtime_owner: 'dglaundry', dgfy_storefront: true, ims: false, pos: false, operations_url: 'https://laundry.surebizcorp.com', status: 'active' }
@@ -11,9 +28,19 @@ const makeRepository = () => ({
     listLaundryCompanies: jest.fn(async () => companies),
     findCompanyById: jest.fn(async () => null),
     listMappings: jest.fn(async () => [{ dgfy_location_id: 'location-a', dglaundry_branch_id: 'branch-a', mapping_version: 2, status: 'active' }]),
+    listProviderLocations: jest.fn(async () => []),
     audit: jest.fn(async () => {}),
-    createIntent: jest.fn(async (input) => ({ id: 'intent-1', intent_type: input.intentType, status: 'pending', idempotency_key: input.idempotencyKey, expires_at: input.expiresAt })),
-    findIntent: jest.fn(async () => ({ id: 'intent-1', intent_type: 'registration', status: 'pending', payload: '{"company_name":"A"}' })),
+    findActiveApplicant: jest.fn(async ({ issuer: requestedIssuer, subject }) => requestedIssuer === issuer && subject === account.id ? { ...account, is_active: true, deleted_at: null } : null),
+    createIntent: jest.fn(async (input) => ({ row: { id: 'intent-1', intent_type: input.intentType, status: 'pending', idempotency_key: input.idempotencyKey, expires_at: input.expiresAt, payload: input.payload, status_version: 1, company_access_version: 0, applicant_issuer: input.applicantIssuer, applicant_subject: input.applicantSubject }, created: true })),
+    findIntent: jest.fn(async () => ({ id: 'intent-1', intent_type: 'registration', status: 'pending', payload: '{"organizationName":"Laundry A","branchName":"Main"}' })),
+    findRegistrationIntentAuthority: jest.fn(async () => makeRegistrationAuthority()),
+    listRegistrationIntents: jest.fn(async () => ({ items: [], total: 0 })),
+    decideRegistrationIntent: jest.fn(async () => ({ idempotentReplay: false, authority: makeRegistrationAuthority({
+        row: { ...makeRegistrationAuthority().row, status: 'approved', decision: 'approve', status_version: 2, company_access_version: 1 },
+        company: { id: 'company-a', status: 'active', settings: { business_mode: 'laundry', runtime_owner: 'dglaundry' } },
+        membership: { id: 21, status: 'accepted' },
+        location: { id: 'location-a', status: 'active' }
+    }) })),
     createMapping: jest.fn(async () => ({ id: 'mapping-1', status: 'active' }))
 });
 
@@ -114,8 +141,76 @@ describe('DGLaundry provider foundation use cases', () => {
     it('uses bounded idempotency keys for registration intents', async () => {
         const repository = makeRepository();
         const useCases = buildDgfyLaundryProviderUseCases({ repository });
-        await expect(useCases.createIntent({ intentType: 'registration', dgfyAccount: account, body: { idempotency_key: 'registration-1', company_name: 'A' } })).resolves.toMatchObject({ intentId: 'intent-1', status: 'pending' });
+        await expect(useCases.createIntent({ intentType: 'registration', dgfyAccount: account, body: { idempotency_key: 'registration-1', issuer, subject: account.id, organizationName: 'A', branchName: 'Main', company_id: 'forged-company' } })).resolves.toMatchObject({ intentId: 'intent-1', status: 'pending', companyId: null, locationId: null, membershipId: null, issuer, subject: account.id, membershipStatus: 'not_created', companyStatus: 'not_created', statusVersion: 1, companyAccessVersion: 0 });
+        expect(repository.createIntent).toHaveBeenCalledWith(expect.objectContaining({
+            dgfyAccountId: account.id,
+            applicantIssuer: issuer,
+            applicantSubject: account.id,
+            tenantId: null,
+            payload: expect.not.objectContaining({ company_id: 'forged-company' })
+        }));
         await expect(useCases.createIntent({ intentType: 'registration', dgfyAccount: account, body: {} })).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('requires an exact active DGFY issuer and subject for registration, ignoring caller account IDs', async () => {
+        const repository = makeRepository();
+        const useCases = buildDgfyLaundryProviderUseCases({ repository });
+        await expect(useCases.createIntent({ intentType: 'registration', body: { idempotencyKey: 'registration-2', dgfy_account_id: account.id } }))
+            .rejects.toMatchObject({ statusCode: 422 });
+        await expect(useCases.createIntent({ intentType: 'registration', body: { idempotencyKey: 'registration-3', issuer: 'https://attacker.test', subject: account.id } }))
+            .rejects.toMatchObject({ statusCode: 422 });
+        repository.findActiveApplicant.mockResolvedValueOnce(null);
+        await expect(useCases.createIntent({ intentType: 'registration', body: { idempotencyKey: 'registration-4', issuer, subject: 'unresolved-subject' } }))
+            .rejects.toMatchObject({ statusCode: 403 });
+        expect(repository.createIntent).not.toHaveBeenCalled();
+    });
+
+    it('returns only durable DGFY approval IDs and versions from registration status', async () => {
+        const repository = makeRepository();
+        repository.findRegistrationIntentAuthority.mockResolvedValueOnce(makeRegistrationAuthority({
+            row: { ...makeRegistrationAuthority().row, status: 'approved', decision: 'approve', status_version: 7, company_access_version: 2 },
+            company: { id: 'company-a', status: 'active', settings: { business_mode: 'laundry', runtime_owner: 'dglaundry' } },
+            membership: { id: 33, status: 'accepted' },
+            location: { id: 'provider-location-a', status: 'active' }
+        }));
+        const useCases = buildDgfyLaundryProviderUseCases({ repository });
+        await expect(useCases.getIntent({ id: 'intent-1', expectedIntentType: 'registration' })).resolves.toEqual(expect.objectContaining({
+            intentId: 'intent-1', status: 'approved', companyId: 'company-a', locationId: 'provider-location-a', membershipId: '33',
+            issuer, subject: account.id, membershipStatus: 'accepted', companyStatus: 'active', businessMode: 'laundry',
+            connectionStatus: 'active', statusVersion: 7, companyAccessVersion: 2
+        }));
+        expect(repository.findRegistrationIntentAuthority).toHaveBeenCalledWith({ id: 'intent-1' });
+    });
+
+    it('lists, reviews, and records admin decisions with reason and optimistic version', async () => {
+        const repository = makeRepository();
+        repository.listRegistrationIntents.mockResolvedValueOnce({ items: [{ intentId: 'intent-1' }], total: 1 });
+        const useCases = buildDgfyLaundryProviderUseCases({ repository });
+        await expect(useCases.listRegistrationIntents({ search: 'asdsad', status: 'pending', limit: '10', offset: '0' }))
+            .resolves.toEqual({ items: [{ intentId: 'intent-1' }], total: 1 });
+        expect(repository.listRegistrationIntents).toHaveBeenCalledWith({ search: 'asdsad', status: 'pending', limit: 10, offset: 0 });
+        await expect(useCases.getRegistrationIntentForAdmin({ intentId: 'intent-1' })).resolves.toMatchObject({
+            applicant: { email: account.email, identityVerified: true },
+            payload: { organizationName: 'Laundry A', branchName: 'Main' }
+        });
+        await expect(useCases.decideRegistrationIntent({ intentId: 'intent-1', decision: 'approve', expectedStatusVersion: 1, adminId: 'admin-1' }))
+            .resolves.toMatchObject({ status: 'approved', idempotentReplay: false, companyAccessVersion: 1 });
+        expect(repository.decideRegistrationIntent).toHaveBeenCalledWith(expect.objectContaining({ intentId: 'intent-1', decision: 'approve', expectedStatusVersion: 1, adminId: 'admin-1' }));
+        await expect(useCases.decideRegistrationIntent({ intentId: 'intent-1', decision: 'reject', expectedStatusVersion: 1 }))
+            .rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('surfaces stale admin decisions as conflicts and preserves negative decisions without provisioning fields', async () => {
+        const repository = makeRepository();
+        repository.decideRegistrationIntent.mockRejectedValueOnce(Object.assign(new Error('stale'), { code: 'DGLAUNDRY_REGISTRATION_STALE_VERSION' }));
+        repository.decideRegistrationIntent.mockResolvedValueOnce({ idempotentReplay: false, authority: makeRegistrationAuthority({
+            row: { ...makeRegistrationAuthority().row, status: 'correction_required', decision: 'request_correction', status_version: 2, company_access_version: 0, decision_reason: 'Please update your business details.' }
+        }) });
+        const useCases = buildDgfyLaundryProviderUseCases({ repository });
+        await expect(useCases.decideRegistrationIntent({ intentId: 'intent-1', decision: 'approve', expectedStatusVersion: 1 }))
+            .rejects.toMatchObject({ statusCode: 409 });
+        await expect(useCases.decideRegistrationIntent({ intentId: 'intent-1', decision: 'request_correction', expectedStatusVersion: 1, reason: 'Please update your business details.' }))
+            .resolves.toMatchObject({ status: 'correction_required', companyId: null, locationId: null, membershipId: null, companyAccessVersion: 0 });
     });
 
     it('does not return an intent through a route for a different intent type', async () => {

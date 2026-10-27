@@ -6,10 +6,16 @@ export function useDiscoveryHighlightSync({
   getDiscoveryMarkerKey,
   highlightedDiscoveryMarkerKey,
   highlightedStoreSlug,
+  preserveDiscoveryCamera = false,
   setHighlightedDiscoveryMarkerKey,
   setHighlightedStoreSlug
 }) {
   useEffect(() => {
+    // Cancellation returns to an unselected hero map. Keep it clear rather than
+    // immediately auto-highlighting the first native pin; an explicit search
+    // or location action releases this preservation state.
+    if (preserveDiscoveryCamera) return;
+
     if (!filteredDiscoveryStores.length) {
       setHighlightedStoreSlug('');
       setHighlightedDiscoveryMarkerKey('');
@@ -29,6 +35,7 @@ export function useDiscoveryHighlightSync({
     getDiscoveryMarkerKey,
     highlightedDiscoveryMarkerKey,
     highlightedStoreSlug,
+    preserveDiscoveryCamera,
     setHighlightedDiscoveryMarkerKey,
     setHighlightedStoreSlug
   ]);

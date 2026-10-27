@@ -15,7 +15,7 @@ describe('Business Admin attendance workspace contract', () => {
         const useCase = readRepoFile('apps/dgfy-api/src/modules/businessAdmin/usecases/businessAdminAttendanceUseCase.js');
         const repository = readRepoFile('apps/dgfy-api/src/modules/pos/repositories/posRepository.js');
 
-        expect(service).toContain("attendance: (params) => get('/business-admin/attendance', params)");
+        expect(service).toContain("attendance: (params, config) => get('/business-admin/attendance', params, config)");
         expect(service).toContain("endAttendanceShift: (shiftId, body) => api.post");
         expect(route).toContain("router.get('/attendance', businessAdminHandlers.getAttendance)");
         expect(route).toContain("router.post('/attendance/shifts/:id/end'");

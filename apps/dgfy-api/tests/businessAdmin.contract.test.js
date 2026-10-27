@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 import { PERMISSIONS } from '../src/config/permissions.js';
 import {
+    buildBusinessAdminCapabilities,
     buildBusinessAdminSettingsCapabilities,
     resolveBusinessAdminAccess
 } from '../src/modules/businessAdmin/domain/businessAdminAccessPolicy.js';
@@ -68,6 +69,27 @@ describe('Business Admin contracts', () => {
 
         expect(Object.values(capabilities).every((section) => section.view && section.edit)).toBe(true);
         expect(capabilities.storefront.branding).toBe(true);
+    });
+
+    it('projects fiscal terminal and eSales management into the Business Admin bootstrap', () => {
+        const capabilities = buildBusinessAdminCapabilities({
+            role: 'manager',
+            permissions: [
+                PERMISSIONS.POS.actions.VIEW_POS,
+                PERMISSIONS.POS.actions.SHIFT_ACCESS,
+                PERMISSIONS.POS.actions.MANAGE_FISCAL_TERMINALS,
+                PERMISSIONS.POS.actions.MANAGE_ESALES_REPORTS
+            ]
+        });
+
+        expect(capabilities).toMatchObject({
+            manage_fiscal_terminals: true,
+            manage_esales_reports: true
+        });
+        expect(buildBusinessAdminCapabilities({ role: 'staff', permissions: [] })).toMatchObject({
+            manage_fiscal_terminals: false,
+            manage_esales_reports: false
+        });
     });
 
     it('projects employee-owned Team editors without granting user-management access', () => {

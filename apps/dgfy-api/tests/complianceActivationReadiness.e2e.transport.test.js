@@ -45,6 +45,7 @@ const mergeObjects = (base, incoming) => {
 
 const buildRequiredSettingsSnapshot = () => ({
   pos_business_name: { value: 'Demo Business' },
+  pos_taxpayer_type: { value: 'VAT_REGISTERED' },
   pos_tin_branch: { value: 'TIN-123-456-789' },
   pos_address: { value: '123 Demo Street' },
   pos_ptu_number: { value: 'PTU-12345' },

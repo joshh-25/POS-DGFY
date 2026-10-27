@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-10-26
+last_reviewed: 2026-10-27
 review_by: 2027-02-16
 applies_to: external_discovery_redirects
 ---
@@ -38,6 +38,19 @@ Partner pins use category-specific colors and icons: Proventous blue briefcase, 
 ## Category chips
 
 Storefront appends **Hotel**, **Real Estate**, **Taxi**, and **Job** after the existing category chips. Desktop users reach them with **More**; mobile users scroll to the end of the chip rail. Managed external discovery rows derive `storefront_categories` from their known provider when no explicit categories are stored: Synqcore → Hotel, MapViu → Real Estate, Eytitu → Taxi, and Proventous → Job. The provider mapping is Hotel → `synqcore`, Real Estate → `mapviu`, Taxi → `eytitu`, and Job → `proventus`. On **All** and non-partner categories, discovery shows only `entity_type = dgfy_native` rows and retains the existing native category matching. A selected partner category shows only `entity_type = external_listing` rows from its mapped provider; category text and workflow mode do not grant eligibility. Unknown external providers stay hidden even if their tags match, and free-text searches do not opt shoppers into partners. Returning to **All** or a native category removes external rows from map pins, hero pins, result cards, cluster counts, and retained selections. The event seed tool accepts Synqcore, MapViu, and Proventous company records; the supplied Proventous export produces six employer pins for Job. This is company data, not job-posting data. Eytitu has no records in this event seed, so Taxi remains empty until Eytitu listings are configured.
+
+Search cancellation clears the typed query, selected category, all discovery filters and sorting,
+pagination, pin scope, map selection/highlights, and cluster results through one reset action. The
+search-bar clear button, second click on the active category chip, selection of the already-active
+category in the results dropdown, **All**, and **Reset filters** use that action. It requests the
+unsearched `tenant_primary` dataset while retaining the selected location and latest map camera
+across the results-to-hero map transition; it does not request geolocation. Category chips expose
+their selected state with `aria-pressed`. Manually deleting text does not deselect the category, and
+the clear action remains available while a category or other filter is active. Auto-highlighting
+stays suspended during the preserved-camera return, so an old partner highlight is not replaced by
+a new pin selection; an explicit search or location action restores normal highlight
+synchronization. After cancellation, the existing native-only default eligibility continues to
+apply.
 
 ### Source fields needed by later import, not stored today
 

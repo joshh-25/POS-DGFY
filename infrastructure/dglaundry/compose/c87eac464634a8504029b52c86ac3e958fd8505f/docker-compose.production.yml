@@ -1,0 +1,392 @@
+name: dglaundry
+
+services:
+  mysql:
+    image: ${DGLAUNDRY_MYSQL_IMAGE:?Set DGLAUNDRY_MYSQL_IMAGE to an immutable digest}
+    restart: unless-stopped
+    command: ["mysqld", "--max_connections=${DGLAUNDRY_MYSQL_MAX_CONNECTIONS:-100}", "--skip-name-resolve"]
+    environment:
+      MYSQL_DATABASE: dglaundry
+      MYSQL_USER: dglaundry
+      MYSQL_PASSWORD_FILE: /run/secrets/mysql_app_password
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql_root_password
+    secrets:
+      - mysql_app_password
+      - mysql_root_password
+    volumes:
+      - dglaundry_mysql:/var/lib/mysql
+    networks: [data]
+    healthcheck:
+      test: ["CMD-SHELL", "mysql --protocol=TCP -h 127.0.0.1 -P 3306 -u root --password=$$(cat /run/secrets/mysql_root_password) -e 'SELECT 1' >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    mem_limit: ${DGLAUNDRY_MYSQL_MEM_LIMIT:-1g}
+    cpus: ${DGLAUNDRY_MYSQL_CPUS:-1.5}
+    pids_limit: 512
+    security_opt: [no-new-privileges:true]
+
+  migrate:
+    image: ${DGLAUNDRY_API_IMAGE:?Set DGLAUNDRY_API_IMAGE to an immutable digest}
+    restart: "no"
+    command: ["node", "scripts/migrate.mjs"]
+    environment:
+      NODE_ENV: production
+      MYSQL_URL_FILE: /run/secrets/mysql_migration_url
+      MIGRATIONS_DIR: /app/apps/api/src/migrations
+    # Compose file secrets are bind mounts on this host and do not honor
+    # uid/gid/mode. The dedicated host group grants this non-root service read
+    # access while the source files remain root-owned and group-readable only.
+    group_add: ["${DGLAUNDRY_SECRETS_GID:-3901}"]
+    secrets: [mysql_migration_url]
+    depends_on:
+      mysql: {condition: service_healthy}
+    networks: [data]
+    read_only: true
+    tmpfs: [/tmp:mode=1777]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    pids_limit: 128
+    mem_limit: ${DGLAUNDRY_MIGRATE_MEM_LIMIT:-256m}
+    cpus: ${DGLAUNDRY_MIGRATE_CPUS:-0.5}
+
+  api:
+    image: ${DGLAUNDRY_API_IMAGE:?Set DGLAUNDRY_API_IMAGE to an immutable digest}
+    labels:
+      org.opencontainers.image.revision: ${DGLAUNDRY_RELEASE_SHA:?Set the deployed release SHA}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_HOST: 0.0.0.0
+      API_PORT: 4400
+      PUBLIC_WEB_ORIGIN: ${DGLAUNDRY_PUBLIC_ORIGIN:?Set DGLAUNDRY_PUBLIC_ORIGIN}
+      API_PUBLIC_ORIGIN: ${DGLAUNDRY_PUBLIC_ORIGIN:?Set DGLAUNDRY_PUBLIC_ORIGIN}
+      API_TRUST_PROXY_HOPS: "1"
+      PERSISTENCE_MODE: mysql
+      APPLY_MIGRATIONS: "false"
+      MIGRATION_REQUIRED_HEAD: ${DGLAUNDRY_MIGRATION_REQUIRED_HEAD:?Set the reviewed migration head}
+      MYSQL_URL_FILE: /run/secrets/mysql_url
+      SESSION_SECRET_FILE: /run/secrets/session_secret
+      WORKER_INTERNAL_SECRET_FILE: /run/secrets/worker_internal_secret
+      TELEMETRY_INTERNAL_SECRET_FILE: /run/secrets/telemetry_internal_secret
+      TELEMETRY_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/metrics
+      RELEASE_SHA: ${DGLAUNDRY_RELEASE_SHA:?Set the deployed release SHA}
+      DGLAUNDRY_DEPLOYMENT_ENV: production
+      DGLAUNDRY_CONFIG_REVISION: ${DGLAUNDRY_CONFIG_REVISION:?Set the reviewed production configuration revision}
+      DGFY_MODE: ${DGLAUNDRY_DGFY_MODE:-disabled}
+      DGFY_PAR_ENABLED: "true"
+      DGFY_ISSUER: ${DGLAUNDRY_DGFY_ISSUER:-https://api.dgfy.ph/oidc}
+      DGFY_CLIENT_ID: ${DGLAUNDRY_DGFY_CLIENT_ID:-dglaundry-web}
+      DGFY_PARTNER_APP_ID: ${DGLAUNDRY_DGFY_PARTNER_APP_ID:-dglaundry}
+      DGFY_CLIENT_SECRET_FILE: /run/secrets/dgfy_client_secret
+      DGFY_REDIRECT_URI: ${DGLAUNDRY_DGFY_REDIRECT_URI:?Set the HTTPS DGFY callback URI}
+      DGFY_SESSION_CONTEXT_URL: ${DGLAUNDRY_DGFY_SESSION_CONTEXT_URL:-https://api.dgfy.ph/api/v1/partners/dglaundry/session-context}
+      DGFY_REGISTRATION_INTENT_URL: ${DGLAUNDRY_DGFY_REGISTRATION_INTENT_URL:-https://api.dgfy.ph/api/v1/partners/dglaundry/registration-intents}
+      DGFY_STAFF_INVITATION_URL: ${DGLAUNDRY_DGFY_STAFF_INVITATION_URL:-https://api.dgfy.ph/api/v1/partners/dglaundry/staff-invitation-intents}
+      DGFY_PARTNER_AUTH_MODE: ${DGLAUNDRY_DGFY_PARTNER_AUTH_MODE:-asymmetric}
+      DGFY_PARTNER_SIGNING_PRIVATE_KEY_FILE: /run/secrets/dgfy_partner_signing_private_key
+      DGFY_PARTNER_AUDIENCE: ${DGLAUNDRY_DGFY_PARTNER_AUDIENCE:-dglaundry}
+      DGFY_PARTNER_INBOUND_AUDIENCE: ${DGLAUNDRY_DGFY_PARTNER_INBOUND_AUDIENCE:?Set the exact DGLaundry API origin accepted as DGFY service-token audience}
+      DGFY_PARTNER_INBOUND_CLIENT_ID: ${DGLAUNDRY_DGFY_PARTNER_INBOUND_CLIENT_ID:?Set the DGFY service-client registration ID allowed to call DGLaundry}
+      DGFY_PARTNER_TOKEN_URL: ${DGLAUNDRY_DGFY_PARTNER_TOKEN_URL:-https://api.dgfy.ph/oidc/token}
+      DGFY_CONTEXT_TIMEOUT_MS: ${DGLAUNDRY_DGFY_CONTEXT_TIMEOUT_MS:-5000}
+      INTEGRATION_SIGNATURE_PROFILE: http-message-signatures-v1
+      INTEGRATION_PUBLIC_KEYS_JSON: ${DGLAUNDRY_INTEGRATION_PUBLIC_KEYS_JSON:?Set pinned DGFY public keys}
+      DGFY_PARTNER_PUBLIC_KEYS_JSON: ${DGLAUNDRY_DGFY_PARTNER_PUBLIC_KEYS_JSON:-{}}
+    # DGFY credentials are added only by docker-compose.production.dgfy.yml
+    # after provider registration. Disabled mode must not mount placeholder
+    # provider secrets.
+    group_add: ["${DGLAUNDRY_SECRETS_GID:-3901}"]
+    secrets: [mysql_url, session_secret, worker_internal_secret, telemetry_internal_secret]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      mysql: {condition: service_healthy}
+    networks: [app, data, telemetry, egress]
+    expose: ["4400"]
+    volumes:
+      - dglaundry_proof:/app/var/private-proof-artifacts
+      - dglaundry_catalog_media:/app/var/private-catalog-media
+    read_only: true
+    tmpfs: [/tmp:mode=1777]
+    init: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    pids_limit: 256
+    mem_limit: ${DGLAUNDRY_API_MEM_LIMIT:-768m}
+    cpus: ${DGLAUNDRY_API_CPUS:-1}
+    stop_grace_period: 20s
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4400/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  worker:
+    image: ${DGLAUNDRY_WORKER_IMAGE:?Set DGLAUNDRY_WORKER_IMAGE to an immutable digest}
+    labels:
+      org.opencontainers.image.revision: ${DGLAUNDRY_RELEASE_SHA:?Set the deployed release SHA}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PERSISTENCE_MODE: mysql
+      MYSQL_URL_FILE: /run/secrets/mysql_url
+      WORKER_API_INTERNAL_URL: http://api:4400
+      WORKER_INTERNAL_SECRET_FILE: /run/secrets/worker_internal_secret
+      TELEMETRY_INTERNAL_SECRET_FILE: /run/secrets/telemetry_internal_secret
+      TELEMETRY_ENABLED: "true"
+      WORKER_HEALTH_HOST: 0.0.0.0
+      WORKER_HEALTH_PORT: 4402
+      WORKER_POLL_INTERVAL_MS: ${DGLAUNDRY_WORKER_POLL_INTERVAL_MS:-5000}
+      WORKER_BATCH_SIZE: ${DGLAUNDRY_WORKER_BATCH_SIZE:-20}
+      RELEASE_SHA: ${DGLAUNDRY_RELEASE_SHA:?Set the deployed release SHA}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/metrics
+      DGFY_OUTBOUND_URL: ${DGLAUNDRY_DGFY_OUTBOUND_URL:-}
+      DGFY_OUTBOUND_KEY_ID: ${DGLAUNDRY_DGFY_OUTBOUND_KEY_ID:-}
+      DGFY_OUTBOUND_SIGNING_KEY_FILE: /run/secrets/dgfy_outbound_signing_key
+      DGFY_OUTBOUND_AUTH_TOKEN_FILE: /run/secrets/dgfy_outbound_auth_token
+    # Outbound provider credentials are added by the DGFY overlay only when
+    # DGFY outbound delivery is enabled.
+    group_add: ["${DGLAUNDRY_SECRETS_GID:-3901}"]
+    secrets: [mysql_url, worker_internal_secret, telemetry_internal_secret]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      api: {condition: service_healthy}
+    networks: [data, telemetry, egress]
+    expose: ["4402"]
+    read_only: true
+    tmpfs: [/tmp:mode=1777]
+    init: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    pids_limit: 128
+    mem_limit: ${DGLAUNDRY_WORKER_MEM_LIMIT:-384m}
+    cpus: ${DGLAUNDRY_WORKER_CPUS:-0.75}
+    stop_grace_period: 20s
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4402/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  gateway:
+    image: ${DGLAUNDRY_WEB_IMAGE:?Set DGLAUNDRY_WEB_IMAGE to an immutable digest}
+    labels:
+      org.opencontainers.image.revision: ${DGLAUNDRY_RELEASE_SHA:?Set the deployed release SHA}
+    restart: unless-stopped
+    stop_grace_period: 15s
+    depends_on:
+      api: {condition: service_healthy}
+    networks:
+      edge:
+        aliases: [dglaundry-gateway]
+      app: {}
+      egress: {}
+    ports: ["127.0.0.1:${DGLAUNDRY_GATEWAY_PORT:-4410}:8080"]
+    read_only: true
+    tmpfs: [/tmp:mode=1777, /var/cache/nginx:mode=1777, /var/run:mode=1777]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    pids_limit: 128
+    mem_limit: ${DGLAUNDRY_GATEWAY_MEM_LIMIT:-128m}
+    cpus: ${DGLAUNDRY_GATEWAY_CPUS:-0.25}
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:8080/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # The inactive gateway slot is rebuilt while the native Nginx upstream
+  # continues serving the active slot. The deploy script switches the
+  # upstream only after this container passes local health and demo checks.
+  gateway_standby:
+    image: ${DGLAUNDRY_WEB_IMAGE:?Set DGLAUNDRY_WEB_IMAGE to an immutable digest}
+    labels:
+      org.opencontainers.image.revision: ${DGLAUNDRY_RELEASE_SHA:?Set the deployed release SHA}
+    restart: unless-stopped
+    stop_grace_period: 15s
+    depends_on:
+      api: {condition: service_healthy}
+    networks: [app, egress]
+    ports: ["127.0.0.1:4411:8080"]
+    read_only: true
+    tmpfs: [/tmp:mode=1777, /var/cache/nginx:mode=1777, /var/run:mode=1777]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    pids_limit: 128
+    mem_limit: ${DGLAUNDRY_GATEWAY_MEM_LIMIT:-128m}
+    cpus: ${DGLAUNDRY_GATEWAY_CPUS:-0.25}
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:8080/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  otel-collector:
+    image: ${DGLAUNDRY_OTEL_IMAGE:?Set DGLAUNDRY_OTEL_IMAGE to an immutable digest}
+    restart: unless-stopped
+    profiles: [monitoring]
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes: [./otel-collector-config.yaml:/etc/otelcol/config.yaml:ro]
+    networks: [telemetry]
+    expose: ["4317", "4318", "9464"]
+    read_only: true
+    tmpfs: [/tmp:mode=1777]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    pids_limit: 256
+    mem_limit: ${DGLAUNDRY_OTEL_MEM_LIMIT:-256m}
+    cpus: ${DGLAUNDRY_OTEL_CPUS:-0.5}
+
+  prometheus:
+    image: ${DGLAUNDRY_PROMETHEUS_IMAGE:?Set DGLAUNDRY_PROMETHEUS_IMAGE to an immutable digest}
+    restart: unless-stopped
+    profiles: [monitoring]
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=400d", "--storage.tsdb.retention.size=${DGLAUNDRY_PROMETHEUS_RETENTION_SIZE:-40GB}", "--storage.tsdb.path=/prometheus"]
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:9090/-/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    secrets: [telemetry_internal_secret]
+    volumes:
+      - dglaundry_prometheus:/prometheus
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alerts.yml:/etc/prometheus/alerts.yml:ro
+    networks: [telemetry]
+    expose: ["9090"]
+    read_only: true
+    tmpfs: [/tmp:mode=1777]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    pids_limit: 256
+    mem_limit: ${DGLAUNDRY_PROMETHEUS_MEM_LIMIT:-512m}
+    cpus: ${DGLAUNDRY_PROMETHEUS_CPUS:-1}
+
+  grafana:
+    image: ${DGLAUNDRY_GRAFANA_IMAGE:?Set DGLAUNDRY_GRAFANA_IMAGE to an immutable digest}
+    restart: unless-stopped
+    profiles: [monitoring]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    secrets: [grafana_admin_password]
+    volumes:
+      - dglaundry_grafana:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on: [prometheus]
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks: [telemetry]
+    ports: ["127.0.0.1:${DGLAUNDRY_GRAFANA_PORT:-3000}:3000"]
+    read_only: true
+    tmpfs: [/tmp:mode=1777]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    pids_limit: 256
+    mem_limit: ${DGLAUNDRY_GRAFANA_MEM_LIMIT:-384m}
+    cpus: ${DGLAUNDRY_GRAFANA_CPUS:-0.5}
+
+  mysql-exporter:
+    image: ${DGLAUNDRY_MYSQL_EXPORTER_IMAGE:?Set DGLAUNDRY_MYSQL_EXPORTER_IMAGE to an immutable digest}
+    restart: unless-stopped
+    profiles: [monitoring]
+    command:
+      - "--config.my-cnf=/run/secrets/mysql_exporter_cnf"
+      - "--collect.info_schema.tables"
+      - "--collect.info_schema.tables.databases=dglaundry"
+      - "--collect.info_schema.processlist"
+      - "--collect.engine_innodb_status"
+    secrets: [mysql_exporter_cnf]
+    depends_on: {mysql: {condition: service_healthy}}
+    networks: [data, telemetry]
+    expose: ["9104"]
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:9104/metrics"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    read_only: true
+    tmpfs: [/tmp:mode=1777]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    pids_limit: 128
+    mem_limit: ${DGLAUNDRY_MYSQL_EXPORTER_MEM_LIMIT:-128m}
+    cpus: ${DGLAUNDRY_MYSQL_EXPORTER_CPUS:-0.25}
+
+  node-exporter:
+    image: ${DGLAUNDRY_NODE_EXPORTER_IMAGE:?Set DGLAUNDRY_NODE_EXPORTER_IMAGE to an immutable digest}
+    restart: unless-stopped
+    profiles: [host-metrics]
+    command: ["--path.rootfs=/host"]
+    pid: host
+    volumes: ["/:/host:ro,rslave"]
+    networks: [telemetry]
+    expose: ["9100"]
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    pids_limit: 128
+    mem_limit: ${DGLAUNDRY_NODE_EXPORTER_MEM_LIMIT:-128m}
+    cpus: ${DGLAUNDRY_NODE_EXPORTER_CPUS:-0.25}
+
+  alertmanager:
+    image: ${DGLAUNDRY_ALERTMANAGER_IMAGE:?Set DGLAUNDRY_ALERTMANAGER_IMAGE to an immutable digest}
+    restart: unless-stopped
+    profiles: [monitoring]
+    volumes: [./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro]
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml"]
+    networks: [telemetry]
+    expose: ["9093"]
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:9093/-/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    pids_limit: 128
+    mem_limit: ${DGLAUNDRY_ALERTMANAGER_MEM_LIMIT:-128m}
+    cpus: ${DGLAUNDRY_ALERTMANAGER_CPUS:-0.25}
+
+networks:
+  edge:
+    external: true
+    name: ${DGLAUNDRY_EDGE_NETWORK:-dgfy-dglaundry-edge}
+  app:
+    internal: true
+  data:
+    internal: true
+  telemetry:
+    internal: true
+  egress:
+    external: true
+    name: ${DGLAUNDRY_EGRESS_NETWORK:-dglaundry-egress}
+
+volumes:
+  dglaundry_mysql:
+  dglaundry_proof:
+  dglaundry_catalog_media:
+  dglaundry_prometheus:
+  dglaundry_grafana:
+
+secrets:
+  mysql_root_password: {file: "${DGLAUNDRY_SECRETS_DIR:-./secrets}/mysql_root_password"}
+  mysql_app_password: {file: "${DGLAUNDRY_SECRETS_DIR:-./secrets}/mysql_app_password"}
+  mysql_url: {file: "${DGLAUNDRY_SECRETS_DIR:-./secrets}/mysql_url"}
+  mysql_migration_url: {file: "${DGLAUNDRY_SECRETS_DIR:-./secrets}/mysql_migration_url"}
+  session_secret: {file: "${DGLAUNDRY_SECRETS_DIR:-./secrets}/session_secret"}
+  worker_internal_secret: {file: "${DGLAUNDRY_SECRETS_DIR:-./secrets}/worker_internal_secret"}
+  telemetry_internal_secret: {file: "${DGLAUNDRY_SECRETS_DIR:-./secrets}/telemetry_internal_secret"}
+  grafana_admin_password: {file: "${DGLAUNDRY_SECRETS_DIR:-./secrets}/grafana_admin_password"}
+  mysql_exporter_cnf: {file: "${DGLAUNDRY_SECRETS_DIR:-./secrets}/mysql_exporter.cnf"}

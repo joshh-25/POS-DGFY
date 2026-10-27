@@ -76,7 +76,10 @@ export function createDiscoveryResultsRenderer(ctx) {
   paginatedDiscoveryStores,
   clusterResultStores,
   renderDiscoveryResetButton,
-  resetDiscoveryResultsView,
+  resetDiscoverySearch,
+  discoveryCameraSnapshotRef,
+  preserveDiscoveryCamera,
+  setPreserveDiscoveryCamera,
   search,
   searchedDiscoveryMapPins,
   setActiveDiscoveryFilterDropdown,
@@ -661,6 +664,8 @@ const resultsSubtitle = isClusterResultsActive
               height="100%"
               viewportPolicy="search-stable"
               viewportSignal={discoveryViewportSignal}
+              cameraSnapshotRef={discoveryCameraSnapshotRef}
+              preserveCameraOnMount={preserveDiscoveryCamera}
               onPreviewOpen={(pin) => {
                 if (!isExternalListing(pin)) return;
                 setHasDiscoveryExplorationStarted(true);
@@ -982,8 +987,13 @@ const resultsSubtitle = isClusterResultsActive
                                 key={value}
                                 type="button"
                                 onClick={() => {
-                                  setDiscoveryCategoryFilter(value);
-                                  setActiveDiscoveryFilterDropdown(null);
+                                  if (value === 'all' || value === discoveryCategoryFilter) {
+                                    resetDiscoverySearch();
+                                  } else {
+                                    setDiscoveryCategoryFilter(value);
+                                    setActiveDiscoveryFilterDropdown(null);
+                                    setPreserveDiscoveryCamera(false);
+                                  }
                                 }}
                                 style={{
                                   width: '100%',
@@ -1059,7 +1069,7 @@ const resultsSubtitle = isClusterResultsActive
                       {renderDiscoveryResetButton && (
                       <button
                         type="button"
-                          onClick={resetDiscoveryResultsView}
+                          onClick={resetDiscoverySearch}
                       aria-label="Reset discovery filters"
                       title="Reset filters"
                           style={{
@@ -1140,7 +1150,7 @@ const resultsSubtitle = isClusterResultsActive
                 <div style={{ fontSize: 24, color: '#0f172a', fontWeight: 800 }}>{getDiscoveryEmptyStateMessage(search)}</div>
                 <div style={{ color: '#64748b', fontSize: 14, lineHeight: 1.5 }}>Try changing your search keyword or category.</div>
                 {hasActiveDiscoveryFilters && (
-                  <button type="button" onClick={resetDiscoveryResultsView} style={{ marginTop: 4, border: 'none', borderRadius: 12, background: '#1a4e8d', color: '#fff', padding: '10px 14px', fontSize: 13, fontWeight: 700, width: 'fit-content' }}>
+                <button type="button" onClick={resetDiscoverySearch} style={{ marginTop: 4, border: 'none', borderRadius: 12, background: '#1a4e8d', color: '#fff', padding: '10px 14px', fontSize: 13, fontWeight: 700, width: 'fit-content' }}>
                     Clear Filters
                   </button>
                 )}

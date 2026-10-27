@@ -27,6 +27,7 @@ import {
     sortTenants
 } from '../src/features/admin/tenantDirectory/tenantDirectory.js';
 import RegistrationUploadsModal from './RegistrationUploadsModal.jsx';
+import DglaundryRegistrationQueue from './DglaundryRegistrationQueue.jsx';
 
 const STATUS_CONFIG = {
     pending: { label: 'Pending', color: 'text-amber-600 bg-amber-50 border-amber-200', icon: Clock },
@@ -244,6 +245,8 @@ export default function TenantManager() {
             </div>
 
             <TenantConsoleTabs adminProfile={adminProfile} location={location} />
+
+            <DglaundryRegistrationQueue />
 
             <TenantDirectoryToolbar
                 tenants={tenants}

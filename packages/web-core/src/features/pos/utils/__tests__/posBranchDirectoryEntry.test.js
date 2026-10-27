@@ -42,4 +42,12 @@ describe('shouldOpenBranchDirectoryOnHydrate', () => {
       storedLockActive: true
     })).toBe(false);
   });
+
+  it('does not reopen after the administrator dismisses the directory in this session', () => {
+    expect(shouldOpenBranchDirectoryOnHydrate({
+      isDgfyPosSurface: true,
+      canViewBranchLocations: true,
+      branchDirectoryDismissed: true
+    })).toBe(false);
+  });
 });

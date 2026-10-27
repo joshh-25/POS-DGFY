@@ -3,11 +3,13 @@ export const shouldOpenBranchDirectoryOnHydrate = ({
   dgfyTenantId,
   canViewBranchLocations = false,
   storedLockActive = false,
-  background = false
+  background = false,
+  branchDirectoryDismissed = false
 } = {}) => Boolean(
   isDgfyPosSurface
   && !dgfyTenantId
   && canViewBranchLocations
   && !storedLockActive
   && !background
+  && !branchDirectoryDismissed
 );

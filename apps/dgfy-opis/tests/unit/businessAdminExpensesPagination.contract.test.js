@@ -16,7 +16,7 @@ const businessAdminCss = fs.readFileSync(
 
 describe('Business Admin Expenses pagination contract', () => {
     it('requests and renders no more than 20 expense rows', () => {
-        expect(businessAdminPage).toContain('businessAdminApi.expenses({ ...params, page: expensesPage, limit: BUSINESS_ADMIN_ORDERS_PAGE_SIZE })');
+        expect(businessAdminPage).toContain('businessAdminApi.expenses({ ...params, page: expensesPage, limit: BUSINESS_ADMIN_ORDERS_PAGE_SIZE }, requestConfig)');
         expect(businessAdminPage).toContain('<ExpensesPagination');
     });
 

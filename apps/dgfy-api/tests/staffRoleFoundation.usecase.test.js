@@ -23,7 +23,7 @@ const role = (id = 4) => ({ staff_role_id: id, name: 'Warehouse', is_active: tru
 describe('staff-role foundation', () => {
   it('clears a stored override in the assignment transaction and audits the prior snapshot', async () => {
     const target = {
-      user_id: 7, role: 'staff', permissions: ['pos:transact'],
+      user_id: 7, role: 'staff', staff_role_id: null, permission_mode: 'custom', permissions: ['pos:transact'],
       update: jest.fn(async function update(values) { Object.assign(this, values); })
     };
     const repository = {
@@ -37,12 +37,12 @@ describe('staff-role foundation', () => {
       expect(result.success).toBe(true);
       expect(target.update).toHaveBeenCalledWith({ staff_role_id: 4, permissions: [], permission_mode: 'inherit' }, { transaction });
       expect(repository.createAuditLog.mock.calls[0][0].changes).toMatchObject({
-        previous_permissions: ['pos:transact'],
-        previous_permission_mode: 'inherit',
-        permission_mode: 'inherit',
-        permissions: [],
+        previous_staff_role_id: null,
+        previous_permissions: ['pos:transact'], permissions: [],
+        previous_permission_mode: 'custom', permission_mode: 'inherit',
         permission_overrides_cleared: true
       });
+      expect(repository.createAuditLog.mock.calls[0][0]).toMatchObject({ entity_type: 'user', entity_id: 7 });
       expect(transaction.commit).toHaveBeenCalledTimes(1);
       expect(evict).not.toHaveBeenCalled();
       expect(resolveEffectivePermissions({ ...target, staffRole: role() })).toEqual(['orders:pack']);
@@ -52,12 +52,13 @@ describe('staff-role foundation', () => {
   });
 
   it('clearing a staff role also leaves permissions empty', async () => {
-    const target = { user_id: 7, permissions: ['orders:pack'], update: jest.fn() };
+    const target = { user_id: 7, staff_role_id: 4, permission_mode: 'inherit', permissions: ['orders:pack'], update: jest.fn() };
     const repository = { findUserById: jest.fn().mockResolvedValue(target), createAuditLog: jest.fn() };
     await context(async (transaction) => {
       const result = await buildAssignStaffRoleToUserUseCase({ repository })({ userId: 7, staffRoleId: null, actorUserId: 1 });
       expect(result.success).toBe(true);
-      expect(target.update).toHaveBeenCalledWith({ staff_role_id: null, permissions: [] }, { transaction });
+      expect(target.update).toHaveBeenCalledWith({ staff_role_id: null, permissions: [], permission_mode: 'custom' }, { transaction });
+      expect(result.data.assignment).toMatchObject({ permission_mode: 'custom', effective_permissions: [] });
     });
   });
 

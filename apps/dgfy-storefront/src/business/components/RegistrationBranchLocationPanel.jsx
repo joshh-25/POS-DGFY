@@ -9,7 +9,7 @@ import MerchantAddressDetailsField from '../../../../../packages/web-core/src/co
 import { hasMerchantAddressDetails } from '../../../../../packages/web-core/src/components/maps/merchantAddressDetails.js';
 
 const MapPinPicker = lazy(() => import('../../../../../packages/web-core/src/components/maps/MapPinPicker.jsx'));
-const REGISTRATION_LOCATION_MAP_HEIGHT_CLASS = 'h-[150px] rounded-xl sm:h-[340px] lg:h-[420px]';
+const REGISTRATION_LOCATION_MAP_HEIGHT_CLASS = 'h-[260px] rounded-xl sm:h-[340px] lg:h-[420px]';
 
 const getLocationAddress = (location) => String(
   location?.address_line || location?.address || location?.formatted_address || location?.full_address || ''
@@ -72,7 +72,7 @@ function RegistrationBranchLocationPanel({
               disabled={disabled}
               aria-label="Change branch location"
               title="Change location"
-              className="ml-auto h-10 w-10 min-h-10 shrink-0 rounded-lg border-blue-200 p-0 text-[#1A4E8D] hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-blue-300"
+              className="ml-auto h-11 w-11 min-h-11 shrink-0 rounded-lg border-blue-200 p-0 text-[#1A4E8D] hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-blue-300"
             >
               <Pencil className="h-4 w-4" aria-hidden="true" />
             </Button>
@@ -91,7 +91,7 @@ function RegistrationBranchLocationPanel({
                 placeholder="Street, City, Province"
                 disabled={disabled}
                 aria-required="true"
-                className="h-9 rounded-lg border-slate-200 text-[13px]"
+                className="h-11 rounded-lg border-slate-200 text-base"
               />
             </div>
             <MerchantAddressDetailsField
@@ -100,7 +100,7 @@ function RegistrationBranchLocationPanel({
               onChange={onDetailsChange}
               locationAddress={selectedAddress}
               disabled={disabled}
-              inputClassName="h-9 rounded-lg border-slate-200 text-[13px]"
+              inputClassName="h-11 rounded-lg border-slate-200 text-base"
             />
             {!isCandidateReady ? (
               <p className="text-xs leading-5 text-slate-500" role="status">
@@ -117,7 +117,7 @@ function RegistrationBranchLocationPanel({
                 variant="outline"
                 onClick={onCancel}
                 disabled={disabled}
-                className="min-h-10 rounded-lg border-rose-200/70 bg-rose-50/70 px-3 text-xs font-bold text-rose-700 hover:bg-rose-100/80 focus-visible:ring-2 focus-visible:ring-rose-300"
+                className="min-h-11 rounded-lg border-rose-200/70 bg-rose-50/70 px-3 text-xs font-bold text-rose-700 hover:bg-rose-100/80 focus-visible:ring-2 focus-visible:ring-rose-300"
               >
                 Cancel
               </Button>

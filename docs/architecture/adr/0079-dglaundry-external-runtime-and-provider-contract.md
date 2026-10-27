@@ -3,7 +3,7 @@ status: amended
 authority_level: architecture
 owner: dgfy-platform
 date: 2026-08-30
-last_reviewed: 2026-10-26
+last_reviewed: 2026-10-27
 review_by: 2027-02-28
 applies_to: dgfy_dglaundry_integration
 topic: dglaundry_external_runtime_and_provider_contract
@@ -73,6 +73,30 @@ for rollback. Local or mock evidence qualifies implementation for provider
 review but never proves hosted or production readiness.
 
 ## Amendments
+
+### 2026-10-27 — DGLaundry company registration approval and reconciliation
+
+- Clauses clarified: Decisions 1 and 2's untagged provider-ownership defaults. DGFY Platform
+  Admin's Tenant Management page reviews `dgfy_dglaundry_intents` in a queue separate from tenant
+  rows and Storefront registration drafts. Access requires the live `admin.tenants` grant.
+- Identity: the registration intent binds to the exact configured DGFY OIDC issuer and subject,
+  resolved to an active DGFY account. Email, name, slug, and request-supplied company IDs cannot
+  select the applicant or an existing company.
+- Approval: one landlord transaction creates the active external-runtime company row, a DGFY-owned
+  provider-location record, the applicant's accepted owner membership, the versioned decision, and
+  its admin audit record. The provider location is DGFY-generated and is not a DGLaundry branch ID.
+  DGLaundry remains the owner of its operational database and branch creation.
+- Rejection and correction update only the intent decision, reason, version, and audit record; they
+  create no company, location, or membership. A stale `expectedStatusVersion` returns a conflict;
+  exact retries of the same stored decision are idempotent.
+- Reconciliation: DGLaundry's existing status refresh verifies the saved intent, exact issuer and
+  subject, monotonic status version, accepted membership, active laundry company and connection,
+  and the authoritative DGFY company/location/membership IDs before creating its local workspace.
+  Pending registration reviews do not inherit the old 15-minute partner-intent expiry.
+- Environment boundary: Surebiz remains mock-backed. Connected qualification targets DGLaundry
+  Stage with DGFY Stage; this amendment does not imply a deployment or production authorization.
+- See the [DGLaundry provider contract](../../api/PARTNER_INTEGRATION_CONTRACT.md) and
+  [partner OpenAPI fragment](../../api/partner-dglaundry-openapi.yaml).
 
 ### 2026-10-26 — Browser-bound DGFY Storefront interaction (#2837)
 

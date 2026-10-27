@@ -241,6 +241,31 @@ describe('itemHandlers transport contracts', () => {
       surface: 'inventory',
       action: 'create_item'
     }));
+    expect(mockCreateItemUseCase).toHaveBeenCalledWith(expect.objectContaining({ source: 'inventory' }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('marks catalog writes from a POS terminal as POS-originated', async () => {
+    mockCreateItemUseCase.mockResolvedValue({
+      item_id: 12,
+      sku_code: 'POS-012',
+      name: 'Frappe',
+      category: 'product',
+      status: 'active'
+    });
+
+    const req = {
+      headers: { 'x-pos-terminal-id': 'JOHN-01' },
+      validatedData: { name: 'Frappe', sku_code: 'POS-012' },
+      user: { user_id: 2 },
+      requestId: 'req-pos-item-create'
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await createItem(req, res, next);
+
+    expect(mockCreateItemUseCase).toHaveBeenCalledWith(expect.objectContaining({ source: 'pos' }));
     expect(next).not.toHaveBeenCalled();
   });
 

@@ -145,6 +145,7 @@ jest.unstable_mockModule('../src/middleware/auth.js', () => ({
     authenticate: mockAuthenticate,
     checkAnyPermission: mockCheckAnyPermission,
     checkPermission: mockCheckPermission,
+    invalidateUserCache: jest.fn(),
     requirePremium: passThrough,
     requireTenantCapability: () => passThrough,
     requireTenantAdminRole: passThrough

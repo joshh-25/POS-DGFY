@@ -40,6 +40,7 @@ export function DiscoveryHomePage({
   hasDesktopCategoryOverflow,
   hasDiscoveryExplorationStarted,
   hasDiscoverySearch,
+  hasDiscoveryResultsStage,
   highlightedDiscoveryMarkerKey,
   isBrandingImageBlocked,
   isCategoryRowExpanded,
@@ -127,6 +128,7 @@ export function DiscoveryHomePage({
             hasDesktopCategoryOverflow={hasDesktopCategoryOverflow}
             hasDiscoveryExplorationStarted={hasDiscoveryExplorationStarted}
             hasDiscoverySearch={hasDiscoverySearch}
+            hasDiscoveryResultsStage={hasDiscoveryResultsStage}
             highlightedDiscoveryMarkerKey={highlightedDiscoveryMarkerKey}
             isCategoryRowExpanded={isCategoryRowExpanded}
             isClusterResultsActive={isClusterResultsActive}

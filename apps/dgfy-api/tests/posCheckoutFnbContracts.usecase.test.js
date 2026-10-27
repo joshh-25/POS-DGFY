@@ -1313,6 +1313,7 @@ describe('POS checkout F&B contracts', () => {
             }),
             seller: expect.objectContaining({
                 registered_name: 'DGFY Retail Corp.',
+                taxpayer_type: 'vat_registered',
                 tin_branch: '123-456-789-00000',
                 ptu_number: 'PTU-2026-001',
                 min_number: 'MIN-001',
@@ -1356,6 +1357,72 @@ describe('POS checkout F&B contracts', () => {
             item_name_snapshot: 'Taxable Item',
             sku_snapshot: 'SKU-TAXABLE-1'
         })]);
+    });
+
+    it('blocks fiscal checkout before transaction, inventory, or fiscal-event mutation when taxpayer setup is incomplete', async () => {
+        mockGetAllSettingsUseCase.mockResolvedValueOnce({
+            success: true,
+            data: {
+                pos_taxpayer_type: { value: '' }
+            }
+        });
+        mockAssertComplianceOperationAllowed.mockResolvedValueOnce({
+            success: true,
+            data: {
+                decision: {
+                    allowed: true,
+                    receipt_contract: {
+                        document_type: 'fiscal_invoice',
+                        label: 'FISCAL INVOICE',
+                        document_context: 'fiscal'
+                    }
+                }
+            }
+        });
+
+        const posRepository = {
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
+            findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            findSellableItemsByIds: jest.fn(),
+            createTransactionWithLines: jest.fn(),
+            createFiscalEvent: jest.fn()
+        };
+        const inventoryCommandService = {
+            createStockMovement: jest.fn(),
+            issueStockForPosSale: jest.fn()
+        };
+        const useCase = buildCheckoutContractUseCase({ posRepository, inventoryCommandService });
+        let transactionContext = null;
+
+        const result = await runInTenantContext((context) => {
+            transactionContext = context;
+            return useCase({
+                userId: 12,
+                user: { user_id: 12, permissions: [] },
+                payload: {
+                    idempotency_key: 'fiscal-checkout-taxpayer-setup-incomplete',
+                    terminal_id: 'TERM-01',
+                    location_id: 3,
+                    document_context: 'fiscal',
+                    payment_type: 'cash',
+                    order_method: 'pickup',
+                    lines: [{ item_id: 1, quantity: 1 }]
+                }
+            });
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'FISCAL_SETUP_INCOMPLETE'
+        }));
+        expect(posRepository.findSellableItemsByIds).not.toHaveBeenCalled();
+        expect(posRepository.createTransactionWithLines).not.toHaveBeenCalled();
+        expect(posRepository.createFiscalEvent).not.toHaveBeenCalled();
+        expect(inventoryCommandService.createStockMovement).not.toHaveBeenCalled();
+        expect(inventoryCommandService.issueStockForPosSale).not.toHaveBeenCalled();
+        expect(transactionContext.transaction.rollback).toHaveBeenCalledTimes(1);
+        expect(transactionContext.transaction.commit).not.toHaveBeenCalled();
     });
 
     it('returns the persisted receipt contract on idempotent replay instead of inferring from invoice prefix or current policy', async () => {

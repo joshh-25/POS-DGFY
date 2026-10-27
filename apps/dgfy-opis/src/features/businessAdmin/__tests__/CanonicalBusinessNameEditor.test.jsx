@@ -45,6 +45,15 @@ describe('CanonicalBusinessNameEditor', () => {
         expect(screen.getByText('Admin only')).toBeTruthy();
     });
 
+    it('keeps the save action single-line and responsive', () => {
+        render(<CanonicalBusinessNameEditor currentName="Store" canEdit />);
+
+        const saveButton = screen.getByRole('button', { name: 'Save business name' });
+        expect(saveButton.className).toContain('w-full');
+        expect(saveButton.className).toContain('md:w-auto');
+        expect(saveButton.className).toContain('whitespace-nowrap');
+    });
+
     it('shows the API error without changing the current value', async () => {
         businessAdminApi.updateCompanyName.mockRejectedValue(new Error('Rename failed'));
 

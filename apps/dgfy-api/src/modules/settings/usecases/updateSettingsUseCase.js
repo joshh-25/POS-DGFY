@@ -65,6 +65,7 @@ import { isPlatformControlledImageClientConversionKey } from '../../shared/utils
 import { clearStoreProfileResolutionCache } from './resolveStoreProfile.js';
 import { assertFulfillmentMethodAvailableForAccessModeTransition } from './customerAccessModeFulfillmentPolicy.js';
 import { assertLaundryWorkflowModeRuntimeOwnership } from './laundryWorkflowModeRuntimeGuard.js';
+import { assertValidPosTaxpayerTypeChanges } from './posTaxpayerTypePolicy.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY = 'platform_max_customer_access_mode';
@@ -446,6 +447,7 @@ export const buildUpdateSettingsUseCase = ({
         }
 
         try {
+            assertValidPosTaxpayerTypeChanges(settingsData);
             await assertStoreVisibilityEditAuthorized({ settingsRepository, settingsData });
             const posMetadataReview = await extractTenantReviewedPosReceiptChanges({
                 settingsRepository,

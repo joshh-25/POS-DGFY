@@ -24,6 +24,7 @@ import { buildMerchantAddressPayload, hasMerchantAddressDetails, readMerchantAdd
 import StagedStorefrontImages from './StagedStorefrontImages.jsx';
 import {
   createCompanyRegistrationDraft,
+  getCompanyRegistrationDraft,
   removeCompanyRegistrationDraftFile,
   submitCompanyRegistrationDraft,
   updateCompanyRegistrationDraft,
@@ -101,6 +102,8 @@ const errorMessage = (error, fallback) => (
   || error?.message
   || fallback
 );
+
+const isDraftConflictError = (error) => Number(error?.response?.status) === 409;
 
 const REGISTRATION_RECOVERY_VERSION = 1;
 const registrationRecoveryKey = (accountId) => `dgfy:company-registration:recovery:${String(accountId || '')}`;
@@ -258,7 +261,7 @@ function StepIndicator({ step, maxStep, onSelect }) {
             disabled={!available}
             aria-current={current ? 'step' : undefined}
             aria-label={`Step ${item.number}: ${item.label}`}
-            className="group min-w-0 rounded-md border-0 bg-transparent p-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] focus-visible:ring-offset-2 disabled:cursor-not-allowed"
+            className="group min-h-11 min-w-0 rounded-md border-0 bg-transparent p-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] focus-visible:ring-offset-2 disabled:cursor-not-allowed"
           >
             <span className={`grid w-full items-center gap-3 ${columnLayout}`}>
               {index > 0 ? <span aria-hidden="true" className={`h-0.5 rounded-full ${connectorComplete || completed ? 'bg-[#1A4586]' : 'bg-slate-200'}`} /> : null}
@@ -364,7 +367,7 @@ function MenuUploadPanel({ uploads, disabled, onUpload, onRemove, onPendingChang
           <span className="px-1">Max 10 MB each, up to 5 files</span>
         </div>
         <p className="mt-1 text-xs text-slate-500">
-          Or <button type="button" onClick={() => inputRef.current?.click()} disabled={disabled || activeCount >= MAX_MENU_FILES} aria-describedby="registration-menu-upload-guidance" className="font-semibold text-[#1A4E8D] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] disabled:cursor-not-allowed disabled:opacity-50">browse computer storage</button>
+          Or <button type="button" onClick={() => inputRef.current?.click()} disabled={disabled || activeCount >= MAX_MENU_FILES} aria-describedby="registration-menu-upload-guidance" className="inline-flex min-h-11 items-center rounded-md px-2 font-semibold text-[#1A4E8D] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] disabled:cursor-not-allowed disabled:opacity-50">browse computer storage</button>
         </p>
       </div>
       <div className="mt-2 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-slate-500" role="list" aria-label="Supported menu file types">
@@ -375,11 +378,11 @@ function MenuUploadPanel({ uploads, disabled, onUpload, onRemove, onPendingChang
       <p className="mt-1 text-center text-xs leading-5 text-slate-500">Uploaded files stay with this private draft until you submit or remove them.</p>
       <div className="mt-3 space-y-2" aria-live="polite">
         {existingUploads.map((upload) => (
-          <div key={uploadIdOf(upload)} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs"><FileText className="h-4 w-4 shrink-0 text-[#1A4E8D]" aria-hidden="true" /><span className="min-w-0 flex-1 truncate font-semibold text-slate-700">{upload.original_name || 'Menu file'}</span><span className="text-emerald-700">Ready</span><button type="button" onClick={() => void onRemove(uploadIdOf(upload))} disabled={disabled} className="text-rose-600 hover:underline">Remove</button></div>
+          <div key={uploadIdOf(upload)} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs"><FileText className="h-4 w-4 shrink-0 text-[#1A4E8D]" aria-hidden="true" /><span className="min-w-0 flex-1 truncate font-semibold text-slate-700">{upload.original_name || 'Menu file'}</span><span className="text-emerald-700">Ready</span><button type="button" onClick={() => void onRemove(uploadIdOf(upload))} disabled={disabled} className="inline-flex min-h-11 items-center rounded-md px-2 text-rose-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300">Remove</button></div>
         ))}
         {rows.map((row) => (
           <div key={row.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-            <div className="flex items-center gap-2 text-xs"><FileText className="h-4 w-4 shrink-0 text-[#1A4E8D]" aria-hidden="true" /><span className="min-w-0 flex-1 truncate font-semibold text-slate-700">{row.name}</span>{row.status === 'success' ? <span className="text-emerald-700">Ready</span> : row.status === 'error' ? <button type="button" onClick={() => retry(row)} disabled={disabled} className="inline-flex items-center gap-1 font-bold text-[#1A4E8D] hover:underline"><RefreshCw className="h-3 w-3" aria-hidden="true" />Retry</button> : <span className="text-[#1A4E8D]">{row.progress == null ? 'Uploading…' : `${row.progress}%`}</span>}<button type="button" onClick={() => void removeRow(row)} disabled={disabled || row.status === 'uploading'} className="text-rose-600 hover:underline">Remove</button></div>
+            <div className="flex items-center gap-2 text-xs"><FileText className="h-4 w-4 shrink-0 text-[#1A4E8D]" aria-hidden="true" /><span className="min-w-0 flex-1 truncate font-semibold text-slate-700">{row.name}</span>{row.status === 'success' ? <span className="text-emerald-700">Ready</span> : row.status === 'error' ? <button type="button" onClick={() => retry(row)} disabled={disabled} className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 font-bold text-[#1A4E8D] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D]"><RefreshCw className="h-3 w-3" aria-hidden="true" />Retry</button> : <span className="text-[#1A4E8D]">{row.progress == null ? 'Uploading…' : `${row.progress}%`}</span>}<button type="button" onClick={() => void removeRow(row)} disabled={disabled || row.status === 'uploading'} className="inline-flex min-h-11 items-center rounded-md px-2 text-rose-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300">Remove</button></div>
             {row.status === 'uploading' ? <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200" role="progressbar" aria-label={`${row.name} upload progress`} aria-valuemin="0" aria-valuemax="100" aria-valuenow={row.progress == null ? 25 : Math.max(5, row.progress)}><div className="h-full rounded-full bg-[#1A4E8D]" style={{ width: `${row.progress == null ? 25 : Math.max(5, row.progress)}%` }} /></div> : null}
             {row.error ? <p className="mt-1 text-xs font-semibold text-rose-600" role="alert">{row.error}</p> : null}
           </div>
@@ -419,6 +422,8 @@ export default function CompanyRegistrationWizard({ account, token, legalTerms, 
   const [stepError, setStepError] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
   const [hasDraftSaveError, setHasDraftSaveError] = useState(false);
+  const [draftConflict, setDraftConflict] = useState(false);
+  const [isReloadingDraft, setIsReloadingDraft] = useState(false);
   const [consents, setConsents] = useState({ company: false, marketplace: false });
   const [imagePreviews, setImagePreviews] = useState({});
   const imagePreviewsRef = useRef({});
@@ -482,13 +487,13 @@ export default function CompanyRegistrationWizard({ account, token, legalTerms, 
     persistRecoverySnapshot(payloadRef.current, resolvedStep);
   };
 
-  const applyDraft = useCallback((value) => {
+  const applyDraft = useCallback((value, { preserveRecovery = true } = {}) => {
     if (autosaveTimerRef.current) {
       clearTimeout(autosaveTimerRef.current);
       autosaveTimerRef.current = null;
     }
     const nextDraft = normalizeDraft(value);
-    const recovery = readRegistrationRecovery(account?.id);
+    const recovery = preserveRecovery ? readRegistrationRecovery(account?.id) : null;
     const canRecover = recovery?.schemaVersion === REGISTRATION_RECOVERY_VERSION
       && String(recovery.accountId) === String(account?.id)
       && String(recovery.draftId) === String(nextDraft.id)
@@ -517,6 +522,7 @@ export default function CompanyRegistrationWizard({ account, token, legalTerms, 
     setStep(recoveredStep);
     setMaxStep(Math.max(nextDraft.current_step, recoveredStep));
     setHasDraftSaveError(false);
+    setDraftConflict(false);
     if (hasRecoveredChanges) {
       writeRegistrationRecovery({
         accountId: account?.id,
@@ -563,6 +569,26 @@ export default function CompanyRegistrationWizard({ account, token, legalTerms, 
     void initializeDraft();
   };
 
+  const reloadLatestDraft = async () => {
+    const currentDraft = draftRef.current;
+    if (!currentDraft || isReloadingDraft) return;
+    setIsReloadingDraft(true);
+    setPageError('');
+    setStepError('');
+    try {
+      const latestDraft = await getCompanyRegistrationDraft(currentDraft.id, token);
+      clearRegistrationRecovery(account?.id, currentDraft.id);
+      locationCandidateRef.current = null;
+      setLocationCandidate(null);
+      applyDraft(latestDraft, { preserveRecovery: false });
+      setStatusMessage('Latest draft loaded. Review it before continuing.');
+    } catch (error) {
+      setPageError(errorMessage(error, 'The latest registration draft could not be loaded. Your local edits are still here.'));
+    } finally {
+      setIsReloadingDraft(false);
+    }
+  };
+
   const cancelPendingAutosave = useCallback(() => {
     if (autosaveTimerRef.current) {
       clearTimeout(autosaveTimerRef.current);
@@ -574,6 +600,7 @@ export default function CompanyRegistrationWizard({ account, token, legalTerms, 
 
   const scheduleDraftAutosave = () => {
     cancelPendingAutosave();
+    if (draftConflict) return;
     autosaveTimerRef.current = setTimeout(() => {
       autosaveTimerRef.current = null;
       void saveDraftRef.current?.(stepRef.current, payloadRef.current, { background: true });
@@ -770,6 +797,7 @@ export default function CompanyRegistrationWizard({ account, token, legalTerms, 
           setPayload(nextDraft.payload);
           setStatusMessage('Draft saved. You can refresh and resume.');
           setHasDraftSaveError(false);
+          setDraftConflict(false);
           clearRegistrationRecovery(account?.id, nextDraft.id);
         } else {
           persistRecoverySnapshot(payloadRef.current, stepRef.current);
@@ -780,6 +808,13 @@ export default function CompanyRegistrationWizard({ account, token, legalTerms, 
         }
         return true;
       } catch (error) {
+        if (isDraftConflictError(error)) {
+          setHasDraftSaveError(false);
+          setDraftConflict(true);
+          setStatusMessage('Draft changed elsewhere. Review your edits or reload the latest version.');
+          if (!background) setStepError('');
+          return false;
+        }
         setHasDraftSaveError(true);
         setStatusMessage('Draft not saved. Your edits are still here. Retry the save.');
         if (!background) setStepError(errorMessage(error, 'The draft could not be saved. Please try again.'));
@@ -925,6 +960,35 @@ export default function CompanyRegistrationWizard({ account, token, legalTerms, 
         </div>
 
         {stepError ? <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold leading-6 text-rose-700" role="alert">{stepError}</div> : null}
+        {draftConflict ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="alert">
+            <p className="font-extrabold">This registration changed elsewhere.</p>
+            <p className="mt-1 leading-6">Your local edits are still shown and have not overwritten the newer draft. Review them, then reload the latest version before continuing.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                onClick={() => void reloadLatestDraft()}
+                disabled={isReloadingDraft || isBusy}
+                className="min-h-11 rounded-lg bg-[#1A4E8D] px-3 text-xs font-extrabold text-white hover:bg-[#143F73]"
+              >
+                {isReloadingDraft ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden="true" /> : <RefreshCw className="mr-1.5 h-4 w-4" aria-hidden="true" />}
+                {isReloadingDraft ? 'Loading latest…' : 'Reload latest'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  stepContentRef.current?.focus();
+                  setStatusMessage('Your local edits remain below for review.');
+                }}
+                disabled={isReloadingDraft}
+                className="min-h-11 rounded-lg border-amber-300 bg-white px-3 text-xs font-extrabold text-amber-900 hover:bg-amber-100"
+              >
+                Review my unsaved edits
+              </Button>
+            </div>
+          </div>
+        ) : null}
 
         {step === 1 ? (
           <div className="space-y-5">
@@ -1003,7 +1067,7 @@ export default function CompanyRegistrationWizard({ account, token, legalTerms, 
         {step === 3 && !finalStepReady ? <p className="mt-5 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-800" role="status">Add a branch location, set business hours, accept both required agreements, and finish any upload actions before submitting.</p> : null}
         <div className="grid grid-cols-[auto_minmax(0,1fr)] items-stretch gap-3 border-t border-slate-100 pt-5 sm:flex sm:justify-end">
           <Button type="button" variant="outline" onClick={() => { if (canGoBack) void handleBack(); }} disabled={!canGoBack} className="min-h-11 shrink-0 gap-1.5 rounded-lg px-4 font-bold"><ChevronLeft className="h-4 w-4" aria-hidden="true" />Back</Button>
-          <Button type="button" onClick={() => void handleNext()} disabled={isBusy || !draft || !finalStepReady} className="h-auto min-h-11 min-w-0 gap-1.5 rounded-lg bg-[#1A4E8D] px-3 py-2 text-center font-extrabold leading-tight text-white hover:bg-[#143F73] sm:h-11 sm:whitespace-nowrap sm:px-5 sm:py-0 sm:leading-normal">{isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : step === 3 ? <Check className="h-4 w-4" aria-hidden="true" /> : <ChevronRight className="h-4 w-4" aria-hidden="true" />}{isSubmitting ? 'Submitting…' : isSaving ? 'Saving…' : step === 3 ? 'Submit and Create Company' : 'Save and continue'}</Button>
+          <Button type="button" onClick={() => void handleNext()} disabled={isBusy || !draft || !finalStepReady} className="h-auto min-h-11 min-w-0 gap-1.5 rounded-lg bg-[#1A4E8D] px-3 py-2 text-center font-extrabold leading-tight text-white hover:bg-[#143F73] sm:h-11 sm:whitespace-nowrap sm:px-5 sm:py-0 sm:leading-normal">{isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : step === 3 ? <Check className="h-4 w-4" aria-hidden="true" /> : <ChevronRight className="h-4 w-4" aria-hidden="true" />}{isSubmitting ? 'Submitting…' : isSaving ? 'Saving…' : step === 3 ? 'Submit registration' : 'Save and continue'}</Button>
         </div>
         {footerContent}
       </div>

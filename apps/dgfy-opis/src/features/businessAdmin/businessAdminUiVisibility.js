@@ -43,6 +43,19 @@ export const isBusinessAdminNavigationVisible = (
         : !BUSINESS_ADMIN_UI_VISIBILITY.hiddenNavigationKeys.includes(item?.key);
 };
 
-export const isBusinessAdminDestinationAccessible = (item, options = {}) => (
-    isBusinessAdminNavigationVisible(item, { ...options, catalogOnlyAccess: false })
-);
+export const isBusinessAdminDestinationAccessible = (
+    item,
+    {
+        catalogOnlyAccess = false,
+        usersRolesVisible = true,
+        capabilities = {},
+        settingsCapabilities = {}
+    } = {}
+) => {
+    if (item?.key === 'users-roles' && !usersRolesVisible) return false;
+    if (!isDestinationCapabilityGranted(item, { capabilities, settingsCapabilities })) return false;
+    // Sidebar presentation rules must not turn a valid deep link into an
+    // authorization boundary. Catalog-only routing remains an explicit
+    // product mode, while hidden legacy destinations stay server-authorized.
+    return !catalogOnlyAccess || CATALOG_ONLY_BUSINESS_ADMIN_NAVIGATION_KEYS.includes(item?.key);
+};
