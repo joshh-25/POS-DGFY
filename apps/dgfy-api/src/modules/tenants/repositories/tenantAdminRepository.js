@@ -15,6 +15,34 @@ const getCompanyRegistrationEventModel = () => dbStore.get('CompanyRegistrationE
 const getCompanyRegistrationEmailDeliveryModel = () => dbStore.get('CompanyRegistrationEmailDelivery');
 const getPlatformInvoiceModel = () => dbStore.get('PlatformInvoice');
 
+const buildAdminTenantProjection = () => ({
+    attributes: [
+        'id',
+        'name',
+        'is_demo',
+        'db_name',
+        'domain',
+        'status',
+        'admin_email',
+        'plan',
+        'owner_dgfy_account_id',
+        'provisioning_source',
+        'ownership_status',
+        'settings',
+        'createdAt',
+        'compliance_mode_state',
+        'compliance_mode_choice_required',
+        'compliance_activated_at',
+        'compliance_policy_version'
+    ],
+    include: [{
+        model: getCompanyRegistrationApplicationModel(),
+        as: 'registrationApplication',
+        required: false,
+        attributes: ['id', 'review_status', 'provisioning_status', 'updatedAt']
+    }]
+});
+
 const COMPLIANCE_TRANSITIONS = Object.freeze({
     non_compliant_active: new Set(['non_compliant_active', 'compliant_pending']),
     compliant_pending: new Set(['compliant_pending', 'compliant_active']),
@@ -50,32 +78,19 @@ export const tenantAdminRepository = {
         const Tenant = getTenantModel();
         return Tenant.findByPk(tenantId, options);
     },
+    findAdminTenantById(tenantId) {
+        const Tenant = getTenantModel();
+        return Tenant.findOne({
+            where: { id: tenantId },
+            ...buildAdminTenantProjection()
+        });
+    },
     listTenants(where = {}) {
         const Tenant = getTenantModel();
-        const CompanyRegistrationApplication = getCompanyRegistrationApplicationModel();
         return Tenant.findAll({
             where,
             order: [['createdAt', 'DESC']],
-            attributes: [
-                'id',
-                'name',
-                'is_demo',
-                'db_name',
-                'domain',
-                'status',
-                'admin_email',
-                'plan',
-                'owner_dgfy_account_id',
-                'provisioning_source',
-                'ownership_status',
-                'settings',
-                'createdAt',
-                'compliance_mode_state',
-                'compliance_mode_choice_required',
-                'compliance_activated_at',
-                'compliance_policy_version'
-            ],
-            include: [{ model: CompanyRegistrationApplication, as: 'registrationApplication', required: false, attributes: ['id', 'review_status', 'provisioning_status', 'updatedAt'] }]
+            ...buildAdminTenantProjection()
         });
     },
     updateTenant(tenant, payload, options = {}) {

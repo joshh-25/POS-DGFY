@@ -232,6 +232,21 @@ describe('production startup environment guard', () => {
     });
   }, 60000);
 
+  it('server startup exits when hosted DGLaundry integration is enabled outside production mode', () => {
+    const spawned = spawnServer({
+      NODE_ENV: 'development',
+      DGLAUNDRY_INTEGRATION_ENABLED: 'true',
+      SKIP_SERVER_START: 'true'
+    });
+
+    withSpawnDiagnostics(spawned, () => {
+      expect(spawned.status).toBe(1);
+      expect(`${spawned.stdout}\n${spawned.stderr}`).toContain(
+        'DGLAUNDRY hosted integration requires NODE_ENV=production so Redis-backed state and replay checks cannot fall back to process memory'
+      );
+    });
+  }, 60000);
+
   it('logs production validation warnings during server startup', () => {
     expectSentryWarningStartup(spawnServer(validStartupEnvironment));
   }, 60000);

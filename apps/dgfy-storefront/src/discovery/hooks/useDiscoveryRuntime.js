@@ -44,7 +44,8 @@ export function useDiscoveryRuntime({
 
   const clearDiscoveryClusterResults = useCallback(() => {
     setClusterResultStores([]);
-  }, []);
+    setSelectedMapPin?.(null);
+  }, [setSelectedMapPin]);
 
   const handleDiscoveryClusterSelect = useCallback((stores, meta = {}) => {
     const clusterStores = Array.isArray(stores) ? stores.filter(Boolean) : [];
@@ -102,6 +103,15 @@ export function useDiscoveryRuntime({
     page: discoveryResultsPage,
     perPage: discoveryResultsPerPage
   }), [filteredDiscoveryStores, discoveryResultsPage, discoveryResultsPerPage]);
+
+  const filteredStoreSlugs = useMemo(() => new Set(
+    filteredDiscoveryStores
+      .map((store) => String(store?.slug || store?.tenant_slug || '').trim())
+      .filter(Boolean)
+  ), [filteredDiscoveryStores]);
+  const visibleClusterResultStores = useMemo(() => clusterResultStores.filter((store) => (
+    filteredStoreSlugs.has(String(store?.slug || store?.tenant_slug || '').trim())
+  )), [clusterResultStores, filteredStoreSlugs]);
 
   const filterState = useMemo(() => getDiscoveryFilterState({
     discoverySortBy,
@@ -192,13 +202,13 @@ export function useDiscoveryRuntime({
   return {
     activeDiscoveryFilterCount: filterState.activeDiscoveryFilterCount,
     clearDiscoveryClusterResults,
-    clusterResultStores,
+    clusterResultStores: visibleClusterResultStores,
     discoveryPaginationItems,
     discoveryResultsPerPage,
     discoveryTotalPages,
     hasActiveDiscoveryFilters: filterState.hasActiveDiscoveryFilters,
     handleDiscoveryClusterSelect,
-    isClusterResultsActive: clusterResultStores.length > 0,
+    isClusterResultsActive: visibleClusterResultStores.length > 0,
     isCategoryFilterActive: filterState.isCategoryFilterActive,
     isDistanceFilterActive: filterState.isDistanceFilterActive,
     isOpenNowFilterActive: filterState.isOpenNowFilterActive,

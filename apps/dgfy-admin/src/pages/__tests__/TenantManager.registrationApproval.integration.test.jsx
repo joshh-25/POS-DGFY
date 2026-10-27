@@ -1,13 +1,16 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
-import TenantManager from '../../../Pages/TenantManager.jsx';
+import { MemoryRouter, Outlet, Route, Routes, useNavigate } from 'react-router-dom';
+import TenantDetailLayout from '../../../Pages/TenantDetailLayout.jsx';
+import TenantLifecycle from '../../../Pages/TenantLifecycle.jsx';
+import TenantRegistration from '../../../Pages/TenantRegistration.jsx';
 
 const mocks = vi.hoisted(() => ({
   adminServiceMock: {
+    getTenant: vi.fn(),
     getTenants: vi.fn(),
     updateTenant: vi.fn(),
     createTenant: vi.fn(),
@@ -46,21 +49,61 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/services/adminService', () => mocks.adminServiceMock);
 vi.mock('sonner', () => ({ toast: mocks.toastMock }));
 
-const renderTenants = (tenants) => {
-  mocks.adminServiceMock.getTenants.mockResolvedValue({ data: tenants });
-  mocks.adminServiceMock.listStoreTemplates.mockResolvedValue({ success: true, data: { templates: [] } });
-  mocks.adminServiceMock.getTenantRevenueDashboard.mockResolvedValue({ data: null });
-  mocks.adminServiceMock.listTenantRevenueTransactions.mockResolvedValue({ data: { transactions: [] } });
-  mocks.adminServiceMock.listTenantSettlementBatches.mockResolvedValue({ data: { batches: [] } });
-  mocks.adminServiceMock.listTenantRevenueReconciliation.mockResolvedValue({ data: { records: [] } });
-  mocks.adminServiceMock.listTenantRevenueFeePolicies.mockResolvedValue({ data: { policies: [] } });
-  mocks.adminServiceMock.listTenantRevenueAdjustments.mockResolvedValue({ data: { adjustments: [] } });
-  return render(<MemoryRouter><TenantManager /></MemoryRouter>);
+const AdminContext = () => <Outlet context={{ adminProfile: { permissions: ['admin.tenants', 'admin.invoices'] } }} />;
+const RegistrationRouteSwitcher = () => {
+  const navigate = useNavigate();
+  return <button type="button" onClick={() => navigate('/admin/tenants/second-registration-tenant/registration')}>Switch tenant</button>;
+};
+const renderTenantSection = (tenant, section = 'lifecycle') => {
+  mocks.adminServiceMock.getTenant.mockResolvedValue({ data: tenant });
+  return render(<MemoryRouter initialEntries={[`/admin/tenants/${tenant.id}/${section}`]}><Routes>
+    <Route path="/admin" element={<AdminContext />}>
+      <Route path="tenants/:id" element={<TenantDetailLayout />}>
+        <Route path="lifecycle" element={<TenantLifecycle />} />
+        <Route path="registration" element={<TenantRegistration />} />
+      </Route>
+    </Route>
+  </Routes></MemoryRouter>);
 };
 
-describe('TenantManager public registration approval actions', () => {
+describe('Tenant Lifecycle and Registration detail sections', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('does not show a late registration response after switching tenants', async () => {
+    let resolveFirstRegistration;
+    mocks.adminServiceMock.getTenant.mockImplementation(async (tenantId) => ({
+      data: { id: tenantId, name: tenantId === 'first-registration-tenant' ? 'First Tenant' : 'Second Tenant', status: 'active' }
+    }));
+    mocks.adminServiceMock.getTenantRegistration.mockImplementation((tenantId) => (
+      tenantId === 'first-registration-tenant'
+        ? new Promise((resolve) => { resolveFirstRegistration = resolve; })
+        : Promise.resolve({ data: { company_name: 'Second Tenant Evidence', review_status: 'approved', uploads: [] } })
+    ));
+
+    render(<MemoryRouter initialEntries={['/admin/tenants/first-registration-tenant/registration']}>
+      <RegistrationRouteSwitcher />
+      <Routes>
+        <Route path="/admin" element={<AdminContext />}>
+          <Route path="tenants/:id" element={<TenantDetailLayout />}>
+            <Route path="registration" element={<TenantRegistration />} />
+          </Route>
+        </Route>
+      </Routes>
+    </MemoryRouter>);
+
+    await screen.findByRole('heading', { name: 'First Tenant' });
+    await waitFor(() => expect(mocks.adminServiceMock.getTenantRegistration).toHaveBeenCalledWith('first-registration-tenant'));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Switch tenant' }));
+
+    await screen.findByRole('heading', { name: 'Second Tenant' });
+    expect(await screen.findByText('Second Tenant Evidence', { selector: 'dd' })).toBeTruthy();
+    resolveFirstRegistration({ data: { company_name: 'Stale First Tenant Evidence', review_status: 'pending', uploads: [] } });
+
+    await waitFor(() => expect(screen.queryByText('Stale First Tenant Evidence')).toBeNull());
+    expect(screen.getByText('Second Tenant Evidence', { selector: 'dd' })).toBeTruthy();
   });
 
   afterEach(() => {
@@ -68,7 +111,7 @@ describe('TenantManager public registration approval actions', () => {
   });
 
   it('does not offer public approval actions for a pending tenant without an application', async () => {
-    renderTenants([{
+    renderTenantSection({
       id: 'tenant-without-application',
       name: 'Admin Provisioned Company',
       admin_email: 'owner@example.test',
@@ -76,17 +119,15 @@ describe('TenantManager public registration approval actions', () => {
       provisioning_source: 'platform_admin',
       plan: 'standard',
       created_at: '2026-09-10T00:00:00.000Z'
-    }]);
+    });
 
-    const card = await screen.findByRole('heading', { name: 'Admin Provisioned Company' });
-    const tenantCard = card.closest('div.bg-white');
-    expect(within(tenantCard).queryByRole('button', { name: /^Approve$/i })).toBeNull();
-    expect(within(tenantCard).queryByRole('button', { name: /^Reject$/i })).toBeNull();
-    expect(within(tenantCard).getByText('No pending public registration is available for approval.')).toBeTruthy();
+    await screen.findByRole('heading', { name: 'Admin Provisioned Company' });
+    expect(screen.queryByRole('button', { name: /^Approve$/i })).toBeNull();
+    expect(screen.getByText('No pending public registration is available for approval.')).toBeTruthy();
   });
 
   it('offers approval and rejection only for a pending public registration', async () => {
-    renderTenants([{
+    renderTenantSection({
       id: 'public-registration-tenant',
       name: 'Public Registration Company',
       admin_email: 'applicant@example.test',
@@ -102,16 +143,15 @@ describe('TenantManager public registration approval actions', () => {
       },
       plan: 'standard',
       created_at: '2026-09-10T00:00:00.000Z'
-    }]);
+    });
 
-    const card = await screen.findByRole('heading', { name: 'Public Registration Company' });
-    const tenantCard = card.closest('div.bg-white');
-    expect(within(tenantCard).getByRole('button', { name: /^Approve$/i })).toBeTruthy();
-    expect(within(tenantCard).getByRole('button', { name: /^Reject$/i })).toBeTruthy();
+    await screen.findByRole('heading', { name: 'Public Registration Company' });
+    expect(screen.getByRole('button', { name: /^Approve$/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Reject$/i })).toBeTruthy();
   });
 
   it('shows retry only when the server marks setup as retryable', async () => {
-    renderTenants([{
+    renderTenantSection({
       id: 'stale-provisioning-tenant',
       name: 'Stale Provisioning Company',
       admin_email: 'applicant@example.test',
@@ -127,17 +167,15 @@ describe('TenantManager public registration approval actions', () => {
       },
       plan: 'standard',
       created_at: '2026-09-10T00:00:00.000Z'
-    }]);
+    });
 
-    const card = await screen.findByRole('heading', { name: 'Stale Provisioning Company' });
-    const tenantCard = card.closest('div.bg-white');
-    expect(within(tenantCard).getByRole('button', { name: /Retry setup/i })).toBeTruthy();
-    expect(within(tenantCard).queryByRole('button', { name: /^Approve$/i })).toBeNull();
-    expect(within(tenantCard).queryByRole('button', { name: /^Reject$/i })).toBeNull();
+    await screen.findByRole('heading', { name: 'Stale Provisioning Company' });
+    expect(screen.getByRole('button', { name: /Retry setup/i })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Approve$/i })).toBeNull();
   });
 
   it('shows setup status for a pending tenant whose application is not actionable', async () => {
-    renderTenants([{
+    renderTenantSection({
       id: 'setting-up-tenant',
       name: 'Setting Up Company',
       admin_email: 'applicant@example.test',
@@ -153,16 +191,15 @@ describe('TenantManager public registration approval actions', () => {
       },
       plan: 'standard',
       created_at: '2026-09-10T00:00:00.000Z'
-    }]);
+    });
 
-    const card = await screen.findByRole('heading', { name: 'Setting Up Company' });
-    const tenantCard = card.closest('div.bg-white');
-    expect(within(tenantCard).queryByRole('button', { name: /^Approve$/i })).toBeNull();
-    expect(within(tenantCard).getByRole('status').textContent).toContain('Company setup is already in progress.');
+    await screen.findByRole('heading', { name: 'Setting Up Company' });
+    expect(screen.queryByRole('button', { name: /^Approve$/i })).toBeNull();
+    expect(screen.getByText('Setup is in progress')).toBeTruthy();
+    expect(screen.getByText('Company setup is already in progress.')).toBeTruthy();
   });
 
   it('renders registration evidence as readable labeled content instead of raw JSON', async () => {
-    const user = userEvent.setup();
     mocks.adminServiceMock.getTenantRegistration.mockResolvedValue({
       data: {
         review_status: 'pending',
@@ -195,7 +232,7 @@ describe('TenantManager public registration approval actions', () => {
       }
     });
 
-    renderTenants([{
+    renderTenantSection({
       id: 'readable-review-tenant',
       name: 'Juan’s Kitchen',
       admin_email: 'applicant@example.test',
@@ -211,26 +248,73 @@ describe('TenantManager public registration approval actions', () => {
       },
       plan: 'standard',
       created_at: '2026-09-10T00:00:00.000Z'
-    }]);
+    }, 'registration');
 
-    const card = await screen.findByRole('heading', { name: 'Juan’s Kitchen' });
-    await user.click(within(card.closest('div.bg-white')).getByRole('button', { name: 'Review registration' }));
+    await screen.findByRole('heading', { name: 'Registration' });
+    await screen.findByText('Company name');
+    expect(screen.getByText('Company name')).toBeTruthy();
+    expect(screen.getAllByText('Juan’s Kitchen', { selector: 'dd' })).toHaveLength(2);
+    expect(screen.getByText('Food & Beverage')).toBeTruthy();
+    expect(screen.getByText('Monday: 09:00–18:00')).toBeTruthy();
+    expect(screen.getByText('Recorded agreement states and acknowledgement evidence are shown when available.')).toBeTruthy();
+    expect(screen.getByText(/Queued for processing/)).toBeTruthy();
+    expect(screen.getByText(/Menu or catalog/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Preview' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Download' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Revoke' })).toBeTruthy();
+    expect(screen.queryByText(/"company_name"/)).toBeNull();
+    expect(document.body.textContent).not.toContain('submission_snapshot');
+    expect(document.body.textContent).not.toContain('legal_terms_snapshot');
+    expect(document.body.textContent).not.toContain('fnb');
+  });
 
-    const dialog = await screen.findByRole('dialog', { name: 'Registration review' });
-    expect(within(dialog).getByText('Company name')).toBeTruthy();
-    expect(within(dialog).getByText('Juan’s Kitchen', { selector: 'dd' })).toBeTruthy();
-    expect(within(dialog).getByText('Food & Beverage', { selector: 'dd' })).toBeTruthy();
-    expect(within(dialog).getByText('Monday: 09:00–18:00')).toBeTruthy();
-    expect(within(dialog).getByText('The registration contains a recorded acknowledgement for both required legal agreements.')).toBeTruthy();
-    expect(within(dialog).getByText('Queued for processing')).toBeTruthy();
-    expect(within(dialog).getByText('Menu or catalog')).toBeTruthy();
-    expect(within(dialog).getByRole('button', { name: 'View' })).toBeTruthy();
-    expect(within(dialog).getByRole('button', { name: 'Download' })).toBeTruthy();
-    expect(within(dialog).getByRole('button', { name: 'Revoke' })).toBeTruthy();
-    expect(within(dialog).queryByText(/"company_name"/)).toBeNull();
-    expect(dialog.textContent).not.toContain('submission_snapshot');
-    expect(dialog.textContent).not.toContain('legal_terms_snapshot');
-    expect(dialog.textContent).not.toContain('fnb');
+  it('keeps missing legal acceptance flags in an unknown state', async () => {
+    mocks.adminServiceMock.getTenantRegistration.mockResolvedValue({
+      data: { legal_terms_snapshot: { acknowledgement_hash: 'hash-without-flags' } }
+    });
+    renderTenantSection({
+      id: 'legacy-legal-tenant',
+      name: 'Legacy Legal Record',
+      status: 'active'
+    }, 'registration');
+
+    await screen.findByText('Recorded agreement states and acknowledgement evidence are shown when available.');
+    expect(screen.getAllByText('Not recorded')).toHaveLength(2);
+    expect(screen.queryByText('Accepted')).toBeNull();
+  });
+
+  it('renders an empty state when the registration application is not found', async () => {
+    mocks.adminServiceMock.getTenantRegistration.mockRejectedValue({
+      response: { status: 404, data: { code: 'RESOURCE_NOT_FOUND', message: 'Resource not found.' } }
+    });
+
+    renderTenantSection({ id: 'tenant-without-registration', name: 'Assisted Tenant', status: 'active' }, 'registration');
+
+    expect(await screen.findByRole('heading', { name: 'No registration application' })).toBeTruthy();
+    expect(screen.getByText(/no public registration application or submitted registration evidence/i)).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText('Review record')).toBeNull();
+  });
+
+  it.each([
+    [{ response: { status: 401, data: { message: 'Unauthorized. Please login again.' } } }, 'Unauthorized. Please login again.'],
+    [{ response: { status: 403, data: { message: 'You do not have permission to perform this action.' } } }, 'You do not have permission to perform this action.'],
+    [{ response: { status: 503, data: { message: 'Service unavailable. Please try again.' } } }, 'Service unavailable. Please try again.'],
+    [{ request: {}, message: 'Network Error' }, 'No response from server. Check your connection.']
+  ])('keeps permission, server, and transport failures distinct and retryable', async (failure, message) => {
+    const user = userEvent.setup();
+    mocks.adminServiceMock.getTenantRegistration.mockRejectedValueOnce(failure);
+
+    renderTenantSection({ id: 'tenant-registration-error', name: 'Registration Error Tenant', status: 'active' }, 'registration');
+
+    expect((await screen.findByRole('alert')).textContent).toContain(message);
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'No registration application' })).toBeNull();
+
+    mocks.adminServiceMock.getTenantRegistration.mockResolvedValue({ data: { review_status: 'approved', uploads: [] } });
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText('Review record')).toBeTruthy();
+    expect(mocks.adminServiceMock.getTenantRegistration).toHaveBeenCalledTimes(2);
   });
 
   it('uses the authenticated private blob for view and download actions', async () => {
@@ -270,7 +354,7 @@ describe('TenantManager public registration approval actions', () => {
     });
 
     try {
-      renderTenants([{
+      renderTenantSection({
         id: 'private-upload-tenant',
         name: 'Private Upload Company',
         admin_email: 'applicant@example.test',
@@ -279,22 +363,19 @@ describe('TenantManager public registration approval actions', () => {
         registrationApplication: { review_status: 'pending', provisioning_status: 'not_started' },
         plan: 'standard',
         created_at: '2026-09-10T00:00:00.000Z'
-      }]);
+      }, 'registration');
+      await screen.findByRole('heading', { name: 'Registration' });
 
-      const card = await screen.findByRole('heading', { name: 'Private Upload Company' });
-      await user.click(within(card.closest('div.bg-white')).getByRole('button', { name: 'Review registration' }));
-      const dialog = await screen.findByRole('dialog', { name: 'Registration review' });
-
-      await user.click(within(dialog).getByRole('button', { name: 'Download' }));
+      await user.click(await screen.findByRole('button', { name: 'Download' }));
       await waitFor(() => expect(mocks.adminServiceMock.downloadTenantRegistrationUpload).toHaveBeenCalledWith('private-upload-tenant', 'upload-1'));
       expect(createObjectURL).toHaveBeenCalledWith(blob);
       expect(clickSpy).toHaveBeenCalled();
       expect(clickedAnchor).not.toBeNull();
       expect(clickedAnchor.download).toBe('menu.png');
 
-      await waitFor(() => expect(within(dialog).getByRole('button', { name: 'View' }).disabled).toBe(false));
-      await user.click(within(dialog).getByRole('button', { name: 'View' }));
-      await waitFor(() => expect(openSpy).toHaveBeenCalledWith('', '_blank'));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Preview' }).disabled).toBe(false));
+      await user.click(screen.getByRole('button', { name: 'Preview' }));
+      await waitFor(() => expect(openSpy).toHaveBeenCalledWith('about:blank', '_blank'));
       await waitFor(() => expect(openedWindow.location.href).toBe('blob:registration-upload'));
     } finally {
       globalThis.URL.createObjectURL = originalCreateObjectURL;

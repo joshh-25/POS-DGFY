@@ -7,6 +7,7 @@ import { WorkflowModeProvider, useWorkflowMode } from '../WorkflowModeContext.js
 
 const browserSessionMock = vi.hoisted(() => ({
   getAccessToken: vi.fn(() => ''),
+  getCompanyToken: vi.fn(() => ''),
   refreshBrowserSession: vi.fn()
 }));
 

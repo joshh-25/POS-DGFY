@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     AlertTriangle,
     Banknote,
@@ -79,9 +79,9 @@ const SummaryCard = ({ label, value, tone = 'slate' }) => {
     );
 };
 
-export default function TenantRevenueSettlementPanel({ tenants = [] }) {
+export default function TenantRevenueSettlementPanel({ tenants = [], preselectTenantId = '', preselectionReady = false, lockedTenantId = '' }) {
     const [activeTab, setActiveTab] = useState('overview');
-    const [tenantId, setTenantId] = useState('');
+    const [tenantId, setTenantId] = useState(lockedTenantId ? String(lockedTenantId) : '');
     const [periodStart, setPeriodStart] = useState(monthStart());
     const [periodEnd, setPeriodEnd] = useState(today());
     const [transactionFilters, setTransactionFilters] = useState({
@@ -115,6 +115,10 @@ export default function TenantRevenueSettlementPanel({ tenants = [] }) {
     const [statementReference, setStatementReference] = useState('');
     const [statementRows, setStatementRows] = useState('');
     const [policyForm, setPolicyForm] = useState(() => createDefaultTenantRevenuePolicyForm(today()));
+    const [preselectionMessage, setPreselectionMessage] = useState('');
+    const preselectionHandled = useRef(false);
+    const lastPreselectTenantId = useRef(preselectTenantId);
+    const [preselectionResolved, setPreselectionResolved] = useState(() => !preselectTenantId);
     const latestPolicy = policies[0] || null;
 
     const filters = useMemo(() => ({
@@ -162,8 +166,9 @@ export default function TenantRevenueSettlementPanel({ tenants = [] }) {
     }, [filters, tenantId]);
 
     useEffect(() => {
+        if (!preselectionResolved) return;
         loadRevenue();
-    }, [loadRevenue]);
+    }, [loadRevenue, preselectionResolved]);
 
     useEffect(() => {
         if (!tenantId) {
@@ -175,7 +180,36 @@ export default function TenantRevenueSettlementPanel({ tenants = [] }) {
         }
     }, [latestPolicy, tenantId]);
 
+    useEffect(() => {
+        if (lastPreselectTenantId.current !== preselectTenantId) {
+            lastPreselectTenantId.current = preselectTenantId;
+            preselectionHandled.current = false;
+            setPreselectionResolved(!preselectTenantId);
+            setPreselectionMessage('');
+            setTenantId(lockedTenantId ? String(lockedTenantId) : '');
+            return;
+        }
+        if (!preselectTenantId) {
+            setPreselectionResolved(true);
+            return;
+        }
+        if (preselectionHandled.current || !preselectionReady) return;
+        preselectionHandled.current = true;
+        const match = tenants.find((tenant) => String(tenant.id) === String(preselectTenantId));
+        if (!match) {
+            setPreselectionMessage('The tenant in this link is not available in the authorized tenant list. No tenant was selected.');
+            setTenantId(lockedTenantId ? String(lockedTenantId) : '');
+            setPreselectionResolved(true);
+            return;
+        }
+        setTenantId(lockedTenantId ? String(lockedTenantId) : String(match.id));
+        setPreselectionMessage(`Showing revenue and settlement for ${match.name}.`);
+        setPreselectionResolved(true);
+    }, [lockedTenantId, preselectTenantId, preselectionReady, tenants]);
+
     const handleTenantChange = (event) => {
+        if (lockedTenantId) return;
+        setPreselectionMessage('');
         setPolicies([]);
         setPolicyForm(createDefaultTenantRevenuePolicyForm(today()));
         setTenantId(event.target.value);
@@ -362,13 +396,23 @@ export default function TenantRevenueSettlementPanel({ tenants = [] }) {
             </header>
 
             <div className="border-b border-slate-200 bg-slate-50 p-4">
+                {preselectionMessage ? <p role="status" className="mb-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">{preselectionMessage}</p> : null}
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-5">
                     <label className="text-sm font-medium text-slate-700">
                         Tenant
-                        <select value={tenantId} onChange={handleTenantChange} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
-                            <option value="">All tenants (read-only summary)</option>
-                            {tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
-                        </select>
+                        {lockedTenantId ? (
+                            <input
+                                type="text"
+                                readOnly
+                                value={tenants.find((tenant) => String(tenant.id) === String(lockedTenantId))?.name || tenantId}
+                                className="mt-1 w-full rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-700"
+                            />
+                        ) : (
+                            <select value={tenantId} onChange={handleTenantChange} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+                                <option value="">All tenants</option>
+                                {tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
+                            </select>
+                        )}
                     </label>
                     <label className="text-sm font-medium text-slate-700">
                         From

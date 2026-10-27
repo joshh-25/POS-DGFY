@@ -1,0 +1,267 @@
+import { readFileSync } from 'node:fs';
+import { jest } from '@jest/globals';
+
+const sendMailMock = jest.fn();
+const createTransportMock = jest.fn(() => ({
+  sendMail: sendMailMock,
+  verify: jest.fn()
+}));
+
+jest.unstable_mockModule('nodemailer', () => ({
+  default: { createTransport: createTransportMock }
+}));
+
+jest.unstable_mockModule('../src/config/logger.js', () => ({
+  default: {
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn()
+  }
+}));
+
+const emailService = await import('../src/services/emailService.js');
+const emailTemplates = await import('../src/templates/emailTemplates.js');
+
+const LEGACY_BRANDING = /SKUpervisor|SKU Inventory Manager/i;
+const ORIGINAL_ENV = { ...process.env };
+const neutralOrder = {
+  tracking_pin: 'SK-ABC123',
+  items: [{ item_name: 'Coffee', quantity: 1, sale_price: 100, line_subtotal: 100 }],
+  subtotal_amount: 100,
+  discount_amount: 0,
+  delivery_fee: 0,
+  total_amount: 100,
+  payment_type: 'cash',
+  payment_status: 'paid',
+  order_method: 'delivery',
+  created_at: '2026-10-25T00:00:00.000Z',
+  delivery_address: '12 Market Road'
+};
+
+const templateFixtures = {
+  getInvitationTemplate: {
+    inviterName: 'Alex Admin', role: 'Staff', invitationToken: 'invite-token',
+    tenantName: 'North Shop', expiresIn: '7 days', appUrl: 'https://app.example.test'
+  },
+  getAffiliateInviteTemplate: {
+    businessName: 'North Shop', inviterName: 'Alex Admin', invitationToken: 'affiliate-token',
+    inviteeEmail: 'staff@example.test', accountExists: true, appOrigin: 'https://store.example.test', expiresIn: '7 days'
+  },
+  getWelcomeTemplate: {
+    username: 'Sam Staff', role: 'Staff', tenantName: 'North Shop', appUrl: 'https://app.example.test'
+  },
+  getCashierCredentialTemplate: {
+    tenantName: 'North Shop', cashierEmail: 'cashier@example.test', temporaryPassword: 'temporary-password',
+    loginUrl: 'https://app.example.test/login', resetPasswordUrl: 'https://app.example.test/dgfy/reset-password?email=cashier%40example.test',
+    terminalLabel: 'Front Register', storeName: 'North Shop'
+  },
+  getCompanyApprovedTemplate: {
+    companyName: 'North Shop', adminEmail: 'owner@example.test', appUrl: 'https://app.example.test',
+    statusUrl: 'https://app.example.test/register-company/status/app-1', posUrl: 'https://pos.example.test/onboarding'
+  },
+  getCompanyRejectedTemplate: {
+    companyName: 'North Shop', rejectionReason: 'Please update your address.',
+    statusUrl: 'https://app.example.test/register-company/status/app-1', appUrl: 'https://app.example.test'
+  },
+  getSubscriptionExpiringTemplate: { companyName: 'North Shop', expiryDate: 'Nov 15, 2026', appUrl: 'https://app.example.test' },
+  getSubscriptionCancelledTemplate: { companyName: 'North Shop', downgradeDate: 'Nov 15, 2026' },
+  getPaymentFailedTemplate: { companyName: 'North Shop', retryDate: 'Nov 15, 2026' },
+  getPaymentFailedGracePeriodTemplate: { companyName: 'North Shop', gracePeriodEnd: 'Nov 15, 2026' },
+  getPayMongoSetupTemplate: {
+    companyName: 'North Shop', checkoutLink: 'https://checkout.paymongo.com/session-1',
+    expiresAt: 'Nov 15, 2026', planName: 'Premium', amount: '3,000'
+  },
+  getPayMongoSetupExpiredTemplate: { companyName: 'North Shop' },
+  getPlanChangePendingTemplate: {
+    companyName: 'North Shop', currentPlan: 'Standard', newPlan: 'Premium',
+    approvalUrl: 'https://checkout.example.test/approve'
+  },
+  getPlanChangeAppliedTemplate: { companyName: 'North Shop', oldPlan: 'Standard', newPlan: 'Premium' },
+  getReactivationRequestTemplate: { companyName: 'North Shop', requestedAt: 'Oct 26, 2026' },
+  getReactivationApprovedTemplate: {
+    companyName: 'North Shop', companyToken: 'company-token', loginUrl: 'https://app.example.test/login'
+  },
+  getResubmissionConfirmationTemplate: { companyName: 'North Shop' },
+  getStorefrontOrderConfirmationTemplate: {
+    storeName: 'North Shop', order: neutralOrder,
+    trackingUrl: 'https://store.example.test/track?pin=SK-ABC123',
+    logoUrl: 'https://cdn.example.test/north-shop.png', supportUrl: 'https://store.example.test/contact'
+  }
+};
+
+const wrapperFixtures = {
+  sendInvitationEmail: { email: 'staff@example.test', inviterName: 'Alex Admin', role: 'staff', invitationToken: 'invite-token', tenantName: 'North Shop' },
+  sendAffiliateInviteEmail: { email: 'staff@example.test', businessName: 'North Shop', inviterName: 'Alex Admin', invitationToken: 'affiliate-token', accountExists: true },
+  sendWelcomeEmail: { email: 'staff@example.test', username: 'Sam Staff', role: 'staff', tenantName: 'North Shop' },
+  sendCashierCredentialEmail: { email: 'cashier@example.test', tenantName: 'North Shop', temporaryPassword: 'temporary-password', terminalLabel: 'Front Register', storeName: 'North Shop', tenantId: 'tenant-1' },
+  sendStorefrontOrderConfirmationEmail: { email: 'customer@example.test', storeName: 'North Shop', order: neutralOrder, trackingUrl: 'https://store.example.test/track?pin=SK-ABC123', logoUrl: 'https://cdn.example.test/north-shop.png', supportUrl: 'https://store.example.test/contact', tenantId: 'tenant-1' },
+  sendCompanyApprovedEmail: { email: 'owner@example.test', companyName: 'North Shop', statusUrl: 'https://app.example.test/register-company/status/app-1' },
+  sendCompanyOnboardingEmail: { email: 'owner@example.test', companyName: 'North Shop', statusUrl: 'https://app.example.test/register-company/status/app-1', posUrl: 'https://pos.example.test/onboarding' },
+  sendCompanySubmissionReceivedEmail: { email: 'owner@example.test', companyName: 'North Shop', statusUrl: 'https://app.example.test/register-company/status/app-1' },
+  sendCompanyRejectedEmail: { email: 'owner@example.test', companyName: 'North Shop', rejectionReason: 'Please update your address.', statusUrl: 'https://app.example.test/register-company/status/app-1' },
+  sendEmailOtpCode: { email: 'staff@example.test', code: '123456', purposeLabel: 'email verification', expiresInMinutes: 10 },
+  sendSubscriptionExpiringEmail: { email: 'owner@example.test', companyName: 'North Shop', expiryDate: '2026-11-15T00:00:00.000Z' },
+  sendSubscriptionCancelledEmail: { email: 'owner@example.test', companyName: 'North Shop', downgradeDate: '2026-11-15T00:00:00.000Z' },
+  sendPaymentFailedEmail: { email: 'owner@example.test', companyName: 'North Shop', retryDate: '2026-11-15T00:00:00.000Z' },
+  sendPaymentFailedGracePeriodEmail: { email: 'owner@example.test', companyName: 'North Shop', gracePeriodEnd: '2026-11-15T00:00:00.000Z' },
+  sendPayMongoSetupEmail: { email: 'owner@example.test', companyName: 'North Shop', checkoutLink: 'https://checkout.paymongo.com/session-1', expiresAt: 'Nov 15, 2026', planName: 'Premium', amount: '3,000' },
+  sendPayMongoSetupExpiredEmail: { email: 'owner@example.test', companyName: 'North Shop' },
+  sendPlanChangePendingEmail: { email: 'owner@example.test', companyName: 'North Shop', currentPlan: 'Standard', newPlan: 'Premium', approvalUrl: 'https://checkout.example.test/approve' },
+  sendPlanChangeAppliedEmail: { email: 'owner@example.test', companyName: 'North Shop', oldPlan: 'Standard', newPlan: 'Premium' },
+  sendReactivationRequestEmail: { email: 'admin@example.test', companyName: 'North Shop' },
+  sendReactivationApprovedEmail: { email: 'owner@example.test', companyName: 'North Shop', companyToken: 'company-token' },
+  sendResubmissionConfirmationEmail: { email: 'owner@example.test', companyName: 'North Shop' }
+};
+
+const configureMockSmtp = () => {
+  process.env = { ...ORIGINAL_ENV };
+  process.env.SMTP_HOST = 'smtp.example.test';
+  process.env.SMTP_USER = 'smtp-user@example.test';
+  process.env.SMTP_PASS = 'test-password';
+  process.env.EMAIL_DELIVERY_LOG_ENABLED = 'false';
+  process.env.APP_URL = 'https://app.example.test';
+  process.env.STOREFRONT_PUBLIC_ORIGIN = 'https://store.example.test';
+  delete process.env.EMAIL_FROM;
+  delete process.env.EMAIL_FROM_NAME;
+};
+
+describe('outbound email branding contract', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    configureMockSmtp();
+    emailService.resetTransporter();
+    sendMailMock.mockResolvedValue({ messageId: '<mock@example.test>', accepted: ['recipient@example.test'], rejected: [], response: '250 queued' });
+  });
+
+  afterAll(() => {
+    process.env = ORIGINAL_ENV;
+    emailService.resetTransporter();
+  });
+
+  it('renders every active named email template without authored legacy branding', () => {
+    const activeTemplateNames = Object.keys(emailTemplates)
+      .filter((name) => /^get.*Template$/.test(name))
+      .sort();
+
+    expect(Object.keys(templateFixtures).sort()).toEqual(activeTemplateNames);
+
+    for (const [name, fixture] of Object.entries(templateFixtures)) {
+      const html = emailTemplates[name](fixture);
+      expect(typeof html).toBe('string');
+      expect(html).not.toMatch(LEGACY_BRANDING);
+    }
+  });
+
+  it('sends every active email-specific wrapper with DGFY fallback and clean subject, HTML, and text', async () => {
+    const activeWrapperNames = Object.keys(emailService)
+      .filter((name) => /^send[A-Z]/.test(name) && name !== 'sendEmail')
+      .sort();
+
+    expect(Object.keys(wrapperFixtures).sort()).toEqual(activeWrapperNames);
+
+    for (const [name, fixture] of Object.entries(wrapperFixtures)) {
+      await emailService[name](fixture);
+    }
+
+    expect(sendMailMock).toHaveBeenCalledTimes(activeWrapperNames.length);
+    for (const [message] of sendMailMock.mock.calls) {
+      expect(message.from).toBe('"DGFY" <smtp-user@example.test>');
+      expect(message.text).toEqual(expect.any(String));
+      expect(`${message.subject}\n${message.html}\n${message.text}`).not.toMatch(LEGACY_BRANDING);
+    }
+
+    const invitation = sendMailMock.mock.calls.find(([message]) => message.subject.startsWith("You've been invited"))[0];
+    expect(invitation.subject).toBe("You've been invited to join North Shop on DGFY");
+    expect(invitation.html).toContain('https://app.example.test/accept-invite?token=invite-token');
+
+    const welcome = sendMailMock.mock.calls.find(([message]) => message.subject.startsWith('Welcome to'))[0];
+    expect(welcome.html).toContain('href="https://app.example.test/login?utm_source=email');
+
+    const companyOnboarding = sendMailMock.mock.calls.find(([message]) => message.subject.includes('ready for POS onboarding'))[0];
+    expect(companyOnboarding.html).toContain('https://app.example.test/register-company/status/app-1');
+    expect(companyOnboarding.html).toContain('https://pos.example.test/onboarding');
+
+    const cashier = sendMailMock.mock.calls.find(([message]) => message.subject.startsWith('Your cashier login details'))[0];
+    expect(cashier.text).toContain('https://app.example.test/login');
+    expect(cashier.text).toContain('https://app.example.test/dgfy/reset-password?email=cashier%40example.test');
+
+    const subscriptionExpiring = sendMailMock.mock.calls.find(([message]) => message.subject.startsWith('Your Premium subscription'))[0];
+    expect(subscriptionExpiring.html).toContain('href="https://app.example.test/settings?tab=subscription');
+
+    const payMongoSetup = sendMailMock.mock.calls.find(([message]) => message.subject.startsWith('Action Required: Set Up PayMongo'))[0];
+    expect(payMongoSetup.html).toContain('href="https://checkout.paymongo.com/session-1"');
+
+    const planChange = sendMailMock.mock.calls.find(([message]) => message.subject.startsWith('Plan Change Pending'))[0];
+    expect(planChange.html).toContain('href="https://checkout.example.test/approve"');
+
+    const storefront = sendMailMock.mock.calls.find(([message]) => message.subject.startsWith('Order confirmation'))[0];
+    expect(storefront.html).toContain('href="https://store.example.test/track?pin=SK-ABC123"');
+    expect(storefront.text).toContain('https://store.example.test/contact');
+
+    await emailService.sendAffiliateInviteEmail({
+      ...wrapperFixtures.sendAffiliateInviteEmail,
+      accountExists: false
+    });
+    const [newAccountAffiliateInvite] = sendMailMock.mock.calls.at(-1);
+    expect(newAccountAffiliateInvite.html).toContain('href="https://store.example.test/register?email=staff%40example.test&amp;aff_invite=affiliate-token');
+    expect(newAccountAffiliateInvite.html).toContain('Create your DGFY account');
+  });
+
+  it('keeps configured sender identity precedence and explicit DGFY senders', async () => {
+    process.env.EMAIL_FROM_NAME = 'Configured Display';
+    process.env.EMAIL_FROM = 'configured@example.test';
+
+    await emailService.sendEmail({
+      to: 'recipient@example.test',
+      subject: 'Sender override',
+      html: '<p>Message</p>',
+      fromName: 'Per-message Display',
+      fromEmail: 'override@example.test'
+    });
+    expect(sendMailMock.mock.calls.at(-1)[0].from).toBe('"Per-message Display" <override@example.test>');
+
+    await emailService.sendEmail({ to: 'recipient@example.test', subject: 'Configured sender', html: '<p>Message</p>' });
+    expect(sendMailMock.mock.calls.at(-1)[0].from).toBe('"Configured Display" <configured@example.test>');
+
+    await emailService.sendAffiliateInviteEmail(wrapperFixtures.sendAffiliateInviteEmail);
+    await emailService.sendEmailOtpCode(wrapperFixtures.sendEmailOtpCode);
+    await emailService.sendStorefrontOrderConfirmationEmail(wrapperFixtures.sendStorefrontOrderConfirmationEmail);
+
+    for (const [message] of sendMailMock.mock.calls.slice(-3)) {
+      expect(message.from).toBe('"DGFY" <configured@example.test>');
+    }
+  });
+
+  it('preserves tenant names that happen to contain historical branding', async () => {
+    await emailService.sendInvitationEmail({
+      email: 'staff@example.test',
+      inviterName: 'Alex Admin',
+      role: 'staff',
+      invitationToken: 'invite-token',
+      tenantName: 'SKUpervisor Legacy Tenant'
+    });
+
+    const [message] = sendMailMock.mock.calls.at(-1);
+    expect(message.subject).toBe("You've been invited to join SKUpervisor Legacy Tenant on DGFY");
+    expect(message.html).toContain('SKUpervisor Legacy Tenant');
+  });
+
+  it('uses DGFY for email tenant-name fallbacks in userService', () => {
+    const userService = readFileSync(new URL('../src/services/userService.js', import.meta.url), 'utf8');
+
+    expect(userService).not.toMatch(/tenantName[^\n]*SKUpervisor/);
+    expect(userService).toMatch(/tenantName = store\?\.tenantName \|\| 'DGFY'/);
+    expect(userService).toMatch(/tenantName: dbStore\.getStore\(\)\?\.tenantName \|\| 'DGFY'/);
+  });
+
+  it('keeps the explicit opt-in diagnostic copy branded DGFY without sending mail', () => {
+    const script = readFileSync(new URL('../scripts/verify-email-delivery.js', import.meta.url), 'utf8');
+
+    expect(script).toContain("if (sendTo) {");
+    expect(script).toContain("subject: 'DGFY email delivery verification'");
+    expect(script).toContain("html: '<p>This is a DGFY email delivery verification message.</p>'");
+    expect(script).toContain("text: 'This is a DGFY email delivery verification message.'");
+    expect(script).not.toMatch(LEGACY_BRANDING);
+    expect(sendMailMock).not.toHaveBeenCalled();
+  });
+});

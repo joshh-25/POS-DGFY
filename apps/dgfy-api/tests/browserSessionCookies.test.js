@@ -1,9 +1,11 @@
 import {
   SESSION_COOKIE_NAMES,
   clearTenantSessionCookies,
+  getOidcStorefrontBindingCookieName,
   getSubmittedRefreshToken,
   isMobileClientRequest,
   setTenantSessionCookies,
+  setHostOnlySessionCookie,
   setAffiliateAttributionCookie,
   getAffiliateAttributionCookie
 } from '../src/utils/browserSessionCookies.js';
@@ -53,6 +55,22 @@ describe('browser session cookies', () => {
     expect(cookies).toHaveLength(3);
     expect(cookies.every((cookie) => cookie.includes('Max-Age=0'))).toBe(true);
     expect(cookies.every((cookie) => cookie.includes('Expires=Thu, 01 Jan 1970 00:00:00 GMT'))).toBe(true);
+  });
+
+  it('sets a per-interaction OIDC browser cookie as host-only despite a shared session cookie domain', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.SESSION_COOKIE_DOMAIN = '.dgfy.ph';
+    const cookieName = getOidcStorefrontBindingCookieName('a'.repeat(43));
+    const res = createResponse();
+    setHostOnlySessionCookie(res, cookieName, 'b'.repeat(43), { secure: true, maxAgeMs: 60_000 });
+    const cookie = res.headers['Set-Cookie'][0];
+
+    expect(cookieName).toBe(`sku_oidc_storefront_binding_${'a'.repeat(43)}`);
+    expect(cookie).toContain('HttpOnly');
+    expect(cookie).toContain('Secure');
+    expect(cookie).toContain('SameSite=Lax');
+    expect(cookie).not.toContain('Domain=');
+    expect(getOidcStorefrontBindingCookieName('invalid.id')).toBe('');
   });
 
   describe('isMobileClientRequest', () => {

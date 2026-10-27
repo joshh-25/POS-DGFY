@@ -8,6 +8,7 @@ import GlobalApiErrorListener from '../../../packages/web-core/src/components/co
 import VersionBadge from '../../../packages/web-core/src/components/common/VersionBadge.jsx';
 import { Toaster } from '@/components/ui/sonner';
 import AdminLayout from './components/AdminLayout.jsx';
+import { normalizeAdminRouteLabel } from './features/admin/adminRouteLabel.js';
 import {
   capturePageview,
   initBrowserAnalytics,
@@ -26,6 +27,16 @@ import '../../../packages/web-core/src/index.css';
 const FeedbackDashboard = lazy(() => import('../Pages/FeedbackDashboard.jsx'));
 const ContactInquiriesDashboard = lazy(() => import('../Pages/ContactInquiriesDashboard.jsx'));
 const TenantManager = lazy(() => import('../Pages/TenantManager.jsx'));
+const TenantBilling = lazy(() => import('../Pages/TenantBilling.jsx'));
+const TenantDetailLayout = lazy(() => import('../Pages/TenantDetailLayout.jsx'));
+const TenantOverview = lazy(() => import('../Pages/TenantOverview.jsx'));
+const TenantLifecycle = lazy(() => import('../Pages/TenantLifecycle.jsx'));
+const TenantRegistration = lazy(() => import('../Pages/TenantRegistration.jsx'));
+const TenantCompliance = lazy(() => import('../Pages/TenantCompliance.jsx'));
+const TenantStoreSetup = lazy(() => import('../Pages/TenantStoreSetup.jsx'));
+const TenantAccess = lazy(() => import('../Pages/TenantAccess.jsx'));
+const TenantBillingDetail = lazy(() => import('../Pages/TenantBillingDetail.jsx'));
+const AddTenant = lazy(() => import('../Pages/AddTenant.jsx'));
 const DgfyAccountManager = lazy(() => import('../Pages/DgfyAccountManager.jsx'));
 const PaymentOperations = lazy(() => import('../Pages/PaymentOperations.jsx'));
 const AdminPricing = lazy(() => import('../Pages/AdminPricing.jsx'));
@@ -42,8 +53,9 @@ initBrowserAnalytics({ surface: 'admin' });
 function RouteTracker() {
   const location = useLocation();
   useEffect(() => {
-    capturePageview({ path: location.pathname });
-    setSentryRoute(location.pathname);
+    const routeLabel = normalizeAdminRouteLabel(location.pathname);
+    capturePageview({ path: routeLabel });
+    setSentryRoute(routeLabel);
   }, [location.pathname]);
   return null;
 }
@@ -91,6 +103,17 @@ ReactDOM.createRoot(document.getElementById('root')).render(
               <Route index element={<Navigate to="/admin/tenants" replace />} />
               <Route path="feedback" element={<FeedbackDashboard />} />
               <Route path="contact-inquiries" element={<ContactInquiriesDashboard />} />
+              <Route path="tenants/billing" element={<TenantBilling />} />
+              <Route path="tenants/new" element={<AddTenant />} />
+              <Route path="tenants/:id" element={<TenantDetailLayout />}>
+                <Route index element={<TenantOverview />} />
+                <Route path="lifecycle" element={<TenantLifecycle />} />
+                <Route path="registration" element={<TenantRegistration />} />
+                <Route path="compliance" element={<TenantCompliance />} />
+                <Route path="store-setup" element={<TenantStoreSetup />} />
+                <Route path="access" element={<TenantAccess />} />
+                <Route path="billing" element={<TenantBillingDetail />} />
+              </Route>
               <Route path="tenants" element={<TenantManager />} />
               <Route path="dgfy-accounts" element={<DgfyAccountManager />} />
               <Route path="payments" element={<PaymentOperations />} />

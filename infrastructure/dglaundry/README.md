@@ -271,7 +271,8 @@ Hosting DGLaundry is not the same as connecting it to DGFY. While `DGLAUNDRY_DGF
   missing is DGLaundry's half, and `connect-dgfy-prod.sh` supplies it. Run on `ssh dgfy`, in this order:
   1. `sudo bash connect-dgfy-prod.sh --check` — changes nothing; proves every DGFY secret
      decrypts and has the right key type, DGLaundry's cache decrypts, and nothing is overwritten.
-  2. `sudo bash connect-dgfy-prod.sh` — generates DGLaundry's three prod keypairs; adds the five
+  2. `sudo bash connect-dgfy-prod.sh` — (uses the system `sops` when `DGL_SOPS_BIN` is unset and
+     `/opt/dglaundry/bin/sops` is not executable, as on prod; an explicit `DGL_SOPS_BIN` is never replaced) generates DGLaundry's three prod keypairs; adds the five
      DGFY secrets to `/opt/dglaundry/dgfy-secrets-cache/prod-dglaundry-secrets.env` (the client
      secret goes root-to-SOPS and is never printed); encrypts DGLaundry's machine-assertion,
      request-signing and event **public** keys into `/opt/dgfy-platform/secrets/` in the existing
@@ -280,15 +281,32 @@ Hosting DGLaundry is not the same as connecting it to DGFY. While `DGLAUNDRY_DGF
      restarts anything**.
   3. Copy the updated ciphertext into `Sieitzz/dgfy-secrets`.
   4. Apply `host-patches/dgfy-prod-2304.patch` to `/opt/dgfy-platform` (`patch -p1 --dry-run`
-     first, then commit it in the host's own git repo). It points DGFY at `dglaundry.dgfy.ph`,
-     consumes the three new files and makes `DGLAUNDRY_INTEGRATION_ENABLED` default to true.
-     **Do not apply it before #2513 is in prod:** DGFY's boot validator
-     (`productionEnvValidation.cjs`) still pins the production redirect URI to the old
-     `laundry.surebizcorp.com` host, so `deploy-sops.sh`'s pre-flight check would (safely, before
-     touching any container) refuse the new URL.
-  5. `./deploy-sops.sh` recreates `dgfy-api`; `https://api.dgfy.ph/oidc/jwks` must return 200.
-  6. Fill `prod.env` (DGFY's public keys, inbound client ID, DGFY URLs) and only then flip
-     `DGLAUNDRY_DGFY_MODE` to `production` — after the staging flow has passed.
+     first, with the **host's** GNU `patch`, not macOS's -- BSD `patch` silently accepts fuzz that
+     GNU rejects). It points DGFY at `dglaundry.dgfy.ph`, consumes the three new files and makes
+     `DGLAUNDRY_INTEGRATION_ENABLED` default to true. The host's compose file is hand-edited, so
+     re-check the dry run against the live file on the day: it was rebased on 2026-10-26 (#2834)
+     after the 10-19 Expo push variables shifted hunk 1's context. Do not apply it before #2513 is
+     in production (its code half, #2553, shipped in release 2026-10-18-01): the boot validator pins
+     the production redirect URI, so on an older image `deploy-sops.sh`'s pre-flight check would
+     refuse the new URL (safely, before touching any container).
+  5. Recreate **only** `dgfy-api`, without pulling images: a bare `./deploy-sops.sh` runs
+     `docker compose pull` and recreates every service whose `:latest` moved. Use a copy of
+     `deploy-sops.sh` with the pull skipped and the final line changed to
+     `docker compose up -d --no-deps --pull never dgfy-api` (it still runs the boot-validator dry
+     run first). Expect 7 files in `/run/dgfy-secrets` and `https://api.dgfy.ph/oidc/jwks` = 200.
+     Backups: `*.pre-<issue>-<stamp>` beside the patched files; rollback is restoring them and
+     repeating this step. Done on 2026-10-26 (#2834).
+  6. `prod.env` already carries the production DGFY values (public keys, URLs, inbound client ID);
+     only flip `DGLAUNDRY_DGFY_MODE` to `production` -- after the staging flow has passed -- and
+     redeploy DGLaundry. After **any** DGLaundry prod deploy (including one still in `disabled`
+     mode, where the rendered api environment already carries DGFY's public keys and
+     `dglaundry-service`) confirm: api and worker `healthy`, `/ready` shows the expected migration
+     head, and the sign-in page still shows the "being completed" notice.
+     **Before the flip, park the outbound signing key** (as on staging): `deploy-sops.sh` writes a
+     non-empty `DGFY_OUTBOUND_SIGNING_KEY` as a file, the DGFY overlay mounts it into the worker, and
+     the worker then demands `DGLAUNDRY_DGFY_OUTBOUND_URL` and `..._KEY_ID` too (crash-loop, seen on
+     staging 2026-10-16). Move the value to `DGLAUNDRY_EVENT_SIGNING_KEY_RESERVED` and leave
+     `DGFY_OUTBOUND_SIGNING_KEY` empty until events are enabled.
 `provision-migration-identity.sh` runs as part of that same dispatch, once `mysql` reports
 healthy and before `migrate` runs — it parses the already-decrypted `mysql_migration_url` secret
 to derive the migration account's username/schema, and reads the MySQL root password from

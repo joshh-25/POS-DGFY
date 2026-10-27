@@ -2,6 +2,7 @@ import { jest } from '@jest/globals';
 
 const mockRegisterCompanyRequestUseCase = jest.fn();
 const mockListTenantsUseCase = jest.fn();
+const mockGetTenantUseCase = jest.fn();
 const mockApproveTenantUseCase = jest.fn();
 const mockRejectTenantUseCase = jest.fn();
 const mockProvisionNewTenantUseCase = jest.fn();
@@ -34,6 +35,7 @@ const mockChangePlanUseCase = jest.fn();
 jest.unstable_mockModule('../src/modules/tenants/index.js', () => ({
   registerCompanyRequestUseCase: mockRegisterCompanyRequestUseCase,
   listTenantsUseCase: mockListTenantsUseCase,
+  getTenantUseCase: mockGetTenantUseCase,
   approveTenantUseCase: mockApproveTenantUseCase,
   rejectTenantUseCase: mockRejectTenantUseCase,
   provisionNewTenantUseCase: mockProvisionNewTenantUseCase,
@@ -80,6 +82,7 @@ jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () =
 }));
 
 let listTenants;
+let getTenant;
 let approveTenant;
 let getPricingSettings;
 let registerCompanyRequest;
@@ -95,6 +98,7 @@ let createAdminProvisionedAccountAndTenant;
 beforeAll(async () => {
   const mod = await import('../src/modules/tenants/controllers/adminTenantHandlers.js');
   listTenants = mod.listTenants;
+  getTenant = mod.getTenant;
   approveTenant = mod.approveTenant;
   getPricingSettings = mod.getPricingSettings;
   registerCompanyRequest = mod.registerCompanyRequest;
@@ -131,13 +135,15 @@ describe('adminTenantHandlers transport contracts', () => {
     });
 
     const req = {
-      query: { status: 'pending' },
+      query: { status: 'pending', include_capabilities: 'false' },
       user: { user_id: 1, tenant_id: 'landlord', is_master_admin: true },
       requestId: 'req-admin-tenants'
     };
     const res = createRes();
 
     await listTenants(req, res);
+
+    expect(mockListTenantsUseCase).toHaveBeenCalledWith({ status: 'pending', includeCapabilities: false });
 
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({ success: true });
@@ -146,6 +152,40 @@ describe('adminTenantHandlers transport contracts', () => {
       surface: 'admin_tenants',
       action: 'list_tenants'
     }));
+  });
+
+  it('getTenant sends one enriched tenant under data and forwards the requested ID', async () => {
+    const tenant = { id: 'tenant-42', name: 'Detail Foods', effective_plan: 'premium' };
+    mockGetTenantUseCase.mockResolvedValue({
+      success: true,
+      data: { statusCode: 200, payload: { success: true, data: tenant } }
+    });
+
+    const req = { params: { id: 'tenant-42' } };
+    const res = createRes();
+
+    await getTenant(req, res);
+
+    expect(mockGetTenantUseCase).toHaveBeenCalledWith({ id: 'tenant-42' });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({ success: true, data: tenant });
+  });
+
+  it('getTenant preserves the TENANT_NOT_FOUND application error as a 404', async () => {
+    mockGetTenantUseCase.mockResolvedValue({
+      success: false,
+      error: {
+        code: 'TENANT_NOT_FOUND',
+        message: 'Tenant not found',
+        statusCode: 404
+      }
+    });
+
+    const res = createRes();
+    await getTenant({ params: { id: 'missing' } }, res);
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Tenant not found' });
   });
 
   it.each([

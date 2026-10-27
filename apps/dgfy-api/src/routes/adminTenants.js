@@ -2,6 +2,7 @@ import express from 'express';
 import {
     registerCompanyRequest,
     listTenants,
+    getTenant,
     approveTenant,
     retryTenantProvisioning,
     rejectTenant,
@@ -112,6 +113,8 @@ router.post('/admin-provision-with-account', authenticateAdmin, createAdminProvi
 
 // ADMIN: Pricing Settings
 router.get('/pricing', authenticateAdmin, getPricingSettings);
+// Keep the single-segment detail route below all static GET routes so it cannot consume names such as pricing.
+router.get('/:id', authenticateAdmin, getTenant);
 router.put('/pricing', authenticateAdmin, updatePricingSettings);
 
 // ADMIN: Approve a pending tenant (triggers provisioning)

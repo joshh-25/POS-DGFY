@@ -46,6 +46,7 @@ import { auditRequiredIndexes } from './services/schemaIndexAuditService.js';
 import { auditBillingFunnelIntegrity } from './services/engagementIntegrityAuditService.js';
 import { buildHealthResponse } from './services/healthService.js';
 import { metricsEnabled, renderPrometheusMetrics } from './services/metricsService.js';
+import { normalizeRouteForObservability, sanitizeSensitiveLogPath } from './services/observabilityUtils.js';
 import { auditRuntimeSchemaReadiness } from './services/runtimeSchemaAuditService.js';
 import { auditTenantSchemaReadiness } from './services/tenantSchemaReadinessService.js';
 import {
@@ -114,7 +115,7 @@ import {
 import { initSentry, sentryErrorHandler, sentryRequestContext } from './config/sentry.js';
 import { resolvePartnerCorsOrigin } from './modules/partnerIdentity/services/partnerOriginResolver.js';
 
-const { formatValidationFailure, validateProductionEnv } = productionEnvValidation;
+const { formatValidationFailure, isTruthy, validateProductionEnv } = productionEnvValidation;
 
 initSentry({ logger });
 
@@ -211,6 +212,7 @@ let billingFunnelAuditState = {
 // This allows Express to correctly extract the REAL client IP from X-Forwarded-For headers.
 // If not trusted, rate-limiters will block the load balancer's IP instead of the hacker's IP.
 const isProduction = process.env.NODE_ENV === 'production';
+const isHostedDglaundryIntegrationEnabled = isTruthy(process.env.DGLAUNDRY_INTEGRATION_ENABLED);
 const trustProxyRequested = process.env.TRUST_PROXY === 'true';
 const enforceHttpsRequested = process.env.ENFORCE_HTTPS === 'true';
 const disableHttpsEnforcement = process.env.ENFORCE_HTTPS === 'false';
@@ -224,8 +226,10 @@ if (isProduction || trustProxyRequested) {
   app.set('trust proxy', false);
 }
 
-// Environment validation for Production
-if (isProduction) {
+// Hosted DGLaundry integrations need production-mode runtime protections even
+// on DGFY DEV. Validate enabled integrations on every environment so a DEV
+// configuration cannot silently use process-memory OIDC/replay state.
+if (isProduction || isHostedDglaundryIntegrationEnabled) {
   const validation = validateProductionEnv({ env: process.env });
   if (validation.shouldFail) {
     logger.error(formatValidationFailure(validation));
@@ -384,7 +388,7 @@ const corsOptionsDelegate = async (req, callback) => {
     logger.warn('[CORS] Blocked request from disallowed origin', {
       origin,
       method: req.method,
-      path: req.originalUrl || req.url || '',
+      path: sanitizeSensitiveLogPath(req.originalUrl || req.url || ''),
       request_id: correlationId
     });
     const error = new Error('Not allowed by CORS');
@@ -471,10 +475,12 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(metricsMiddleware);
 
 // Logging middleware - use Winston stream for Morgan
+morgan.token('safe-url', (req) => normalizeRouteForObservability(req));
+morgan.token('safe-referrer', (req) => sanitizeSensitiveLogPath(req.headers.referer || ''));
 if (process.env.NODE_ENV === 'development') {
-  app.use(morgan('dev', { stream: logger.stream }));
+  app.use(morgan(':method :safe-url :status :res[content-length] - :response-time ms', { stream: logger.stream }));
 } else {
-  app.use(morgan('combined', { stream: logger.stream }));
+  app.use(morgan(':remote-addr - :remote-user [:date[clf]] ":method :safe-url HTTP/:http-version" :status :res[content-length] ":safe-referrer" ":user-agent"', { stream: logger.stream }));
 }
 
 // Rate limiting - apply general limiter to all routes
@@ -792,10 +798,12 @@ import registrationRoutes from './routes/registration.js';
 import publicSupportContactRoutes from './routes/publicSupportContact.js';
 import dgfyLaundryRoutes from './routes/dgfyLaundry.js';
 import oidcRoutes from './routes/oidc.js';
+import dgfyOidcInteractionRoutes from './routes/dgfyOidcInteraction.js';
 import dgfyLaundryOrderRoutes from './routes/dgfyLaundryOrders.js';
 app.use('/api/v1/internal/storefront-domain-operations', internalStorefrontDomainOperationRoutes);
 app.use(csrfProtection);
 app.use(dgfyLaundryOrderRoutes);
+app.use('/api/v1/dgfy/oidc', dgfyOidcInteractionRoutes);
 app.use('/api/v1/dgfy', tenantHandler, dgfyRoutes);
 app.use('/api/v1/partners/dglaundry', dgfyLaundryRoutes);
 app.use('/oidc', oidcLimiter, oidcRoutes);

@@ -23,6 +23,7 @@ const baseEnv = {
   SMS_PHONE_HASH_SECRET: strongSecret('sms-phone-hash'),
   CORS_ORIGIN: 'https://skupervisor.dgfy.ph,https://pos.dgfy.ph',
   SESSION_COOKIE_SECURE: 'true',
+  STOREFRONT_PUBLIC_ORIGIN: 'https://dgfy.ph',
   AUTH_BLACKLIST_FAILURE_MODE: 'fail_closed',
   TEMP_FILE_STORAGE: 'auto',
   REDIS_URL: 'redis://127.0.0.1:6379',
@@ -32,6 +33,36 @@ const baseEnv = {
   ADMIN_USERNAME: 'platform-admin',
   ADMIN_PASSWORD_HASH: `$2b$12$${'a'.repeat(53)}`
 };
+
+const completeDglaundryDevelopmentEnv = (overrides = {}) => ({
+  ...baseEnv,
+  DGLAUNDRY_INTEGRATION_ENABLED: 'true',
+  DGLAUNDRY_INTEGRATION_ENVIRONMENT: 'development',
+  STOREFRONT_PUBLIC_ORIGIN: 'https://dev.dgfy.ph',
+  DGLAUNDRY_SIGNATURE_PROFILE: 'http-message-signatures-v1',
+  DGLAUNDRY_PARTNER_BASE_URL: 'https://laundry.surebizcorp.com',
+  DGLAUNDRY_PARTNER_AUDIENCE: 'https://laundry.surebizcorp.com',
+  DGLAUNDRY_PARTNER_REQUEST_KEY_ID: 'dgfy-request-dev-p256',
+  DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY_FILE: '/run/dgfy-secrets/dglaundry-request-signing.pub.pem',
+  DGLAUNDRY_PARTNER_SIGNING_KEY_ID: 'dgfy-request-dev-p256',
+  DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY_FILE: '/run/dgfy-secrets/dgfy-request-signing.pem',
+  DGLAUNDRY_INTEGRATION_PUBLIC_KEYS_JSON: '{"dglaundry-event-dev-ed25519":"test-public-key"}',
+  DGLAUNDRY_INTEGRATION_KEY_ID: 'dglaundry-event-dev-ed25519',
+  DGFY_OIDC_ISSUER: 'https://api.dev.dgfy.ph/oidc',
+  DGFY_OIDC_PRIVATE_KEY_FILE: '/run/dgfy-secrets/dgfy-oidc-private.pem',
+  DGFY_OIDC_PUBLIC_KEY_FILE: '/run/dgfy-secrets/dgfy-oidc-public.pem',
+  DGFY_OIDC_KEY_ID: 'dgfy-oidc-dev-2026-10',
+  DGFY_DGLAUNDRY_REDIRECT_URI: 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback',
+  DGFY_DGLAUNDRY_CLIENT_SECRET_FILE: '/run/dgfy-secrets/dglaundry-oidc-client-secret',
+  DGFY_DGLAUNDRY_MACHINE_CLIENT_ID: 'dglaundry-machine-dev',
+  DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE: '/run/dgfy-secrets/dglaundry-machine-assertion.pub.pem',
+  DGFY_DGLAUNDRY_PARTNER_APP_ID: 'dglaundry',
+  DGFY_DGLAUNDRY_SERVICE_CLIENT_ID: 'dglaundry-service-dev',
+  DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID: 'dgfy-event-dev-ed25519',
+  DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY_FILE: '/run/dgfy-secrets/dgfy-event-signing.pem',
+  PAYMONGO_MODE: 'test',
+  ...overrides
+});
 
 describe('production environment validation', () => {
   it('accepts a complete VPS production environment', () => {
@@ -162,6 +193,51 @@ describe('production environment validation', () => {
     expect(result.errors).toContain('Missing required environment value: DGFY_DGLAUNDRY_PARTNER_APP_ID');
   });
 
+  it('accepts the exact Surebiz-to-DGFY-DEV connection tuple with sandbox payments', () => {
+    const result = validateProductionEnv({ env: completeDglaundryDevelopmentEnv() });
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('requires the DGLaundry Storefront origin to match its integration environment', () => {
+    const missing = validateProductionEnv({ env: completeDglaundryDevelopmentEnv({ STOREFRONT_PUBLIC_ORIGIN: '' }) });
+    expect(missing.errors).toContain('Missing required environment value: STOREFRONT_PUBLIC_ORIGIN');
+
+    const crossEnvironment = validateProductionEnv({ env: completeDglaundryDevelopmentEnv({ STOREFRONT_PUBLIC_ORIGIN: 'https://stage.dgfy.ph' }) });
+    expect(crossEnvironment.errors).toContain('STOREFRONT_PUBLIC_ORIGIN must be https://dev.dgfy.ph for development');
+
+    const path = validateProductionEnv({ env: completeDglaundryDevelopmentEnv({ STOREFRONT_PUBLIC_ORIGIN: 'https://dev.dgfy.ph/auth' }) });
+    expect(path.errors).toContain('STOREFRONT_PUBLIC_ORIGIN must be an HTTPS origin without credentials, path, query, or fragment');
+  });
+
+  it('rejects a staging issuer or callback for the Surebiz development connection', () => {
+    const wrongIssuer = validateProductionEnv({
+      env: completeDglaundryDevelopmentEnv({ DGFY_OIDC_ISSUER: 'https://api.stage.dgfy.ph/oidc' })
+    });
+    expect(wrongIssuer.errors).toContain('DGFY_OIDC_ISSUER must be https://api.dev.dgfy.ph/oidc for development');
+
+    const wrongCallback = validateProductionEnv({
+      env: completeDglaundryDevelopmentEnv({ DGFY_DGLAUNDRY_REDIRECT_URI: 'https://dglaundry.stage.dgfy.ph/api/v1/session/dgfy/callback' })
+    });
+    expect(wrongCallback.errors).toContain('DGFY_DGLAUNDRY_REDIRECT_URI must be https://laundry.surebizcorp.com/api/v1/session/dgfy/callback for development');
+  });
+
+  it('rejects another environment origin as the development partner audience', () => {
+    const result = validateProductionEnv({
+      env: completeDglaundryDevelopmentEnv({
+        DGLAUNDRY_PARTNER_BASE_URL: 'https://dglaundry.stage.dgfy.ph',
+        DGLAUNDRY_PARTNER_AUDIENCE: 'https://dglaundry.stage.dgfy.ph'
+      })
+    });
+    expect(result.errors).toContain('DGLAUNDRY_PARTNER_BASE_URL must be https://laundry.surebizcorp.com for development');
+    expect(result.errors).toContain('DGLAUNDRY_PARTNER_AUDIENCE must be https://laundry.surebizcorp.com for development');
+  });
+
+  it('rejects live PayMongo mode for a development DGLaundry connection', () => {
+    const result = validateProductionEnv({ env: completeDglaundryDevelopmentEnv({ PAYMONGO_MODE: 'live' }) });
+    expect(result.errors).toContain('DGLaundry development integration requires PAYMONGO_MODE=test; live PayMongo is forbidden in development');
+  });
+
   it('expects the DGLaundry redirect URI to match the registered callback for each integration environment', () => {
     const stagingWithProdCallback = validateProductionEnv({
       env: {
@@ -243,6 +319,18 @@ describe('production environment validation', () => {
     expect(result.ok).toBe(false);
     expect(result.shouldFail).toBe(true);
     expect(result.errors).toContain('DGLAUNDRY hosted integration requires NODE_ENV=production so Redis-backed state and replay checks cannot fall back to process memory');
+  });
+
+  it('requires production runtime protections for hosted DEV and rejects unknown integration environments', () => {
+    const developmentRuntime = validateProductionEnv({
+      env: completeDglaundryDevelopmentEnv({ NODE_ENV: 'development' })
+    });
+    expect(developmentRuntime.errors).toContain('DGLAUNDRY hosted integration requires NODE_ENV=production so Redis-backed state and replay checks cannot fall back to process memory');
+
+    const unknownEnvironment = validateProductionEnv({
+      env: completeDglaundryDevelopmentEnv({ DGLAUNDRY_INTEGRATION_ENVIRONMENT: 'mock' })
+    });
+    expect(unknownEnvironment.errors).toContain('DGLAUNDRY_INTEGRATION_ENVIRONMENT must be explicitly development, staging, or production');
   });
 
   it('requires an explicit service client and exact HTTPS partner audience for DGLaundry', () => {

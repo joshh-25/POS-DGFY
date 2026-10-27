@@ -106,6 +106,9 @@ This rule governs the action (`gh pr merge` or equivalent), not one named role �
 the acting session is running as `pr-reviewer`, `implement`, or unrostered. See #544 for the incident
 (PR #510) that exposed the rule existing only inside `pr-reviewer`'s own policy table.
 
+Use true merge commits (`gh pr merge --merge`), never `--squash`, on every base; the procedure owner
+is `.agents/skills/pr-reviewer/SKILL.md`.
+
 ### Bounded carve-out — merging on local CI evidence when GitHub's checks are unavailable
 
 Added 2026-08-19 (#662/#724), after two distinct failures of the check-run pipeline itself:
@@ -159,23 +162,23 @@ instead of re-briefing a general-purpose agent each session. This is #331's rost
 canonical definition lives under `.agents/skills/`, readable by any tool that reads this file:
 
 - **Worker/Implementer** (#436/#437) — plan → implement → commit → open a PR. Never merges, never
-  touches a deployed environment. @.agents/skills/implement/SKILL.md
+  touches a deployed environment. `.agents/skills/implement/SKILL.md`
 - **Planner/PM** (#367/#439) — files and shapes GitHub issues, maintains the DGFY Project board.
-  @.agents/skills/pm/SKILL.md
+  `.agents/skills/pm/SKILL.md`
 - **Planner/Handoff** — reads an existing open issue or epic and writes a local implementation
   handoff for a separate Worker session; it does not file issues, change board state, or orchestrate
-  other agents. @.agents/skills/planner/SKILL.md
+  other agents. `.agents/skills/planner/SKILL.md`
 - **Manual Handoff** — on explicit operator request, snapshots a planning, implementation, or
   review session into an ignored local artifact for a separate AI session; it never self-triggers,
-  launches another agent, or enters an orchestration loop. @.agents/skills/handoff/SKILL.md
+  launches another agent, or enters an orchestration loop. `.agents/skills/handoff/SKILL.md`
 - **PR Reviewer** (#366/#441) — audits an open PR, posts one verdict comment with concrete proposed
   fixes, auto-merges only on `develop`/`staging` with a clean `APPROVE`, never on `main`.
-  @.agents/skills/pr-reviewer/SKILL.md
+  `.agents/skills/pr-reviewer/SKILL.md`
 - **Observer** (#368) — ingests Sentry error/performance signals, triages against a noise policy,
-  files at most a defensible number of issues per run. @.agents/skills/observer/SKILL.md
+  files at most a defensible number of issues per run. `.agents/skills/observer/SKILL.md`
 - **Verifier/QA** (#331/#536) — verifies a merged, deployed change against a live environment,
   then flips `For QA` to `For Prod` or `Failed` — `Done` now happens later, at `promoter`'s
-  post-production confirmation. @.agents/skills/verifier/SKILL.md
+  post-production confirmation. `.agents/skills/verifier/SKILL.md`
 - **Promoter/Release** (#331/#512) — runs a frozen-candidate `develop → staging → main` promotion
   end to end, observes the candidate, and coordinates code-level repairs on `staging`
   (default again since #1404, 2026-09-02, reversing ADR 0074/#980's 2026-08-25 two-stage default; a
@@ -184,7 +187,7 @@ canonical definition lives under `.agents/skills/`, readable by any tool that re
   unattended (DEV dropped from the default flow — #982); never merges `main` or dispatches a
   `main`/PROD deploy without an explicit go each time, except a second, narrow, phrase-gated
   override (#1007) — see "The #1007 promoter override" below.
-  @.agents/skills/promoter/SKILL.md
+  `.agents/skills/promoter/SKILL.md`
 - **Incident Responder** (#331/#546) — autonomous production incident-response loop (monitor → PM
   files → Worker fixes → fast-track Reviewer → Promoter redeploys), also reachable manually via
   `/hotfix` (#861) for an on-demand fix outside the monitor loop. Carries a narrow, phrase-gated
@@ -196,22 +199,25 @@ canonical definition lives under `.agents/skills/`, readable by any tool that re
   compliance:reconcile-local` — see that role's own SKILL.md), never waivable via #1007 or its own
   `main`-merge override. Only runs when explicitly authorized — either an active incident session,
   or an explicit `/hotfix` invocation; a detected hotfix-shaped request with neither only proposes.
-  @.agents/skills/incident-responder/SKILL.md
+  `.agents/skills/incident-responder/SKILL.md`
 - **Notes/Intake** (#331/#645) — primes on stakeholder-meeting topics beforehand, captures pasted
   notes verbatim during the meeting with live ADR/doc conflict flagging, then compiles a routed
   slate afterward for confirmation before handing off to Planner/PM to file. Sits upstream of every
-  other role in this roster. @.agents/skills/notes/SKILL.md
+  other role in this roster. `.agents/skills/notes/SKILL.md`
 - **Conduct** — manual-invocation-only (`disable-model-invocation: true`) preset over Orca's
   `orchestration` skill: runs a task or epic through Orca with per-slot
   (`WORKER_PLANNER`/`WORKER_BUILDER`/`REVIEWER`) model selection, otherwise identical to calling
-  `/orchestration` directly. Never auto-invoked. @.agents/skills/conduct/SKILL.md;
-  `.claude/skills/conduct/SKILL.md` is the usual thin shim, carrying only the Claude-specific
+  `/orchestration` directly. Never auto-invoked. Its canonical definition is
+  `.agents/skills/conduct/SKILL.md`. `.claude/skills/conduct/SKILL.md` is the usual thin shim,
+  carrying only the Claude-specific
   `disable-model-invocation: true` flag that has no cross-tool equivalent.
 
-Load the relevant one when a task matches its job. Each file names *where* the actual rules live
-(`docs/ai/PR.md`, `docs/process/ISSUE-TAXONOMY.md`, compliance/architecture scripts) rather than
-restating them — read the role file, then follow its references, don't reconstruct a role's
-procedure from memory or from an older cached copy.
+Before acting in any role above — whether invoked by slash command or by a free-text request shaped
+like that role's job — read its canonical `SKILL.md` in full, then follow its references. These paths
+are intentionally plain text, not `@` imports: Claude Code loads imports eagerly, which would load
+every role at startup (#2854). Each file names *where* the actual rules live (`docs/ai/PR.md`,
+`docs/process/ISSUE-TAXONOMY.md`, compliance/architecture scripts); don't reconstruct its procedure
+from memory or from an older cached copy.
 
 ### Role handoffs and composite instructions
 

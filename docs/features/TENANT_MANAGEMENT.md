@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-10-10
+last_reviewed: 2026-10-25
 applies_to: tenant_management_and_plan_gating
 topic: tenant_management
 ---
@@ -170,7 +170,7 @@ CREATE TABLE Tenants (
     admin_email VARCHAR(255) NOT NULL,
     company_token VARCHAR(255) UNIQUE NOT NULL, -- Header: x-company-token
     db_name VARCHAR(255), -- The name of their isolated DB
-    status ENUM('pending', 'active', 'inactive', 'rejected') DEFAULT 'pending',
+    status ENUM('pending', 'active', 'inactive', 'rejected', 'archived') DEFAULT 'pending',
     plan ENUM('standard', 'premium') DEFAULT 'premium',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -179,6 +179,12 @@ CREATE TABLE Tenants (
     -- model attributes (createdAt, updatedAt) map correctly to these columns.
 );
 ```
+
+This is the landlord database schema sketch: `company_token` is a stored routing credential and
+`created_at` is the physical SQL column. The admin tenant-list API does not return `company_token`
+and serializes the timestamp as `createdAt`; see the
+[Platform Admin Tenant Console inventory](PLATFORM_ADMIN_TENANT_CONSOLE.md) for that response
+contract.
 
 ### Routing Logic
 1.  Frontend sends `x-company-token` header.
@@ -313,7 +319,7 @@ Current verified status as of `2026-08-07` (issue #279 superseded the `2026-05-1
 - Production SMTP delivery is via Namecheap Private Email on the `dgfy.ph` domain, not Brevo -- see #135's Decision for why the cutover happened. Confirm the live `SMTP_HOST`/`EMAIL_FROM` values operationally with `npm run verify:email` in that environment; this doc intentionally does not restate secret-adjacent config values.
 - The Brevo HTTPS API fallback path (`sendEmailViaBrevoApi`, `BREVO_API_KEY`, `BREVO_API_URL`, `EMAIL_DELIVERY_FALLBACK_TO_BREVO_API`) was **removed** in #279 -- it exercised zero production traffic and, being unauthenticated for our sending domain, would have failed DMARC the same way. `EMAIL_DELIVERY_PROVIDER` no longer has meaning; `getEmailProviderMode()` now returns only `smtp` or `unconfigured`. A send failure now throws with no fallback attempt.
 - Every outbound send (not just OTPs) is now recorded in `email_delivery_logs`, and failures raise an operational alert -- see the #279 compliance impact declaration and ADR 0054 for the delivery-observability design.
-- OTP emails sent through `sendEmailOtpCode()` still use the sender display name `DGFY`; generic lifecycle emails keep `EMAIL_FROM_NAME` (default `SKUpervisor`).
+- OTP emails sent through `sendEmailOtpCode()` still use the sender display name `DGFY`; generic lifecycle emails keep `EMAIL_FROM_NAME` (default `DGFY`).
 - Before enabling enforced OTP flows in any new environment, run `npm run verify:email` and then `npm run verify:email -- --send-to operator@example.com` from that environment.
 
 <details>
@@ -334,20 +340,29 @@ Production email delivery is closed for the SMTP path. DGFY in-account invitatio
 
 Located at `/admin/tenants`.
 
-Platform-admin assisted provisioning exposes only `Company only` and `DGFY + Company` on this route; the redundant legacy `+ Add Tenant` control is removed. `Company only` remains operationally provisioned but cannot use DGFY login, company switching, owner actions, or POS access until owner assignment creates an accepted membership.
+The current-state action inventory, delivered Wave 1–3 behavior, and remaining external Access
+verification are recorded in the [Platform Admin Tenant Console inventory](PLATFORM_ADMIN_TENANT_CONSOLE.md).
+
+The directory exposes an Add tenant link to `/admin/tenants/new`; assisted provisioning no longer appears inline on this route. The new page exposes `Company only` and `DGFY + Company`; combined provisioning requires both `admin.tenants` and `admin.dgfy_accounts`. `Company only` remains operationally provisioned but cannot use DGFY login, company switching, owner actions, or POS access until owner assignment creates an accepted membership.
 
 Assisted provisioning retries are identity-bound and fail-closed. A matching pending platform-admin tenant may resume database provisioning without creating a second tenant or database. For combined provisioning, an active tenant with the exact linked admin-provisioned account may resume only when accepted membership assignment is incomplete; this reconciliation skips database provisioning and repairs the tenant-local master-admin/membership link. Other duplicates remain conflicts. Partial failures return the failed phase, retained record identifiers, and `retryable=true` instead of a generic success response.
 
 **Features:**
-- **List View**: Filter by status (Pending, Active, etc.).
-- **Search/Filter**: Search is a first-class admin tool for large tenant lists. It matches company name, admin email, company token, status, plan, Customer Access Mode, and capability state, and shows the current result count beside the search box.
-- **Quick Actions**: Approve, Reject, Edit, Delete.
-- **Capability Controls**: IMS/POS controls are grouped as core workspace access, while Storefront/Maps visibility and Customer Access Mode are grouped as public Storefront controls. Changes open a confirmation modal and require a reason persisted to the platform-admin audit trail. Storefront/Maps shows readiness when the tenant is visible but lacks an active primary mapped location.
+- **List View**: The directory filters by tenant status, including Inactive and Archived. Archived tenants are hidden in the default view and shown with the Archived status filter.
+- **Search/Filter**: Search matches company name, admin email, domain, and tenant ID only; it never searches `company_token`. Single-select status, effective-plan, compliance-mode, ownership, and IMS/POS/Storefront capability filters combine with search and each other. Capability states are On, Off, Unavailable, and N/A (not active); unavailable and N/A never count as Off. Archived tenants are hidden by default, selected with `status=archived`, and included with `status=all`. The `N of M` count uses N for rows after search, filters, and default archived exclusion, and M for the full loaded tenant set across all statuses. Active filters appear as removable chips; Clear all restores the default view. URL state uses `q`, `status`, `plan`, `compliance`, `ownership`, `ims`, `pos`, and `storefront`; an omitted status means all statuses except archived, and empty/default parameters are omitted. See the [agreed search and filter field set](PLATFORM_ADMIN_TENANT_CONSOLE.md#search-and-filter-contract) for the field contract.
+- **Quick Actions**: Tenant cards link to the detail sections. Lifecycle owns approval, rejection, setup retry, reactivation, status edit, and typed-name deletion; confirmations and reason requirements remain action-specific.
+- **Registration review**: The Registration detail section shows labeled submission/legal evidence, keeps missing acceptance flags as “Not recorded,” and provides private file previews and downloads, menu archives, and upload revocation with an optional reason. Submitted registration drafts keep their separate directory queue because no tenant row exists until materialization.
+- **Capability Controls**: The Access & storefront detail section owns IMS/POS access, Storefront/Maps visibility, customer access, registration readiness, platform allowances, impact previews, and audited changes. Unavailable capability reads render as unknown and disable writes; no default On/Off state is inferred. Storefront/Maps shows readiness when the tenant is visible but lacks an active primary mapped location. #1923's STAGING persistence/publication checks and PROD capability-read recovery remain external verification for release qualification.
 - **Tenant Impact Preview**: Capability confirmation modals show the tenant/customer-facing consequence before the platform admin submits the audit reason, using the same "Platform admin changed your permissions" copy that tenants see for disabled IMS/POS access or downgraded Storefront modes.
-- **Capability Audit Trail**: Active tenant cards expose recent platform-admin capability changes from `GET /admin/tenants/:id/capabilities/audit-logs`, including actor, reason, timestamp, and before/after capability state.
-- **Compliance Lifecycle Control**: Tenant cards expose exactly one backend-authoritative compliance action from `admin_compliance_mode_action`: set the mode for legacy/no-mode tenants, move `non_compliant_active` tenants to `compliant_pending`, or force `compliant_pending` / `compliant_active` tenants back to `non_compliant_active`. Each action opens a confirmation modal with the POS/fiscal effect and requires a reason for immutable audit evidence.
+- **Capability Audit Trail**: The Access & storefront section exposes recent platform-admin capability changes from `GET /admin/tenants/:id/capabilities/audit-logs`, including actor, reason, timestamp, and before/after capability state.
+- **Compliance Lifecycle Control**: The Compliance detail section exposes the server-authoritative mode action, artifact/peripheral verification, checklist, security incidents, and audit history. Mode decisions and evidence actions keep their existing reasons, eligibility, and audit behavior.
+- **Store Setup**: The Store setup detail section owns template application, POS software and receipt metadata review/audits, and custom domains. Only Platform Master fetches the published template catalog; global template curation remains separate.
 - **Compliance Safety Guard**: `Force non-compliant` remains available only when backend eligibility indicates allowed (`can_force_non_compliant=true`). For blocked states, UI uses server-provided helper text to render the disabled reason. Moving a tenant toward compliance never bypasses fiscal readiness: Platform Admin can move the tenant to `compliant_pending`, while `compliant_active` still requires the normal checklist activation flow.
-- **Stats**: Total tenants, active vs pending counts.
+- **Stats**: Total, Pending, Active, and Rejected tiles count the complete loaded tenant set independent of filters and search, including archived rows.
+- **Tenant Overview**: `/admin/tenants/:id` reads one tenant directly and shows its identity, contact/domain, status, effective plan, ownership, and compliance. Owner assignment requires both `admin.tenants` and `admin.dgfy_accounts` (or Platform Master), an active tenant/account, a reason, and explicit force confirmation before `force: true` is sent. Payment and invoice links validate authorized tenant/application data before selection; the master-only Revenue link targets the directory panel anchor. Directory and detail navigation preserve the full query context. Lifecycle, Registration, Compliance, Store setup, and Access & storefront are linked sections. The optional combined Activity section is deferred.
+- **Assisted provisioning**: The directory's Add tenant link opens `/admin/tenants/new`. The standalone form keeps the required reason, IndustryPicker-derived workflow/template values, and both existing payloads. Combined DGFY account plus company creation requires both `admin.tenants` and `admin.dgfy_accounts`; the server continues to enforce direct requests. Success stays on the page with an explicit tenant Overview link. Any returned temporary password stays in component memory, clears before another submission, and is removed when the page unmounts.
+- **Archived tenant presentation**: The default directory hides archived rows and the Archived filter exposes them. Direct archived detail routes keep reads and audit history available and disable mutations across sections. This is a UI contract only: current API writes do not all reject archived tenants; see the archived API behavior inventory before treating the UI as an API-level safety guard.
+- **Observability and URL privacy**: Admin route labels use `/admin/tenants/:id` and keep `/admin/tenants/new` distinct. Shared telemetry clients remove query strings from Admin PostHog URL/referrer properties, including pageleave and nested person properties, and Sentry `request.url`; the Admin path remains useful for diagnosis. The resolved Admin surface gates the extra query scrubbing, while shared authentication/OIDC sanitizers also remove sensitive query and fragment data. Browser URLs/history are unchanged. This is the #2748 privacy implementation in Phase 560 and must be present in the tested SHA used for the final DEV soak.
 
 ### Tenant Schema Sync Caveat
 

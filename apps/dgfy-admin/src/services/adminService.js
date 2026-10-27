@@ -7,6 +7,12 @@ const API_BASE_URL = resolveApiBaseUrl(import.meta.env, typeof window !== 'undef
 const COOKIE_SESSION_MARKER = 'cookie-session';
 let sessionKnown = false;
 
+const invalidateTenantDirectory = () => {
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new window.Event('admin:tenant-directory-invalidated'));
+    }
+};
+
 // Create a dedicated axios instance for admin requests
 const adminApi = axios.create({
     baseURL: API_BASE_URL,
@@ -39,10 +45,18 @@ adminApi.interceptors.request.use((config) => {
 
 // Add response interceptor to handle 401 errors
 adminApi.interceptors.response.use(
-    (response) => response,
+    (response) => {
+        const method = String(response?.config?.method || 'get').toLowerCase();
+        const path = String(response?.config?.url || '').split('?')[0];
+        if (!['get', 'head', 'options'].includes(method) && /(?:^|\/)admin\/tenants(?:\/|$)/.test(path)) {
+            invalidateTenantDirectory();
+        }
+        return response;
+    },
     (error) => {
         if (error.response && error.response.status === 401) {
             sessionKnown = false;
+            invalidateTenantDirectory();
 
             // Notify the UI to show login form
             if (authFailureCallback && !error?.config?.suppressAuthFailure) {
@@ -69,7 +83,10 @@ export const login = async (username, password) => {
         password
     });
 
-    if (response.data.success) sessionKnown = true;
+    if (response.data.success) {
+        sessionKnown = true;
+        invalidateTenantDirectory();
+    }
 
     return response.data;
 };
@@ -94,6 +111,7 @@ export const logout = () => {
         });
     }
     sessionKnown = false;
+    invalidateTenantDirectory();
 };
 
 /**
@@ -311,7 +329,7 @@ export const assignTenantOwner = async (tenantId, payload) => {
 /**
  * Get all tenants with optional status filter
  */
-export const getTenants = async (status = 'all') => {
+export const getTenants = async (status = 'all', { includeCapabilities = true } = {}) => {
     const token = getToken();
 
     if (!token) {
@@ -320,12 +338,29 @@ export const getTenants = async (status = 'all') => {
 
     const params = new URLSearchParams();
     if (status && status !== 'all') params.append('status', status);
+    if (includeCapabilities === false) params.append('include_capabilities', 'false');
 
     const response = await adminApi.get('/admin/tenants', {
         headers: {
             'Authorization': `Bearer ${token}`
         },
         params
+    });
+
+    return response.data;
+};
+
+export const getTenant = async (tenantId) => {
+    const token = getToken();
+
+    if (!token) {
+        throw new Error('Admin authentication required');
+    }
+
+    const response = await adminApi.get(`/admin/tenants/${encodeURIComponent(tenantId)}`, {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
     });
 
     return response.data;
@@ -964,32 +999,6 @@ export const updatePricing = async (settings) => {
     if (!token) throw new Error('Admin authentication required');
 
     const response = await adminApi.put('/admin/tenants/pricing', settings, {
-        headers: { 'Authorization': `Bearer ${token}` }
-    });
-    return response.data;
-};
-
-/**
- * Initiate admin-driven PayPal setup for a manual tenant
- */
-export const setupPayPalRecurring = async (tenantId) => {
-    const token = getToken();
-    if (!token) throw new Error('Admin authentication required');
-
-    const response = await adminApi.post(`/admin/tenants/${tenantId}/setup-paypal-recurring`, {}, {
-        headers: { 'Authorization': `Bearer ${token}` }
-    });
-    return response.data;
-};
-
-/**
- * Change a tenant's plan (admin override)
- */
-export const adminChangePlan = async (tenantId, plan) => {
-    const token = getToken();
-    if (!token) throw new Error('Admin authentication required');
-
-    const response = await adminApi.post(`/admin/tenants/${tenantId}/change-plan`, { plan }, {
         headers: { 'Authorization': `Bearer ${token}` }
     });
     return response.data;

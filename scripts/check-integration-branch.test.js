@@ -12,6 +12,7 @@ const {
   checkDevSoak,
   definitionOfDoneState,
   exitCodeForResult,
+  mergeHygieneArgs,
   parseArgs,
 } = require('./check-integration-branch');
 
@@ -56,6 +57,23 @@ function classify(base, head, overrides = {}, extra = {}) {
 function findingCodes(result) {
   return result.findings.map((finding) => finding.code);
 }
+
+test('merge hygiene forwards a registered branch justification when present', (t) => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'integration-branch-hygiene-'));
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  const directory = path.join(repoRoot, 'docs', 'release', 'merge-hygiene');
+  fs.mkdirSync(directory, { recursive: true });
+  fs.writeFileSync(path.join(directory, 'epic-2696.json'), '{}');
+
+  assert.deepEqual(
+    mergeHygieneArgs('epic/2696-admin-tenant-management-ux', 'head-sha', { repoRoot }),
+    ['run', 'check:merge-hygiene', '--', '--base', 'origin/develop', '--head', 'head-sha', '--justification', 'docs/release/merge-hygiene/epic-2696.json'],
+  );
+  assert.deepEqual(
+    mergeHygieneArgs(BRANCH, 'head-sha', { repoRoot }),
+    ['run', 'check:merge-hygiene', '--', '--base', 'origin/develop', '--head', 'head-sha'],
+  );
+});
 
 test('ordinary PRs remain ordinary and registered ordinary child PRs target reserved bases', () => {
   const ordinary = classify('develop', 'feat/2737-policy');
