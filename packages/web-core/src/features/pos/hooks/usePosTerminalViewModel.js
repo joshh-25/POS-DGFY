@@ -48,6 +48,7 @@ import { buildDiscountItemSelection, getDiscountLineRef, isStatutoryBeneficiaryI
 import { isParkedSaleOriginalLine } from '../utils/posParkedSaleResume.js';
 import { buildIncomingDineInCheckoutCartLines } from '../utils/incomingDineInCheckoutCart.js';
 import { resolveFnbCheckoutContext, usePosFnbCheckoutState } from './usePosFnbCheckoutState.js';
+import { shouldBlockNewCheckout } from '../utils/workflowReadiness.js';
 
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 
@@ -85,6 +86,9 @@ export function usePosTerminalViewModel({
     fnbContext = null,
     workflowMode = null,
     effectiveCapabilities = null,
+    workflowUnresolved = false,
+    workflowLoading = false,
+    onRetryWorkflow = () => {},
     readOnlyBranchView = false,
     dineInCashCheckout = null,
     dineInCashCheckoutSaving = false,
@@ -309,6 +313,12 @@ export function usePosTerminalViewModel({
         fnbContext,
         isFnbWorkflow: isFnbWorkflow || isDineInCashCheckoutRequested,
         allowedMethods: posWorkflow.allowedMethods
+    });
+    const isExistingDineInCheckout = Boolean(dineInCashCheckout);
+    const workflowCheckoutUnresolved = shouldBlockNewCheckout({
+        workflowUnresolved,
+        hasFnbCheckoutContext,
+        isExistingDineInCheckout
     });
 
     useEffect(() => {
@@ -801,6 +811,7 @@ export function usePosTerminalViewModel({
     } = usePosCheckoutWorkflow({
         sessionLocked,
         checkoutBlockedReason,
+        workflowUnresolved: workflowCheckoutUnresolved,
         activeShiftId,
         selectedLocationId,
         normalizedTerminalId,
@@ -926,8 +937,6 @@ export function usePosTerminalViewModel({
         active: false,
         previousCart: []
     });
-    const isExistingDineInCheckout = Boolean(dineInCashCheckout);
-
     useEffect(() => {
         const checkoutOrder = dineInCashCheckout?.order;
         const orderId = Number(checkoutOrder?.pos_transaction_id);
@@ -1547,6 +1556,9 @@ export function usePosTerminalViewModel({
         catalogViewportClassName,
         catalogViewportRef,
         checkoutBlockedReason,
+        workflowUnresolved: workflowCheckoutUnresolved,
+        workflowLoading,
+        onRetryWorkflow,
         checkoutConfirmModalOpen,
         checkoutError: isExistingDineInCheckout ? dineInCashCheckoutError : '',
         checkoutOpenedFromCurrentSale: isExistingDineInCheckout ? false : checkoutOpenedFromCurrentSale,

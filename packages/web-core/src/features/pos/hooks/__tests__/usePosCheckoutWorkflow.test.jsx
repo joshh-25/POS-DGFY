@@ -215,6 +215,26 @@ describe('usePosCheckoutWorkflow', () => {
         });
     });
 
+    it('blocks new checkout entry and direct sale submission while workflow settings are unresolved', async () => {
+        const { result, props } = renderCheckout({ workflowUnresolved: true });
+
+        await act(async () => {
+            await result.current.openCheckoutConfirmModal();
+            await result.current.openSplitPaymentModal();
+            await result.current.handleCheckout();
+            await result.current.handleCompletePreparedSplitPayment({ pos_payment_session_id: 41, remaining_amount: 0 });
+            await result.current.handleParkedSaleClaimed({}, 'pay');
+        });
+
+        expect(posToast.error).toHaveBeenCalledWith("Store settings haven't loaded. Reconnect to continue.");
+        expect(posToast.error).toHaveBeenCalledTimes(5);
+        expect(props.setCheckoutConfirmModalOpen).not.toHaveBeenCalledWith(true);
+        expect(props.setSplitPaymentDialogOpen).not.toHaveBeenCalledWith(true);
+        expect(createPosCheckout).not.toHaveBeenCalled();
+        expect(completePosPaymentSession).not.toHaveBeenCalled();
+        expect(props.setCart).not.toHaveBeenCalledWith([]);
+    });
+
     it.each([
         { name: '408 response', error: { response: { status: 408 } } },
         { name: '502 response', error: { response: { status: 502 } } },
@@ -889,6 +909,29 @@ describe('usePosCheckoutWorkflow', () => {
         expect(markTerminalOperationReplaying).toHaveBeenCalledWith('offline-checkout-17');
         expect(createPosCheckout).toHaveBeenCalledWith(queuedPayload);
         expect(markTerminalOperationReplayed).toHaveBeenCalledWith('offline-checkout-17');
+    });
+
+    it('keeps operator-controlled replay available while workflow settings are unresolved', async () => {
+        const queuedPayload = {
+            idempotency_key: 'offline-checkout-unresolved',
+            terminal_id: 'COUNTER-01',
+            payment_type: 'cash',
+            lines: [{ item_id: 7, quantity: 1, sale_price: 100 }]
+        };
+        getReplayCandidateEntries.mockResolvedValue([{
+            intent_id: 'offline-checkout-unresolved',
+            operation: 'checkout',
+            payload: queuedPayload,
+            attempt_count: 0
+        }]);
+        const { result } = renderCheckout({ workflowUnresolved: true });
+
+        await act(async () => {
+            await result.current.replayQueuedCheckouts();
+        });
+
+        expect(createPosCheckout).toHaveBeenCalledWith(queuedPayload);
+        expect(markTerminalOperationReplayed).toHaveBeenCalledWith('offline-checkout-unresolved');
     });
 
     it('cancels a split-payment session through the service and clears checkout state', async () => {
