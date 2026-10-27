@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PosCheckoutDetailsSlot } from '../components/PosCheckoutDetailsSlot.jsx';
 import { resolvePosWorkflow } from '../utils/posWorkflowResolver.js';
@@ -112,5 +112,60 @@ describe('PosCheckoutDetailsSlot', () => {
     expect(await screen.findByTestId('counter-workflow-panel')).toBeDefined();
     expect(screen.queryByTestId('fnb-workflow-panel')).toBeNull();
     expect(screen.queryByTestId('services-workflow-panel')).toBeNull();
+  });
+
+  it('replaces checkout details and order methods while workflow settings are unresolved', () => {
+    const posWorkflow = resolvePosWorkflow('retail');
+    const presentationBundle = resolvePosPresentationBundle(posWorkflow);
+    render(
+      <PosCheckoutDetailsSlot
+        presentationBundle={presentationBundle}
+        posWorkflow={posWorkflow}
+        orderMethod="walk_in"
+        setOrderMethod={vi.fn()}
+        workflowUnresolved
+      />
+    );
+
+    expect(screen.getByTestId('pos-workflow-unresolved-notice').textContent).toContain('Reconnect to load store settings');
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeDefined();
+    expect(screen.queryByTestId('counter-workflow-panel')).toBeNull();
+    expect(screen.queryByTestId('fnb-workflow-panel')).toBeNull();
+    expect(screen.queryByTestId('services-workflow-panel')).toBeNull();
+    expect(screen.queryByTestId('pos-checkout-order-method-buttons')).toBeNull();
+  });
+
+  it('shows loading state without retry while settings are loading', () => {
+    render(
+      <PosCheckoutDetailsSlot
+        presentationBundle={resolvePosPresentationBundle(resolvePosWorkflow('retail'))}
+        posWorkflow={resolvePosWorkflow('retail')}
+        orderMethod="walk_in"
+        setOrderMethod={vi.fn()}
+        workflowUnresolved
+        workflowLoading
+      />
+    );
+
+    expect(screen.getByRole('status').textContent).toContain('Loading store settings…');
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it('retries workflow settings on request', () => {
+    const onRetryWorkflow = vi.fn();
+    render(
+      <PosCheckoutDetailsSlot
+        presentationBundle={resolvePosPresentationBundle(resolvePosWorkflow('retail'))}
+        posWorkflow={resolvePosWorkflow('retail')}
+        orderMethod="walk_in"
+        setOrderMethod={vi.fn()}
+        workflowUnresolved
+        onRetryWorkflow={onRetryWorkflow}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(onRetryWorkflow).toHaveBeenCalledTimes(1);
   });
 });

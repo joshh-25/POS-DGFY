@@ -118,6 +118,7 @@ export function WorkflowModeProvider({ children }) {
   const [profile, setProfile] = useState(DEFAULT_PROFILE);
   const [loading, setLoading] = useState(true);
   const [resolved, setResolved] = useState(false);
+  const [workflowSource, setWorkflowSource] = useState('unresolved');
   const [error, setError] = useState(null);
   const [modeChangeNotice, setModeChangeNotice] = useState(null);
   // Bumped on every failed fetch so the retry effect re-arms even if the same error object recurs.
@@ -155,6 +156,7 @@ export function WorkflowModeProvider({ children }) {
       setDisabledCapabilities([]);
       setProfile(DEFAULT_PROFILE);
       setResolved(true);
+      setWorkflowSource('unresolved');
       setError(null);
       setLoading(false);
       // Phase 298 (#265): no settings fetch happened on this path -- fail-safe default (every
@@ -171,6 +173,7 @@ export function WorkflowModeProvider({ children }) {
       setDisabledCapabilities([]);
       setProfile(DEFAULT_PROFILE);
       setResolved(true);
+      setWorkflowSource('unresolved');
       setError(null);
       setLoading(false);
       setImageClientConversionFromSettings(null);
@@ -191,6 +194,7 @@ export function WorkflowModeProvider({ children }) {
       const settings = await getAllSettings({ force });
       const nextMode = applyWorkflowSettings(settings);
       setResolved(true);
+      setWorkflowSource('server');
       setError(null);
       // Issue #2824: only a successful server response is ever persisted -- never a fallback.
       persistWorkflowSettings(settings);
@@ -216,6 +220,7 @@ export function WorkflowModeProvider({ children }) {
       if (cachedSettings) {
         const cachedMode = applyWorkflowSettings(cachedSettings);
         setResolved(true);
+        setWorkflowSource('cache');
         setError(refreshError);
         return cachedMode;
       }
@@ -225,6 +230,7 @@ export function WorkflowModeProvider({ children }) {
       setDisabledCapabilities([]);
       setProfile(DEFAULT_PROFILE);
       setResolved(false);
+      setWorkflowSource('unresolved');
       setError(refreshError);
       return DEFAULT_WORKFLOW_MODE;
     } finally {
@@ -269,6 +275,7 @@ export function WorkflowModeProvider({ children }) {
       setDisabledCapabilities([]);
       setProfile(DEFAULT_PROFILE);
       setResolved(false);
+      setWorkflowSource('unresolved');
       setError(null);
       setModeChangeNotice(null);
       setLoading(false);
@@ -282,6 +289,7 @@ export function WorkflowModeProvider({ children }) {
       const previousMode = workflowModeRef.current;
       setWorkflowMode(nextMode);
       setResolved(true);
+      setWorkflowSource('server');
       setError(null);
       if (nextMode !== previousMode) {
         setModeChangeNotice({
@@ -344,11 +352,12 @@ export function WorkflowModeProvider({ children }) {
     hasCapability,
     loading,
     resolved,
+    workflowSource,
     error,
     modeChangeNotice,
     refreshWorkflowMode,
     dismissModeChangeNotice
-  }), [dismissModeChangeNotice, disabledCapabilities, enabledCapabilities, error, hasCapability, loading, modeChangeNotice, profile, refreshWorkflowMode, resolved, workflowMode]);
+  }), [dismissModeChangeNotice, disabledCapabilities, enabledCapabilities, error, hasCapability, loading, modeChangeNotice, profile, refreshWorkflowMode, resolved, workflowMode, workflowSource]);
 
   return (
     <WorkflowModeContext.Provider value={value}>
