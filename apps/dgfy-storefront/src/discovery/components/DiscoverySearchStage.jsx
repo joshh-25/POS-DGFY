@@ -6,21 +6,22 @@ import { DiscoveryCategoryStage } from './DiscoveryCategoryStage.jsx';
 
 export function DiscoverySearchStage({
   desktopCategoryRailRef,
+  activeDiscoveryCategoryFilter,
+  clearDiscoverySearch,
   discoveryLayout,
   discoveryViewportMode,
   handleDiscoverySearch,
   handleNearMe,
   handlePopularDiscoveryCategory,
+  hasActiveDiscoveryFilters,
   hasDesktopCategoryOverflow,
   isCategoryRowExpanded,
   isDiscoveryMobileViewport,
   isDiscoverySearchFocused,
-  loadStores,
   mobileCategoryGroupIndex,
   mobileCategoryRailRef,
   search,
   searchRef,
-  setDebouncedDiscoverySearch,
   setHasDiscoveryExplorationStarted,
   setIsCategoryRowExpanded,
   setIsDiscoverySearchFocused,
@@ -94,10 +95,12 @@ export function DiscoverySearchStage({
                           minWidth: 0
                         }}
                       />
-                      {search && (
+                      {(String(search || '').trim() || hasActiveDiscoveryFilters) && (
                         <button
                           type="button"
-                          onClick={() => { setSearch(''); setDebouncedDiscoverySearch(''); loadStores(undefined, { useImmediateSearch: true }); }}
+                          aria-label="Clear discovery search"
+                          title="Clear discovery search"
+                          onClick={clearDiscoverySearch}
                           style={{ border: 'none', background: 'none', color: '#94a3b8', cursor: 'pointer', padding: '6px', display: 'inline-flex', marginRight: 4 }}
                         >
                           <X size={15} />
@@ -140,6 +143,7 @@ export function DiscoverySearchStage({
                       </div>
                       <DiscoveryCategoryStage
                         desktopCategoryRailRef={desktopCategoryRailRef}
+                        activeDiscoveryCategoryFilter={activeDiscoveryCategoryFilter}
                         discoveryViewportMode={discoveryViewportMode}
                         handlePopularDiscoveryCategory={handlePopularDiscoveryCategory}
                         hasDesktopCategoryOverflow={hasDesktopCategoryOverflow}

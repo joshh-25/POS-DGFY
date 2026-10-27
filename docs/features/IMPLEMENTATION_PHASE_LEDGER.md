@@ -32995,9 +32995,10 @@ of this phase.
 
 ### Status
 
-`in_progress` — implementation and local feature validation are complete on the `develop`-based
-worker branch; PR review and merge remain outstanding. App versions stay unchanged on this
-`develop` PR per Pat's explicit direction in #2048; the conflicting ADR wording is recorded below.
+`completed` — the scoped implementation merged to `develop` in PR [#2843](https://github.com/Sieitzz/dgfy-platform/pull/2843)
+on 2026-10-26 at merge commit `16a2a85a359835bcb7ef0715d5e6dbb9dbbd886d`. The original local
+validation evidence below is retained unchanged. App versions stayed unchanged on this develop PR
+per Pat's explicit direction in #2048; the conflicting ADR wording is recorded below.
 
 ### Dependencies
 
@@ -33058,8 +33059,8 @@ provider configuration, and deployed-environment verification are outside this p
 
 ### Completion date
 
-Not complete. Record only after the scoped implementation is merged and implementation validation
-passes.
+2026-10-26 — PR #2843 merged to `develop`, merge commit
+`16a2a85a359835bcb7ef0715d5e6dbb9dbbd886d`.
 
 ### Post-merge verification
 
@@ -33522,3 +33523,96 @@ Not complete. Record only after this PR is merged and its scoped validation is c
 ### Next phase number
 
 Phase 563. No explicit dependency.
+
+## Phase 563 - Fully clear Storefront discovery searches (#2833 follow-up)
+
+### Initiative and release
+
+Storefront external discovery defaults, issue #2833 follow-up. Planner handoff:
+[`plan-2833.md`](../../.tmp/plan-2833.md). Ordinary Worker PR targeting `develop`.
+
+### Objective and scope
+
+Make every discovery cancellation control restore the default native-only dataset and clear stale
+search, category, filter, sort, pagination, selection, highlight, and cluster state. Preserve the
+current location and map camera as results discovery returns to the hero map. Keep the original
+partner eligibility and Proventous work from Phase 559 unchanged. No API, schema, migration,
+dependency, shared-package, or provider-eligibility changes are in scope.
+
+### Status
+
+`in_progress` — implementation and local validation are complete on
+`fix/2833-clear-discovery-search`; review and merge remain outstanding. No merge or deployment has
+occurred.
+
+### Dependencies
+
+None. Phase 559's merged eligibility contract is the existing behavior this follow-up preserves;
+its outstanding deployed verification is not a technical dependency.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0010](../architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md),
+[ADR 0071](../architecture/adr/0071-independently-deployable-frontend-apps.md),
+[External Discovery Redirect Foundation](EXTERNAL_DISCOVERY_REDIRECT_FOUNDATION.md),
+[Testing Guide](../testing/README.md), [Web Performance QA](../../.agents/skills/web-performance-qa/SKILL.md),
+and live issue [#2833](https://github.com/Sieitzz/dgfy-platform/issues/2833). Classification:
+`within-existing-boundary`; no ADR change or architecture exception is introduced.
+
+### Implementation targets
+
+Storefront discovery hooks and state, `StoresMap` camera lifecycle props, discovery search/category
+stages and results renderer; focused integration and map lifecycle tests; the external-discovery
+feature contract and this ledger entry. No backend/Admin or public API changes.
+
+### Acceptance and validation evidence
+
+- [x] Search X, active category chip, already-active dropdown category, **All**, and **Reset filters**
+  clear all query/filter/sort/page/selection/cluster state and issue one unsearched request with
+  `pin_scope=tenant_primary`.
+- [x] Text-only editing leaves the active category selected; X remains available for any active
+  filter. Pressed category chips and Beauty/Salon aliases expose the correct visible and accessible
+  state. Selecting another category still works and records its existing analytics event.
+- [x] Location coordinates survive category search and cancellation. Camera center, zoom, bearing,
+  and pitch survive the results-to-hero transition and data refresh; initial load, later search,
+  Near Me, and user map interaction keep their intended viewport behavior.
+- [x] Abort/sequence protection prevents stale responses from replacing the reset result; cancellation
+  returns map/cards/clusters to native-only content under the existing Phase 559 eligibility rules.
+- [x] Focused Storefront tests, `npm run build:store`, changed-file ESLint, architecture/docs/compliance,
+  version policy, whitespace checks, and local desktop/mobile rendered QA pass. No deployed
+  verification is claimed by this Worker phase.
+
+Validation evidence (2026-10-27): six focused Storefront suites passed (90 tests); the production
+Storefront build passed; changed-file ESLint exited 0 with 0 errors (existing warnings remain);
+architecture boundaries, governed-doc/ADR lint, compliance, and the correctly scoped develop-branch
+version check passed. Local Playwright rendered checks at desktop 1440×1000 and mobile 390×844 used
+synthetic discovery responses and a blank local map style; both cancellation flows returned an
+unsearched `tenant_primary` request and native-only content, with no browser console errors. Map
+camera/location retention and delayed-response/debounce behavior are covered by focused integration
+and lifecycle tests. Synthetic screenshots were kept under `/tmp`, outside the repository.
+
+### Risks and decisions
+
+The results and hero maps are separate mounts, so camera persistence uses a discovery-scoped ref and
+optional `StoresMap` props rather than global map state. Existing request abort and sequence guards
+must remain authoritative when cancellation races a pending response. The initial plan proposed
+Phase 560, but the live ledger had already claimed Phases 560–562; Phase 563 is the next available
+number. Worker board policy owns the `In progress` and `For Review` transitions even though the plan
+artifact requested no board changes.
+
+### Completion date
+
+Not complete. Record after the scoped PR is merged and implementation validation passes.
+
+### Post-merge verification
+
+- [ ] **deployment** — verify the merged Storefront SHA is deployed through the authorized release
+  process; owner: DGFY release operator; blocks deployed verification of #2833.
+- [ ] **operational** — verify each cancellation path, native-only content, and location/camera
+  retention on the deployed Storefront; owner: issue #2833 verifier; blocks closing #2833.
+
+### Next phase number
+
+Phase 564. No explicit dependency.

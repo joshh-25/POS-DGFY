@@ -58,6 +58,28 @@ const STORE_MARKER_AUTO_OPEN_FIT_PADDING = { top: 96, right: 96, bottom: 120, le
 // badge's distance above the anchor so the visible pin lands in the middle of the view.
 const STORE_MARKER_SINGLE_PIN_CENTER_OFFSET = [0, 30];
 
+const normalizeCameraSnapshot = (snapshot) => {
+  const center = snapshot?.center || snapshot;
+  const longitude = Number(center?.longitude ?? center?.lng);
+  const latitude = Number(center?.latitude ?? center?.lat);
+  const zoom = Number(snapshot?.zoom);
+  const bearing = Number(snapshot?.bearing ?? 0);
+  const pitch = Number(snapshot?.pitch ?? 0);
+  if (![longitude, latitude, zoom, bearing, pitch].every(Number.isFinite)) return null;
+  return { longitude, latitude, zoom, bearing, pitch };
+};
+
+const readCameraSnapshot = (map) => {
+  if (!map || typeof map.getCenter !== 'function') return null;
+  const center = map.getCenter();
+  return normalizeCameraSnapshot({
+    center,
+    zoom: map.getZoom?.(),
+    bearing: map.getBearing?.(),
+    pitch: map.getPitch?.()
+  });
+};
+
 export function StoresMap({
   stores,
   selectedKey,
@@ -73,6 +95,9 @@ export function StoresMap({
   viewportPolicy = 'auto',
   viewportSignal = '',
   focusSelectedKey = false,
+  cameraSnapshotRef = null,
+  preserveCameraOnMount = false,
+  onCameraInteraction = null,
   // #475 RF-1: fires with map.getCanvasContainer() once the map exists, so a caller
   // (e.g. DiscoveryHeroMapStage) can portal its own overlay chips/buttons into it.
   // See the route-chip comment below for why this DOM node specifically matters --
@@ -92,6 +117,8 @@ export function StoresMap({
   const popupGenerationRef = useRef(0);
   const markerSignatureRef = useRef('');
   const viewportHasFitRef = useRef(false);
+  const restoredCameraOnMountRef = useRef(false);
+  const viewportEffectHasRunRef = useRef(false);
   const lastSelectedMarkerKeyRef = useRef('');
   const lastViewportLocationSignatureRef = useRef('');
   const lastViewportSignalRef = useRef('');
@@ -106,6 +133,9 @@ export function StoresMap({
   // reaches the map's own zoom handler.
   const [canvasContainerEl, setCanvasContainerEl] = useState(null);
   const onCanvasContainerReadyRef = useRef(onCanvasContainerReady);
+  const onCameraInteractionRef = useRef(onCameraInteraction);
+  const cameraSnapshotRefRef = useRef(cameraSnapshotRef);
+  const preserveCameraOnMountRef = useRef(preserveCameraOnMount);
 
   // Some callers (e.g. the storefront's Contact & Location card) mount this
   // component as part of the hero's initial page load, where cover/profile images
@@ -184,17 +214,38 @@ export function StoresMap({
   }, [onCanvasContainerReady]);
 
   useEffect(() => {
+    onCameraInteractionRef.current = onCameraInteraction;
+  }, [onCameraInteraction]);
+
+  useEffect(() => {
     if (!ref.current || mapRef.current) return;
     let map;
+    const restoredCamera = preserveCameraOnMountRef.current
+      ? normalizeCameraSnapshot(cameraSnapshotRefRef.current?.current)
+      : null;
+    restoredCameraOnMountRef.current = Boolean(restoredCamera);
+    viewportHasFitRef.current = Boolean(restoredCamera);
+    const captureCamera = () => {
+      const snapshot = readCameraSnapshot(map);
+      if (snapshot && cameraSnapshotRefRef.current) cameraSnapshotRefRef.current.current = snapshot;
+    };
+    const markIntentionalCameraInteraction = (event) => {
+      if (!event?.originalEvent) return;
+      restoredCameraOnMountRef.current = false;
+      onCameraInteractionRef.current?.();
+    };
+    const cameraInteractionEvents = ['dragstart', 'zoomstart', 'rotatestart', 'pitchstart'];
     try {
       map = new maplibregl.Map({
         container: ref.current,
         style: TILING_SERVER,
         transformRequest: tileTransformRequest,
-        center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
-        zoom: 11,
-        bearing: 0,
-        pitch: 0,
+        center: restoredCamera
+          ? [restoredCamera.longitude, restoredCamera.latitude]
+          : [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
+        zoom: restoredCamera?.zoom ?? 11,
+        bearing: restoredCamera?.bearing ?? 0,
+        pitch: restoredCamera?.pitch ?? 0,
         // The default compact attribution control renders as a small "i" toggle
         // that expands into a text box covering most of the map at these small
         // embed sizes (110-156px tall). Disable it outright rather than just
@@ -207,6 +258,8 @@ export function StoresMap({
       return undefined;
     }
     mapRef.current = map;
+    map.on('moveend', captureCamera);
+    cameraInteractionEvents.forEach((eventName) => map.on(eventName, markIntentionalCameraInteraction));
     const canvasContainer = map.getCanvasContainer?.() || null;
     setCanvasContainerEl(canvasContainer);
     onCanvasContainerReadyRef.current?.(canvasContainer);
@@ -237,7 +290,16 @@ export function StoresMap({
         try { map.off('load', markReady); } catch {
           // MapLibre cleanup is best-effort across mocked and real maps.
         }
+        try { map.off('moveend', captureCamera); } catch {
+          // MapLibre cleanup is best-effort across mocked and real maps.
+        }
+        cameraInteractionEvents.forEach((eventName) => {
+          try { map.off(eventName, markIntentionalCameraInteraction); } catch {
+            // MapLibre cleanup is best-effort across mocked and real maps.
+          }
+        });
       }
+      captureCamera();
       map.remove();
       mapRef.current = null;
       setMapStyleReady(false);
@@ -310,6 +372,11 @@ export function StoresMap({
       : '';
     const userLocationChanged = lastViewportLocationSignatureRef.current !== userLocationSignature;
     lastViewportLocationSignatureRef.current = userLocationSignature;
+    const intentionalViewportChange = viewportEffectHasRunRef.current
+      && (viewportSignalChanged || userLocationChanged);
+    if (intentionalViewportChange) restoredCameraOnMountRef.current = false;
+    if (!preserveCameraOnMount) restoredCameraOnMountRef.current = false;
+    viewportEffectHasRunRef.current = true;
 
     const retainedPopupKeys = new Set();
     const retainedPopups = [];
@@ -669,18 +736,21 @@ export function StoresMap({
         }
       );
 
+    const shouldSuppressViewportAutoFit = restoredCameraOnMountRef.current;
     const shouldFocusSelected = Boolean(
+      !shouldSuppressViewportAutoFit
+      &&
       focusSelectedKey
       && selectedStore
       && hasPlottableCoordinate(selectedStore.latitude, selectedStore.longitude, { allowProvisionedPlaceholder: focusSelectedKey })
       && (selectedMarkerChanged || !viewportHasFitRef.current || viewportSignalChanged)
     );
-    const shouldFitViewport = focusSelectedKey
+    const shouldFitViewport = !shouldSuppressViewportAutoFit && (focusSelectedKey
       ? (!viewportHasFitRef.current || selectedMarkerChanged || viewportSignalChanged || userLocationChanged)
       : (viewportPolicy !== 'search-stable'
         || !viewportHasFitRef.current
         || viewportSignalChanged
-        || userLocationChanged);
+        || userLocationChanged));
     if (shouldFocusSelected) {
       map.flyTo({
         center: [Number(selectedStore.longitude), Number(selectedStore.latitude)],
@@ -730,7 +800,7 @@ export function StoresMap({
         layerEventCleanupRef.current = null;
       }
     };
-  }, [stores, selectedKey, selectedMarkerKey, selectedStore, highlightedKeys, userLocation, autoOpenPopups, openPopupOnHover, viewportPolicy, viewportSignal, focusSelectedKey, mapStyleReady, containerResizeTick]);
+  }, [stores, selectedKey, selectedMarkerKey, selectedStore, highlightedKeys, userLocation, autoOpenPopups, openPopupOnHover, viewportPolicy, viewportSignal, focusSelectedKey, mapStyleReady, containerResizeTick, preserveCameraOnMount]);
 
   useEffect(() => {
     const map = mapRef.current;
