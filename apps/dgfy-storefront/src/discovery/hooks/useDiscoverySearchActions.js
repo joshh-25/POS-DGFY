@@ -14,13 +14,18 @@ export function useDiscoverySearchActions({
   setDiscoveryPinScope,
   setHasDiscoveryExplorationStarted,
   setIsMobileResultsCollapsed,
+  setPreserveDiscoveryCamera,
   setIsStoreListVisible,
   setSearch,
   setSelectedMapPin
 }) {
   const lastSubmittedSearchRef = useRef(null);
+  const resetLastSubmittedSearch = useCallback(() => {
+    lastSubmittedSearchRef.current = null;
+  }, []);
 
   const handleNearMe = useCallback(() => {
+    setPreserveDiscoveryCamera(false);
     const currentSearch = String(searchRef.current || search || '').trim();
     setHasDiscoveryExplorationStarted(true);
     setIsMobileResultsCollapsed(false);
@@ -57,7 +62,8 @@ export function useDiscoverySearchActions({
     setDebouncedDiscoverySearch,
     setDiscoveryPinScope,
     setHasDiscoveryExplorationStarted,
-    setIsMobileResultsCollapsed
+    setIsMobileResultsCollapsed,
+    setPreserveDiscoveryCamera
   ]);
 
   // `source` distinguishes an explicit search-box submit from
@@ -66,6 +72,7 @@ export function useDiscoverySearchActions({
   // single click doesn't double-count as both a category select and a
   // search submit.
   const handleDiscoverySearch = useCallback((source = 'search_box') => {
+    setPreserveDiscoveryCamera(false);
     const currentSearch = String(searchRef.current || search || '').trim();
     const nextPinScope = currentSearch ? 'all_matching_branches' : 'tenant_primary';
     setHasDiscoveryExplorationStarted(true);
@@ -81,7 +88,10 @@ export function useDiscoverySearchActions({
     if (source === 'search_box') {
       trackFunnelEvent(ANALYTICS_EVENTS.DISCOVERY_SEARCH_SUBMITTED, { query: currentSearch });
     }
-    loadStores(null, { useImmediateSearch: true, pinScope: nextPinScope });
+    // Manual text searches retain their established unlocated-query behavior,
+    // while category selection keeps an existing Near Me location so reset
+    // can return to the same nearby discovery context.
+    loadStores(source === 'category' ? undefined : null, { useImmediateSearch: true, pinScope: nextPinScope });
   }, [
     loadStores,
     search,
@@ -91,7 +101,8 @@ export function useDiscoverySearchActions({
     setHasDiscoveryExplorationStarted,
     setIsMobileResultsCollapsed,
     setIsStoreListVisible,
-    setSelectedMapPin
+    setSelectedMapPin,
+    setPreserveDiscoveryCamera
   ]);
 
   const handlePopularDiscoveryCategory = useCallback((query) => {
@@ -122,6 +133,7 @@ export function useDiscoverySearchActions({
   return {
     handleDiscoverySearch,
     handleNearMe,
-    handlePopularDiscoveryCategory
+    handlePopularDiscoveryCategory,
+    resetLastSubmittedSearch
   };
 }

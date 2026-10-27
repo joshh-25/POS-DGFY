@@ -66,6 +66,13 @@ vi.mock('maplibre-gl', () => {
     const layers = new Map();
     const images = new Set();
     const layerHandlers = {};
+    const mapHandlers = {};
+    let camera = {
+      center: options.center || [122.57, 10.72],
+      zoom: options.zoom ?? 11,
+      bearing: options.bearing ?? 0,
+      pitch: options.pitch ?? 0
+    };
     const sourceApi = (source = {}) => {
       const sourceInstance = { ...source };
       sourceInstance.setData = vi.fn((data) => {
@@ -75,12 +82,16 @@ vi.mock('maplibre-gl', () => {
     };
     const api = {
       container: options.container,
+      options,
       removed: false,
       on: vi.fn((eventName, layerOrHandler, maybeHandler) => {
         if (typeof layerOrHandler === 'string' && typeof maybeHandler === 'function') {
           const key = `${eventName}:${layerOrHandler}`;
           layerHandlers[key] = layerHandlers[key] || [];
           layerHandlers[key].push(maybeHandler);
+        } else if (typeof layerOrHandler === 'function') {
+          mapHandlers[eventName] = mapHandlers[eventName] || [];
+          mapHandlers[eventName].push(layerOrHandler);
         }
         return api;
       }),
@@ -92,6 +103,8 @@ vi.mock('maplibre-gl', () => {
         if (typeof layerOrHandler === 'string' && typeof maybeHandler === 'function') {
           const key = `${eventName}:${layerOrHandler}`;
           layerHandlers[key] = (layerHandlers[key] || []).filter((entry) => entry !== maybeHandler);
+        } else if (typeof layerOrHandler === 'function') {
+          mapHandlers[eventName] = (mapHandlers[eventName] || []).filter((entry) => entry !== layerOrHandler);
         }
         return api;
       }),
@@ -105,7 +118,10 @@ vi.mock('maplibre-gl', () => {
       resize: vi.fn(),
       flyTo: vi.fn(),
       fitBounds: vi.fn(),
-      getZoom: vi.fn(() => 13),
+      getCenter: vi.fn(() => ({ lng: camera.center[0], lat: camera.center[1] })),
+      getZoom: vi.fn(() => camera.zoom),
+      getBearing: vi.fn(() => camera.bearing),
+      getPitch: vi.fn(() => camera.pitch),
       addSource: vi.fn((id, source) => {
         sources.set(id, sourceApi(source));
         return api;
@@ -134,6 +150,8 @@ vi.mock('maplibre-gl', () => {
           .forEach((popup) => popup.remove());
       }),
       __sources: sources,
+      __setCamera: (nextCamera) => { camera = { ...camera, ...nextCamera }; },
+      __emit: (eventName, event = {}) => (mapHandlers[eventName] || []).forEach((handler) => handler(event)),
       __emitLayer: (eventName, layerId, feature) => {
         const key = `${eventName}:${layerId}`;
         (layerHandlers[key] || []).forEach((handler) => handler({
@@ -296,6 +314,108 @@ describe('StoresMap popup and image lifecycle', () => {
 
     expect(mapState.ensureMapImageOverride).toHaveBeenCalled();
     expect(pinSource.setData).not.toHaveBeenCalled();
+  });
+
+  it('captures and restores the discovery camera without auto-fitting restored data', async () => {
+    const cameraSnapshotRef = {
+      current: { longitude: 122.51, latitude: 10.71, zoom: 9.5, bearing: 22, pitch: 37 }
+    };
+    const stores = [{
+      entity_type: 'dgfy_native',
+      slug: 'native-food',
+      tenant_name: 'Native Food',
+      latitude: 10.72,
+      longitude: 122.56
+    }];
+
+    const firstView = render(
+      <StoresMap
+        stores={stores}
+        cameraSnapshotRef={cameraSnapshotRef}
+        preserveCameraOnMount
+      />
+    );
+    const firstMap = await waitForMap();
+    await waitForInitialPinData(firstMap);
+    expect(firstMap.options.center).toEqual([122.51, 10.71]);
+    expect(firstMap.options.zoom).toBe(9.5);
+    expect(firstMap.options.bearing).toBe(22);
+    expect(firstMap.options.pitch).toBe(37);
+    expect(firstMap.flyTo).not.toHaveBeenCalled();
+    expect(firstMap.fitBounds).not.toHaveBeenCalled();
+
+    firstMap.__setCamera({
+      center: [122.53, 10.73],
+      zoom: 10.25,
+      bearing: 31,
+      pitch: 42
+    });
+    act(() => firstMap.__emit('moveend'));
+    expect(cameraSnapshotRef.current).toEqual({
+      longitude: 122.53,
+      latitude: 10.73,
+      zoom: 10.25,
+      bearing: 31,
+      pitch: 42
+    });
+
+    firstView.unmount();
+    const secondView = render(
+      <StoresMap
+        stores={stores}
+        cameraSnapshotRef={cameraSnapshotRef}
+        preserveCameraOnMount
+      />
+    );
+    await waitFor(() => expect(mapState.maps).toHaveLength(2));
+    const secondMap = getLatestMap();
+    await waitForInitialPinData(secondMap);
+    expect(secondMap.options.center).toEqual([122.53, 10.73]);
+    expect(secondMap.options.zoom).toBe(10.25);
+    expect(secondMap.options.bearing).toBe(31);
+    expect(secondMap.options.pitch).toBe(42);
+    expect(secondMap.flyTo).not.toHaveBeenCalled();
+    expect(secondMap.fitBounds).not.toHaveBeenCalled();
+
+    secondView.unmount();
+  });
+
+  it('releases restored-camera suppression after an intentional map gesture', async () => {
+    const onCameraInteraction = vi.fn();
+    const stores = [{
+      entity_type: 'dgfy_native',
+      slug: 'native-food',
+      tenant_name: 'Native Food',
+      latitude: 10.72,
+      longitude: 122.56
+    }];
+    const cameraSnapshotRef = {
+      current: { longitude: 122.51, latitude: 10.71, zoom: 9, bearing: 0, pitch: 0 }
+    };
+    const view = render(
+      <StoresMap
+        stores={stores}
+        cameraSnapshotRef={cameraSnapshotRef}
+        preserveCameraOnMount
+        onCameraInteraction={onCameraInteraction}
+      />
+    );
+    const map = await waitForMap();
+    await waitForInitialPinData(map);
+    expect(map.flyTo).not.toHaveBeenCalled();
+
+    act(() => map.__emit('dragstart', { originalEvent: {} }));
+    expect(onCameraInteraction).toHaveBeenCalledOnce();
+    view.rerender(
+      <StoresMap
+        stores={[...stores, { ...stores[0], slug: 'native-food-two', tenant_name: 'Native Food Two', latitude: 10.75 }]}
+        cameraSnapshotRef={cameraSnapshotRef}
+        preserveCameraOnMount
+        onCameraInteraction={onCameraInteraction}
+      />
+    );
+    await waitFor(() => expect(map.fitBounds).toHaveBeenCalled());
+    view.unmount();
   });
 
   it('handles a rejected external-selection image chain without updating the source', async () => {

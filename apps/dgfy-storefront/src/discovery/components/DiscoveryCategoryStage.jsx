@@ -22,6 +22,7 @@ import {
 
 import { DiscoveryCategoryRail } from '../../Components/store/DiscoveryResponsiveLayout.jsx';
 import { BUSINESS_MODE_PIN_META } from '../model/businessModePins.js';
+import { resolveDiscoveryCategoryFilterValue } from '../../features/discovery/utils/storefrontDiscoveryNormalization.js';
 
 export const getDiscoveryCategoryLists = (isDiscoveryMobileViewport = false) => {
   const primaryCats = [
@@ -49,6 +50,7 @@ export const getDiscoveryCategoryLists = (isDiscoveryMobileViewport = false) => 
 };
 
 export function DiscoveryCategoryStage({
+  activeDiscoveryCategoryFilter = 'all',
   desktopCategoryRailRef,
   discoveryViewportMode,
   handlePopularDiscoveryCategory,
@@ -132,13 +134,22 @@ export function DiscoveryCategoryStage({
                                     }}
                                   >
                                     {visibleCategories.map((cat, index) => (
-                                      <button
-                                        key={cat.label}
-                                        type="button"
-                                        data-mobile-category-index={isDiscoveryMobileViewport ? index : undefined}
-                                        onClick={() => handlePopularDiscoveryCategory(cat.label)}
-                                        style={cardStyle(cat)}
-                                      >
+                                      (() => {
+                                        const isSelected = resolveDiscoveryCategoryFilterValue(cat.label) === activeDiscoveryCategoryFilter;
+                                        return <button
+                                          key={cat.label}
+                                          type="button"
+                                          aria-pressed={isSelected}
+                                          data-mobile-category-index={isDiscoveryMobileViewport ? index : undefined}
+                                          onClick={() => handlePopularDiscoveryCategory(cat.label)}
+                                          style={{
+                                            ...cardStyle(cat),
+                                            background: isSelected ? cat.color : cat.bg,
+                                            color: isSelected ? '#fff' : cat.color,
+                                            border: `1.5px solid ${isSelected ? cat.color : cat.border}`,
+                                            boxShadow: isSelected ? `0 0 0 3px ${cat.color}26, 0 2px 8px rgba(15,23,42,.06)` : '0 2px 8px rgba(15,23,42,.04)'
+                                          }}
+                                        >
                                         <div style={{
                                           display: 'flex',
                                           alignItems: 'center',
@@ -149,7 +160,8 @@ export function DiscoveryCategoryStage({
                                           {cat.icon}
                                         </div>
                                         <span style={{ display: 'block', textAlign: 'center', width: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cat.label}</span>
-                                      </button>
+                                        </button>;
+                                      })()
                                     ))}
                                       {isDiscoveryMobileViewport && mobileOverflowGroups > 0 && (
                                         <button
