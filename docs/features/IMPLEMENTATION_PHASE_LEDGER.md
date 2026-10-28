@@ -34243,16 +34243,17 @@ No earlier phase dependency blocks this repair.
 
 ### Acceptance and validation evidence
 
-- [ ] v4 refresh accepts an API-only or Migration-Runner-only `apps_touched` and matching artifact,
+- [x] v4 refresh accepts an API-only or Migration-Runner-only `apps_touched` and matching artifact,
       with per-app source lineage advancing only for the selected app.
-- [ ] A staging repair accepts `apps_touched: []` only with a non-empty reason; initial revisions
+- [x] A staging repair accepts `apps_touched: []` only with a non-empty reason; initial revisions
       and repairs without a reason continue to reject empty selections.
-- [ ] A one-sided production `release_revision.apps` backend map remains rejected, and paired
+- [x] A one-sided production `release_revision.apps` backend map remains rejected, and paired
       backend dispatch behavior is unchanged.
-- [ ] Refresh 5 history remains unchanged and records only `dgfy-api` truthfully.
-- [ ] ADR 0081, release policy, promoter runbook, release note, and this phase record agree on the
+- [x] Refresh 5 history remains unchanged and records only `dgfy-api` truthfully.
+- [x] ADR 0081, release policy, promoter runbook, release note, and this phase record agree on the
       scoped behavior and safety boundaries.
-- [ ] Focused candidate-validator tests, `npm run check:adr`, `npm run lint:docs`,
+- [x] Focused candidate-validator tests (57/57), `npm run check:adr` (106 ADRs),
+      `npm run lint:docs` (37 governed docs),
       `npm run check:compliance`, and `git diff --check` pass.
 
 ### Links
