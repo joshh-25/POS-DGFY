@@ -1183,6 +1183,9 @@ describe('dgfyCustomerUseCases', () => {
             html: expect.stringContaining('Your DGFY order recovery code is'),
             text: expect.stringMatching(/^Your DGFY order recovery code is \d{6}\./)
         }));
+        const [recoveryEmail] = sendEmail.mock.calls[0];
+        expect(recoveryEmail.html).not.toMatch(/\b(?:style|bgcolor)=/i);
+        expect(recoveryEmail.html).not.toMatch(/linear-gradient|#0d9488|#0891b2/i);
     });
 
     it('does not expose tracking recovery match or delivery status in production responses', async () => {

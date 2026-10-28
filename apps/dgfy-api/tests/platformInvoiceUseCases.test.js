@@ -102,9 +102,36 @@ describe('platform landlord invoice use cases', () => {
       text: expect.stringContaining('TEST DOCUMENT — NOT VALID AS A VAT INVOICE OR FOR INPUT TAX.'),
       attachments: [expect.objectContaining({ filename: artifact.filename, content: Buffer.from('%PDF-test') })]
     }));
+    const [qaInvoiceEmail] = emailService.sendEmail.mock.calls[0];
+    expect(qaInvoiceEmail.html).toContain('<strong>Sieitz Solutions OPC</strong> (DGFY)');
+    expect(qaInvoiceEmail.html).not.toMatch(/\b(?:style|bgcolor)=/i);
+    expect(qaInvoiceEmail.html).not.toMatch(/linear-gradient|#0d9488|#0891b2/i);
     expect(repository.updateDelivery).toHaveBeenCalledWith(delivery, expect.objectContaining({ status: 'sent_to_provider', provider: 'smtp' }), expect.anything());
     if (previousSink == null) delete process.env.PLATFORM_INVOICE_QA_MAIL_SINK;
     else process.env.PLATFORM_INVOICE_QA_MAIL_SINK = previousSink;
+  });
+
+  test('sends production invoice notices with legal issuer identity and neutral styling', async () => {
+    const artifact = { id: 'artifact-2', artifact_type: 'issued_pdf', filename: 'DGFY-00000002.pdf', content_type: 'application/pdf', storage_key: 'invoice-2/issued.pdf', sha256: 'b'.repeat(64) };
+    const invoice = { id: 'invoice-2', invoice_status: 'issued', invoice_number: '00000002', mode: 'production', recipient_email_snapshot: 'owner@example.test', artifacts: [artifact] };
+    const delivery = { recipient_email_snapshot: invoice.recipient_email_snapshot, actual_recipient_email_snapshot: invoice.recipient_email_snapshot, update: jest.fn().mockResolvedValue() };
+    const repository = { findInvoice: jest.fn().mockResolvedValue(invoice), findLatestDelivery: jest.fn().mockResolvedValue(null), transaction: async (callback) => callback({}), createDelivery: jest.fn().mockResolvedValue(delivery), updateDelivery: jest.fn().mockResolvedValue(), createEvent: jest.fn().mockResolvedValue() };
+    const artifactStore = { read: jest.fn().mockResolvedValue(Buffer.from('%PDF-production-test')), remove: jest.fn() };
+    const emailService = { sendEmail: jest.fn().mockResolvedValue({ provider: 'smtp', messageId: 'smtp-2' }) };
+
+    const result = await buildPlatformInvoiceUseCases({ repository, artifactStore, emailService }).deliverEmail({ invoiceId: invoice.id, actor: { id: 'admin-1' } });
+
+    expect(result.success).toBe(true);
+    expect(emailService.sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'owner@example.test',
+      subject: 'DGFY 00000002 invoice',
+      html: expect.stringContaining('<strong>Sieitz Solutions OPC</strong> (DGFY)'),
+      text: 'Sieitz Solutions OPC (DGFY) invoice 00000002 is attached.',
+      attachments: [expect.objectContaining({ filename: artifact.filename, content: Buffer.from('%PDF-production-test') })]
+    }));
+    const [productionInvoiceEmail] = emailService.sendEmail.mock.calls[0];
+    expect(productionInvoiceEmail.html).not.toMatch(/TEST DOCUMENT|\b(?:style|bgcolor)=/i);
+    expect(productionInvoiceEmail.html).not.toMatch(/linear-gradient|#0d9488|#0891b2/i);
   });
 
   test('records an append-only full credit without editing the original snapshot', async () => {

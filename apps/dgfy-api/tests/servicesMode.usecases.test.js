@@ -1853,6 +1853,8 @@ describe('Services Mode use cases', () => {
         }));
         const [reminder] = sendEmail.mock.calls[0];
         expect(`${reminder.subject}\n${reminder.html}`).not.toMatch(/SKUpervisor|SKU Inventory Manager/i);
+        expect(reminder.html).not.toMatch(/\b(?:style|bgcolor)=/i);
+        expect(reminder.html).not.toMatch(/linear-gradient|#0d9488|#0891b2/i);
     });
 
     // Phase 100 of #482 (ADR 0064). The API contract: booking payload carries handoff legs,
