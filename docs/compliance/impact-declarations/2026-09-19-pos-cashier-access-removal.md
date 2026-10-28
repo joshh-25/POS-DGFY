@@ -8,7 +8,7 @@ classification: major
 surfaces: pos,terminal,settings
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.19
-verification_evidence: focused_POS_settings_contract_tests,userService_dgfySync_tests,npm_run_build_pos,git_diff_check
+verification_evidence: focused_POS_settings_contract_tests,PosSettingsWorkspace_behavior_test,userService_dgfySync_tests,npm_run_build_pos,git_diff_check
 rollback_note: Revert the POS cashier-access settings changes, landlord membership synchronization, dry-run repair utility, and this declaration; the existing tenant-local user removal contract and historical records remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -43,7 +43,10 @@ and permission checks as the authority.
 5. Removing a tenant user marks matching pending or accepted landlord membership
    rows as removed before the tenant-local soft delete completes; the repair
    utility is dry-run by default and requires an explicit apply flag.
-6. This is local implementation evidence only; no production deployment or
+6. POS settings account/session continuation keeps DGFY authentication and
+   tenant authorization server-controlled; the frontend does not grant access
+   or expose credentials when the session is restored.
+7. This is local implementation evidence only; no production deployment or
    live-tenant qualification is claimed.
 
 ## Verification Evidence
