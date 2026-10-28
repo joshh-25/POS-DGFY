@@ -1009,3 +1009,25 @@ contract is defined in ADR 0074's 2026-10-24 amendment and the release policy.
 immutable-tag invariant is unchanged.
 
 PR: (this PR). Refs #2737.
+
+### 2026-10-29 — Per-app staging refresh artifacts and tooling-only repairs (#2936)
+
+The 2026-10-09 no-app-change refresh amendment's statement that API/migration-runner pairing
+remains unchanged is narrowed for `staging_refresh`: a refresh's `apps_touched` and `artifacts`
+may list `dgfy-api` or `dgfy-migration-runner` alone when the content-equivalence build plan
+resolves those images independently. The paired `build_api` dispatch checkbox and its
+`compose depends_on` safety remain unchanged; only the per-refresh artifact record reflects which
+image received a new tag.
+
+`staging_repair` revisions retain the paired backend rule because their `apps_touched` mirrors the
+single paired dispatch flag. A staging repair may record `apps_touched: []` only when it carries an
+explicit non-empty `reason` and changes no deployable app input (for example, tooling, validator,
+or documentation only; #2936). `release_revision.apps` remains paired for production: the release
+map still requires both backend apps together or neither.
+
+`[default]` tier per ADR 0039; amends Decision 8's refresh and staging-repair recording procedure
+only. Decision 7's `[binding]` immutable-tag rule, Decision 6's floor rules, and production release
+map pairing are unchanged. Full detail: #2936, `scripts/check-promotion-candidate.js`,
+`scripts/check-promotion-candidate.test.js`, and `docs/ops/RELEASE_CANDIDATE_POLICY.md`.
+
+PR: (this PR). Closes #2936.

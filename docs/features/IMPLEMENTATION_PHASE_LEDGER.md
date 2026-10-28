@@ -34215,3 +34215,68 @@ process; no staging or production validation is required for this local phase.
 
 Phase 570. Later release/regulatory acceptance is deferred outside
 this local-only change and is not a staging blocker.
+
+## Phase 570 - Per-app staging-refresh artifacts and tooling-only repairs (#2936)
+
+### Initiative and release
+
+Release-candidate lifecycle repair for candidate `2026-10-27-01`.
+
+### Objective and scope
+
+Allow v4 staging refresh history to truthfully record a one-sided API or Migration Runner artifact
+when content-equivalence selects only one image. Allow a staging repair with no deployable app
+inputs to declare an empty `apps_touched` list only with a non-empty reason. Preserve paired backend
+dispatch, staging-repair backend pairing, production `release_revision.apps` pairing, and append-only
+refresh 5 history. This is tooling and documentation only; no app inputs or candidate manifest are
+changed.
+
+### Status
+
+`in_progress` — implementation and focused/governed-document validation are underway; merge and
+live refresh-5 verification remain outstanding.
+
+### Dependencies
+
+Issue #2936, ADR 0081 Decision 8, the v4 candidate validator, and candidate `2026-10-27-01`.
+No earlier phase dependency blocks this repair.
+
+### Acceptance and validation evidence
+
+- [ ] v4 refresh accepts an API-only or Migration-Runner-only `apps_touched` and matching artifact,
+      with per-app source lineage advancing only for the selected app.
+- [ ] A staging repair accepts `apps_touched: []` only with a non-empty reason; initial revisions
+      and repairs without a reason continue to reject empty selections.
+- [ ] A one-sided production `release_revision.apps` backend map remains rejected, and paired
+      backend dispatch behavior is unchanged.
+- [ ] Refresh 5 history remains unchanged and records only `dgfy-api` truthfully.
+- [ ] ADR 0081, release policy, promoter runbook, release note, and this phase record agree on the
+      scoped behavior and safety boundaries.
+- [ ] Focused candidate-validator tests, `npm run check:adr`, `npm run lint:docs`,
+      `npm run check:compliance`, and `git diff --check` pass.
+
+### Links
+
+- Issue: #2936; planner handoff `/private/tmp/claude-501/-Users-pat-orca-workspaces-dgfy-platform-fix-staging-2026-10-27-01-1/04fa57e3-e397-4214-8620-9e72139934af/scratchpad/builder-handoff-2936.md`.
+- PR: (this PR), staging repair branch `fix/staging/2026-10-27-01-1`.
+- ADR: 0081 Decision 8 and the 2026-10-29 amendment; ADR 0039 default-tier amendment path.
+- Policy: `docs/ops/RELEASE_CANDIDATE_POLICY.md` 2026-10-29 amendment.
+- Implementation: `scripts/check-promotion-candidate.js` and
+  `scripts/check-promotion-candidate.test.js`.
+- Procedure and release note: `.agents/skills/promoter/references/promotion-runbook.md` and
+  `docs/releases/notes/2026-10-27-01.md`.
+
+### Completion date
+
+Not complete. Set only after the scoped implementation is merged and validation passes.
+
+### Post-merge verification
+
+- [ ] operational — run and record the refresh-5 content-equivalence deploy against the live
+      out-of-repo manifest: rebuild `dgfy-api`, skip content-equivalent `dgfy-migration-runner`,
+      and verify the refreshed SHA-bound observation and qualification; owner: promoter; blocks
+      release qualification. Preserve the existing refresh-5 history entry as `dgfy-api` only.
+
+### Next phase number
+
+Phase 571. No explicit dependency.

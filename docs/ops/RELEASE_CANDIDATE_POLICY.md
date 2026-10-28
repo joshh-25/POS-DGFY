@@ -2175,3 +2175,27 @@ why this does not alter the binding promotion head-cut rule or ADR 0081's bindin
 rule. See Phase 541 and issue #2737 for implementation scope and post-merge probes.
 
 PR: (this PR). Refs #2737.
+
+### 2026-10-29: Per-app staging-refresh artifacts and tooling-only repairs (#2936)
+
+This amendment narrows the 2026-10-09 no-app-change staging-refresh amendment's statement that
+API/migration-runner pairing remains unchanged. A `staging_refresh` entry may list only
+`dgfy-api` or only `dgfy-migration-runner` in both `apps_touched` and `artifacts` when the
+content-equivalence build plan selects one image independently. The paired `build_api` dispatch
+checkbox and its Compose dependency safety remain unchanged; the candidate history records which
+image actually received a new tag. Existing one-to-one symmetry between `apps_touched` and
+`artifacts` still applies, including the jointly empty case.
+
+A `staging_repair` entry may use `apps_touched: []` only with an explicit non-empty `reason` and
+when no deployable app input changed, such as a tooling-only validator repair. Non-empty repair
+selections keep the paired API/migration-runner rule because they mirror the single paired dispatch
+flag. A production `release_revision.apps` map must still include both backend apps together or
+omit both. This does not loosen release-only repair selections, initial revisions, immutable tags,
+or any release gate. Preserve truthful append-only refresh history; do not rewrite an earlier
+refresh record to claim an app it did not rebuild.
+
+`[default]` tier under ADR 0039; amends ADR 0081 Decision 8's recording procedure only. Decision
+7's `[binding]` immutable-tag rule and production release-map pairing remain unchanged. See #2936,
+the promoter runbook, validator tests, and Phase 570 in the implementation ledger.
+
+PR: (this PR). Closes #2936.

@@ -562,7 +562,10 @@ The refresh sequence is independent of staging repair sequences and artifact `rN
 Set `refresh_in_progress` with no release selection before the refresh begins. Build changed
 apps with fresh per-app immutable STAGING revisions and record artifacts only for apps selected by
 the content-equivalence build plan; preserve untouched apps' prior artifacts and per-app source-SHA
-lineage. If no app inputs changed, record `apps_touched: []` and `artifacts: []` together, and put
+lineage. For #2936, `dgfy-api` and `dgfy-migration-runner` may appear separately in one refresh's
+`apps_touched` and `artifacts` because the build plan resolves their images independently; this does
+not change the paired `build_api` dispatch or production release-map pairing. If no app inputs changed,
+record `apps_touched: []` and `artifacts: []` together, and put
 the skipped-build-plan evidence link in the manifest `reason`. The refreshed artifact origin is
 `staging_refresh` and parity requires the ordinary STAGING predecessor for any app rebuilt. Once
 merge and builds succeed, clear the active refresh marker, set status to `staging_soak`, and repeat
