@@ -15,7 +15,7 @@ so any conclusion below that depends on event detail is marked unconfirmed.
 | Issue | Env | Count | Bucket | Action |
 |---|---|---|---|---|
 | DGFY-POS-1Q (`replaceAll` in the maplibre worker) | PROD | 1 (7d), handled:no | genuine defect | filed #2919 |
-| DGFY-BACKEND-Y (ConnectionManager closed, `GET /api/v1/pos/catalog`) | PROD | 2 (7d), handled:yes | genuine defect, below the handled:yes floor | filed #2920 (operator-approved exception, see below) |
+| DGFY-BACKEND-Y (ConnectionManager closed, `GET /api/v1/pos/catalog`) | PROD | 2 (7d), handled:yes | genuine defect, below the handled:yes floor | filed #2920 (operator-approved exception, see below); its original idle-cleanup lead is refuted by the log excerpt, re-scope pending |
 | DGFY-POS-1D (AxiosError 500, regressed) | PROD | 1 (7d), 2 (90d) | likely the same incident as BACKEND-Y (unconfirmed: no event-level request-id match) | folded into #2920 |
 | DGFY-POS-1P (COUNTER-01 in use by another cashier) | PROD | 1 (7d), handled:yes | known, open owners #1073 / #1074 | commented, not filed |
 | DGFY-POS-10 (COUNTER-02 in use, regressed) | STAGING | 1 (7d), 4 (90d) | same as POS-1P | commented, not filed |
@@ -44,29 +44,49 @@ does not assume `setWorkerUrl`.
 Dedupe: #2479 and #2094 are about the worker file failing to *load* (404 / MIME), a different defect. Related,
 not duplicates: #1787 (maplibre 6.x migration, open), #666 / #680 (ES-compat guardrail, closed).
 
-### DGFY-BACKEND-Y: idle cleanup can close a re-used tenant handle (#2920)
+### DGFY-BACKEND-Y: tenant handle closed under a live request (#2920)
 
-Hypothesis, **unproven**: two events and no event-level confirmation. Stack: `mapPosUseCaseError` <-
-`posUseCases.js:9230` <- `listCatalog` (`posHandlers.js:854`), request
-`ab431f1b-d76b-4515-bdae-fe24ef91ed32`, tenant `d9007376…`, 2026-10-28 09:39:24Z.
+Two events, no event-level confirmation. Stack: `mapPosUseCaseError` <- `posUseCases.js:9230` <- `listCatalog`
+(`posHandlers.js:854`), request `ab431f1b-d76b-4515-bdae-fe24ef91ed32`, tenant `d9007376…`,
+2026-10-28 09:39:24.455Z. No `Build & Deploy Platform` run between 06:33Z and 09:39:24Z, so a deploy restart
+does not explain it. #2920 was filed on a code-reading hypothesis (idle cleanup closing a re-used handle); the
+evidence below refutes that hypothesis for this event.
 
-- Only `closeConnection` in `apps/dgfy-api/src/utils/TenantConnector.js` closes cached tenant handles. LRU
-  eviction is implausible with this few tenants. Shutdown drains in-flight requests first (`server.close`,
-  then `closeAll`, with a 10s watchdog).
-- No `Build & Deploy Platform` run between 06:33Z and 09:39:24Z on 2026-10-28; the only one nearby (09:49:50Z,
-  `epic/2634-delivery-workflow`) started 10 minutes after the event, so a deploy restart does not explain it.
-- **Lead 1:** `cleanupIdleConnections` (lines 327-347) snapshots every tenant idle for over 10 minutes, then
-  awaits `closeConnection` one at a time without re-checking `lastUsed` or `isBusy`. `closeConnection` waits
-  out a handle that is busy at that instant, so the exposure is a tenant whose device woke after the snapshot,
-  or one that is idle between two queries of the same request. It needs at least two idle tenants in the same
-  60s tick, or a slow earlier close.
-- **Lead 2:** the gap the code documents as the #526 residual (lines 251-262). #526 is `CLOSED / COMPLETED`;
-  the "decision not to do it yet" wording lives in the code comment, so the gap has no open owner. This is a
-  different failure from #2560's acquire timeout. #2623 is already live, so this is not an #2560 trigger and
-  does not change that issue's verification-only posture.
-- **Operator check (not done):** read-only PROD logs for `Periodic cleanup: closing N idle connections` near
-  09:39Z would confirm or kill Lead 1 quickly. It is the first acceptance criterion of #2920. Observer did not
-  touch PROD.
+**Update, same day: an operator-run log excerpt points at LRU eviction, not idle cleanup.** Pat ran one
+allow-list-filtered `docker logs` command on the PROD API container for 09:25:00Z-09:50:00Z, keeping only
+cleanup, eviction and close messages. It is not a generated incident bundle: `scripts/create-incident-bundle.js`
+matches only request id, trace id or surface, ignores `--since`/`--until`, and reads files, not Docker logs.
+Only aggregates are recorded here.
+
+- **Idle cleanup is not the closer.** One sweep closed anything in the window, at 09:25:54Z (17 handles). The
+  sweep logs only when it closes something, and none did after that, through the last matching line (09:46:08Z).
+- **LRU eviction is.** 702 closes = 17 (idle cleanup) + 685 `Evicting 1 oldest idle connections`. No "all busy"
+  evictions and no forced close after the grace period.
+- **The 20-slot cache is thrashing.** 53 distinct tenants were closed, 118 evictions happened at 20/20, the
+  rate was 21-108 per minute from 09:37 to 09:45, and the busiest tenants were closed 14-16 times each in about
+  20 minutes.
+- **The affected tenant is in the middle of it.** `d9007376…` was closed 15 times (gaps 13-150 s), including
+  09:39:19.547Z and 09:39:34.751Z, which bracket the error. A six-tenant eviction burst ran
+  09:39:24.425-.492Z, none of them this tenant. The 09:39:19.547Z eviction line has no "busy skipped", so
+  `isBusy()` saw every cached handle idle.
+- **Most likely reading, unproven:** the failing request held a handle that eviction closed at 09:39:19.547Z and
+  then issued another query on it. That is the #526 residual (`TenantConnector.js:251-262`), now with a base rate
+  of tens of evictions per minute. The 5 s gap is long for a pure between-queries window, so a slow multi-step
+  request is also possible.
+
+What this changes:
+
+- #2920's title and suspected-cause section describe the refuted idle-cleanup lead. The `cleanupIdleConnections`
+  re-check is still correct hygiene but would not have prevented this event. Re-scope is pending Pat's decision.
+- Two statements in the first version of this section were wrong and are withdrawn: that LRU eviction was
+  "implausible with this few tenants", and that #2623 being live meant this was "not an #2560 trigger". #2623
+  (`a9b8f2b04`) is an ancestor of PROD `ef85ba0f6`, and this excerpt has the shape of the reopen trigger Pat set
+  for #2560 on 2026-10-23 (c: `created_total`/`evicted_total` climbing at 20/20 cached with more than 20 active
+  tenants). Whether that reopens #2560, which was verification-only by his decision, is his call.
+- Not established: what drives the churn. `businessAdminAlertScheduler` walks every `status: 'active'` tenant
+  through the shared cache every 15 minutes with `getConnection`, the shape #524/#527 fixed for the discovery
+  reconciler by moving it to `openEphemeralConnection`. That is a candidate, but eviction bursts also fall off
+  the quarter-hour, so live traffic across many tenants is another.
 
 **Noise-policy note.** 2 events is under the `handled:yes` floor (3 per 7d), but this is a user-visible 500 on
 a live merchant and Pat's standing preference is not to park live errors. Pat approved filing it as a one-off
@@ -102,7 +122,8 @@ Issue-level status only; none of this was event-verified.
 
 ## Open, not addressed this run
 
-- Lead 1 for #2920 is unconfirmed until someone reads the PROD container logs around 2026-10-28T09:39Z.
+- #2920 needs a re-scope decision (LRU eviction thrash vs. the original idle-cleanup guard, and whether this
+  reopens #2560). No implementation has started.
 - No Sentry issue was resolved, and no noise-policy threshold was changed.
 
 **Re-verification query for next run:** `issue:DGFY-BACKEND-Y environment:PROD` and
