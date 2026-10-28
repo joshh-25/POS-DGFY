@@ -21,6 +21,27 @@ describe('online customer receipt print flow', () => {
     expect(terminalPageSource).toContain('claimOnlineOrderReceiptAutoPrint({');
   });
 
+  it('opens the cash drawer after online-order cash collection', () => {
+    const handlerStart = terminalPageSource.indexOf('const handleCollectCash = async');
+    const handlerEnd = terminalPageSource.indexOf('const handleOpenBalanceSettlement', handlerStart);
+    const handlerSource = terminalPageSource.slice(handlerStart, handlerEnd);
+
+    const collectionIndex = handlerSource.indexOf('await collectCash(orderId, {');
+    const drawerIndex = handlerSource.indexOf('await posHardware.openDrawer({');
+    const receiptIndex = handlerSource.indexOf('await printOnlineOrderReceiptById(orderId, { automatic: true });');
+
+    expect(handlerStart).toBeGreaterThanOrEqual(0);
+    expect(collectionIndex).toBeGreaterThanOrEqual(0);
+    expect(drawerIndex).toBeGreaterThan(collectionIndex);
+    expect(receiptIndex).toBeGreaterThan(drawerIndex);
+    expect(handlerSource).toContain('shiftId: activeShiftId');
+    expect(handlerSource).toContain('transactionId: orderId');
+    expect(handlerSource).toContain("reason: 'checkout_auto_online_order_cash_collection'");
+    expect(handlerSource).toContain("createIdempotencyKey('pos-online-order-cash-drawer')");
+    expect(handlerSource).toContain('Cash payment collected and cash drawer opened.');
+    expect(handlerSource).toContain('Cash collected, but no cash drawer is configured for this terminal.');
+  });
+
   it('stops the incoming-order sound when the order modal is hidden', () => {
     expect(terminalPageSource).toContain("if (!open) {\n      stopOrderAlertSoundLoop();");
   });
