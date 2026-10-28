@@ -5,7 +5,7 @@ last_reviewed: 2026-10-27
 related_adr: docs/architecture/adr/0007-dual-mode-pos-compliance-program.md,docs/architecture/adr/0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md,docs/architecture/adr/0045-shared-pos-receipt-renderer.md
 declaration_id: 2026-10-26-fiscal-renderer-taxpayer-fail-safe
 classification: regulatory
-surfaces: pos,terminal,receipt,compliance,settings,payments
+surfaces: pos,terminal,receipt,compliance,settings,payments,inventory
 reason_codes_impacted: ALLOWED,VALIDATION_FAILED,NON_COMPLIANT_FISCAL_DOCUMENT_BLOCKED
 policy_version: 2026.10.26
 verification_evidence: npm --prefix apps/dgfy-ims test -- --run packages/web-core/src/features/pos/__tests__/receiptContractConformance.contract.test.js packages/web-core/src/features/pos/__tests__/posReceiptItemIdentitySnapshot.test.js,npm run lint:docs,npm run check:architecture,git diff --check

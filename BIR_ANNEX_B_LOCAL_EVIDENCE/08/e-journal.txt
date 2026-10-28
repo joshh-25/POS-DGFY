@@ -1,3 +1,0 @@
-FILE|sequence=1|grammar_version=EJOURNAL-READINESS-0.1|business_date=2026-10-02|tenant_id=f5d1f5e9-7fda-4aaa-95d6-9ed3dac1a11a|location_id=3|terminal_id=COUNTER-01
-READING|sequence=2|record_id=READING-Z-ZR-20261002-00000008|reading_type=Z|reading_no=ZR-20261002-00000008|business_date=2026-10-02|generated_at=2026-10-02T08:23:35.000Z|gross=1800.00|net=1800.00|transaction_count=20
-TRAILER|sequence=3|record_count=2|first_sequence=1|last_sequence=2|content_sha256=1a9b2f598823c593921868ca05eab8382b8c9225db9fe9ba84cfd86c3e243b7f

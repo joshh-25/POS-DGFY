@@ -107,6 +107,9 @@ const createViewModel = (overrides = {}) => ({
     hasSplitPaymentSummary: false,
     isCashPayment: true,
     isCheckoutWorkflowValid: true,
+    workflowUnresolved: false,
+    workflowLoading: false,
+    onRetryWorkflow: vi.fn(),
     isCustomerPaymentSufficient: true,
     isEmployeeCreditPayment: false,
     isMsmeMode: false,
@@ -130,6 +133,19 @@ const createViewModel = (overrides = {}) => ({
 });
 
 describe('POSCheckoutConfirmDialog payment draft', () => {
+    it('disables confirmation and explains the unresolved workflow state', () => {
+        const handleCheckout = vi.fn();
+        render(<POSCheckoutConfirmDialog viewModel={createViewModel({
+            workflowUnresolved: true,
+            handleCheckout
+        })} />);
+
+        expect(screen.getByTestId('pos-checkout-workflow-unresolved').textContent)
+            .toContain("Store settings haven't loaded. Reconnect to continue.");
+        expect(screen.getByRole('button', { name: 'Confirm' }).disabled).toBe(true);
+        expect(handleCheckout).not.toHaveBeenCalled();
+    });
+
     it('keeps the standard Checkout Tab while routing an existing dine-in order to its settlement callback', () => {
         const handleCheckout = vi.fn();
         const handleExistingOrderCheckout = vi.fn().mockResolvedValue(true);

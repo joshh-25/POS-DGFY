@@ -421,6 +421,7 @@ export default function StorefrontApp() {
     discoveryAvailabilityFilter,
     discoveryCategoryFilter,
     discoveryCoords,
+    discoveryCameraSnapshotRef,
     discoveryDistanceFilter,
     discoveryLocationMap,
     discoveryOpenFilter,
@@ -435,9 +436,11 @@ export default function StorefrontApp() {
     isDiscoveryNoMatchToastActive,
     isDiscoverySearchFocused,
     isStoreListVisible,
+    preserveDiscoveryCamera,
     loadingStores,
     openDiscoveryFaqIndex,
     renderDiscoveryResetButton,
+    resetLastSubmittedSearch,
     searchRef,
     stores,
     storesError,
@@ -449,9 +452,11 @@ export default function StorefrontApp() {
     setDiscoveryCategoryFilter,
     setDiscoveryDistanceFilter,
     setDiscoveryOpenFilter,
+    setDiscoveryPinScope,
     setDiscoveryRatingFilter,
     setDiscoveryResultsPage,
     setDiscoverySortBy,
+    setPreserveDiscoveryCamera,
     setHasDiscoveryExplorationStarted,
     setHighlightedDiscoveryMarkerKey,
     setHighlightedStoreSlug,
@@ -1574,9 +1579,18 @@ export default function StorefrontApp() {
   }, [catalog, openFnbDetail, setIsCheckoutOpen]);
 
   const hasDiscoverySearch = debouncedDiscoverySearch.trim().length > 0;
+  const hasActiveDiscoveryFilters = (
+    discoveryCategoryFilter !== 'all'
+    || discoveryDistanceFilter !== 'all'
+    || discoveryOpenFilter !== 'all'
+    || discoveryRatingFilter !== 'all'
+    || discoveryAvailabilityFilter !== 'all'
+    || discoverySortBy !== 'nearest'
+  );
+  const hasDiscoveryResultsStage = hasDiscoverySearch || hasActiveDiscoveryFilters;
   const { discoveryInteractiveAreaRef } = useDiscoveryExplorationOutsideClick({
     hasDiscoveryExplorationStarted,
-    hasDiscoverySearch,
+    hasDiscoverySearch: hasDiscoveryResultsStage,
     isDiscoverySearchFocused,
     setHasDiscoveryExplorationStarted
   });
@@ -1877,6 +1891,7 @@ export default function StorefrontApp() {
     getDiscoveryMarkerKey,
     highlightedDiscoveryMarkerKey,
     highlightedStoreSlug,
+    preserveDiscoveryCamera,
     setHighlightedDiscoveryMarkerKey,
     setHighlightedStoreSlug
   });
@@ -3739,6 +3754,7 @@ export default function StorefrontApp() {
     activeDiscoveryFilterDropdown,
     debouncedDiscoverySearch,
     discoveryAvailabilityFilter,
+    discoveryCameraSnapshotRef,
     discoveryBusinessModeOptions,
     discoveryCategoryFilter,
     discoveryCoords,
@@ -3775,8 +3791,11 @@ export default function StorefrontApp() {
     normalizeStorefrontCategories,
     normalizeStorefrontReviewSummary,
     renderDiscoveryResetButton,
+    loadStores,
+    resetLastSubmittedSearch,
     retryLoadStores,
     search,
+    searchRef,
     searchedDiscoveryMapPins,
     setActiveDiscoveryFilterDropdown,
     setDiscoveryAvailabilityFilter,
@@ -3786,6 +3805,12 @@ export default function StorefrontApp() {
     setDiscoveryRatingFilter,
     setDiscoveryResultsPage,
     setDiscoverySortBy,
+    setSearch,
+    setDebouncedDiscoverySearch,
+    setDiscoveryPinScope,
+    setIsDiscoveryNoMatchToastActive,
+    preserveDiscoveryCamera,
+    setPreserveDiscoveryCamera,
     setFeaturedBaseStores,
     setHasDiscoveryExplorationStarted,
     setHighlightedDiscoveryMarkerKey,
@@ -4457,6 +4482,7 @@ export default function StorefrontApp() {
     hasDesktopCategoryOverflow,
     hasDiscoveryExplorationStarted,
     hasDiscoverySearch,
+    hasDiscoveryResultsStage,
     highlightedDiscoveryMarkerKey,
     isBrandingImageBlocked,
     isCategoryRowExpanded,

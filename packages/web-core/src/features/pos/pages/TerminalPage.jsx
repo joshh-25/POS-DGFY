@@ -601,7 +601,16 @@ const hasPosAttendanceLifecyclePermission = (user) => {
 export default function TerminalPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { workflowMode, profile, modeChangeNotice, dismissModeChangeNotice } = useWorkflowMode();
+  const {
+    workflowMode,
+    workflowSource,
+    loading: workflowLoading,
+    refreshWorkflowMode,
+    profile,
+    modeChangeNotice,
+    dismissModeChangeNotice
+  } = useWorkflowMode();
+  const retryWorkflowMode = useCallback(() => refreshWorkflowMode({ force: true }), [refreshWorkflowMode]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     const stored = safeLocalStorageGet('posTerminalSidebarCollapsed');
     return stored === '1';
@@ -9694,6 +9703,9 @@ function PosRestorationLoadingScreen() {
           onSwitchCompany={handleCompanySwitch}
           posViewMode={posViewMode}
           workflowMode={workflowMode}
+          workflowUnresolved={workflowSource === 'unresolved'}
+          workflowLoading={workflowLoading}
+          onRetryWorkflow={retryWorkflowMode}
           effectiveCapabilities={profile?.modules}
           isMsmeMode={isMsmeMode}
           shiftState={shiftState}

@@ -219,6 +219,9 @@ export default function TerminalPageLayout({
     onSwitchCompany = async () => {},
     posViewMode,
     workflowMode = '',
+    workflowUnresolved = false,
+    workflowLoading = false,
+    onRetryWorkflow = () => {},
     effectiveCapabilities = null,
     isMsmeMode = false,
     shiftState,
@@ -1340,6 +1343,9 @@ export default function TerminalPageLayout({
               <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500" role="status" aria-live="polite" aria-busy="true">Loading POS terminal...</div>}>
                 <POSCheckoutTerminal
                   workflowMode={workflowMode}
+                  workflowUnresolved={workflowUnresolved}
+                  workflowLoading={workflowLoading}
+                  onRetryWorkflow={onRetryWorkflow}
                   effectiveCapabilities={effectiveCapabilities}
                   sessionLocked={locked}
                   isMsmeMode={isMsmeMode}

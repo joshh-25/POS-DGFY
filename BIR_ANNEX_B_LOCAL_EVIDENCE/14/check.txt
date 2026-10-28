@@ -1,4 +1,0 @@
-status=PASS
-environment=LOCAL_ONLY
-evidence_label=LOCAL TEST - NOT FOR SUBMISSION
-reason=Local mysqldump/import restore completed in a disposable database and all table names and row counts matched.

@@ -1,5 +1,0 @@
-status=BLOCKED
-environment=LOCAL_ONLY
-evidence_label=LOCAL TEST - NOT FOR SUBMISSION
-adjustment_records=0
-reason=No persisted adjustment source was returned for the selected local scope; no adjustment printout was invented.

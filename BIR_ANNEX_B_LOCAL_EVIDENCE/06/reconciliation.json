@@ -1,9 +1,0 @@
-{
-  "target_business_date": "2026-10-02",
-  "x_reading_date": "2026-10-27",
-  "z_reading_date": "2026-10-02",
-  "x_status": 200,
-  "z_status": 200,
-  "matching_business_date": false,
-  "note": "Local JSON report evidence only; physical printer output is not claimed by this API phase."
-}

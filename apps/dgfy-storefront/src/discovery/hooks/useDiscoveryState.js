@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { useStorefrontStore } from '../../store/useStorefrontStore.js';
 
@@ -26,6 +26,8 @@ export function useDiscoveryState({ search = '' } = {}) {
   const showDiscoveryResetButton = useDiscoveryValue('showResetButton');
   const discoveryCoords = useDiscoveryValue('coords');
   const discoveryCoordsRef = useRef(discoveryCoords);
+  const discoveryCameraSnapshotRef = useRef(null);
+  const [preserveDiscoveryCamera, setPreserveDiscoveryCamera] = useState(false);
   const discoveryLocationMap = useDiscoveryValue('locationMap');
   const loadingDiscoveryLocations = useDiscoveryValue('loadingLocations');
   const highlightedDiscoveryMarkerKey = useDiscoveryValue('highlightedMarkerKey');
@@ -92,6 +94,7 @@ export function useDiscoveryState({ search = '' } = {}) {
     discoveryCategoryFilter,
     discoveryCoords,
     discoveryCoordsRef,
+    discoveryCameraSnapshotRef,
     discoveryDistanceFilter,
     discoveryIncludeMatchMeta,
     discoveryLocationMap,
@@ -109,6 +112,7 @@ export function useDiscoveryState({ search = '' } = {}) {
     isDiscoveryNavMenuOpen,
     isDiscoveryNoMatchToastActive,
     isDiscoverySearchFocused,
+    preserveDiscoveryCamera,
     isStoreListVisible,
     loadingDiscoveryLocations,
     openDiscoveryFaqIndex,
@@ -122,6 +126,7 @@ export function useDiscoveryState({ search = '' } = {}) {
     setDiscoveryAvailabilityFilter,
     setDiscoveryCategoryFilter,
     setDiscoveryCoords,
+    setPreserveDiscoveryCamera,
     setDiscoveryDistanceFilter,
     setDiscoveryIncludeMatchMeta,
     setDiscoveryLocationMap,

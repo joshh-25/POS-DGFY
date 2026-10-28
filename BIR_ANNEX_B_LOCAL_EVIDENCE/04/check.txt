@@ -1,6 +1,0 @@
-status=BLOCKED
-environment=LOCAL_ONLY
-evidence_label=LOCAL TEST - NOT FOR SUBMISSION
-fiscal_source_transactions=0
-fiscal_source_documents=0
-reason=The selected local scope has no persisted fiscal transactions; existing NFS/online records cannot be relabeled as BIR invoice samples.
