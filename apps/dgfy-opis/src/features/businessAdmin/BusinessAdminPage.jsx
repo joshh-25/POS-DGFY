@@ -99,6 +99,10 @@ import {
     MERCHANT_BACKOFFICE_MODULE_META
 } from './businessAdminManifest.js';
 import {
+    filterBusinessAdminSettingsNavigationGroups,
+    getBusinessAdminSettingsNavigationGroups
+} from './businessAdminSettingsGroups.js';
+import {
     BUSINESS_ADMIN_SIDEBAR_GROUPS,
     buildBusinessAdminSidebarItemPath,
     getBusinessAdminSidebarActiveKey,
@@ -2573,6 +2577,137 @@ function BusinessAdminSettingsEditor({
     );
 }
 
+function BusinessAdminSettingsNavigation({
+    visibleSections,
+    sectionCapabilities,
+    administrativeTools,
+    pendingApprovalsCount,
+    settingsSection,
+    onSelectSection,
+    onOpenAdministrativeTool,
+    navigationRef
+}) {
+    const groups = useMemo(() => getBusinessAdminSettingsNavigationGroups({
+        visibleSections,
+        sectionCapabilities,
+        administrativeTools
+    }), [administrativeTools, sectionCapabilities, visibleSections]);
+    const activeGroupKey = groups.find((group) => group.items.some((item) => (
+        item.itemType === 'section' && item.key === settingsSection
+    )))?.key;
+    const [query, setQuery] = useState('');
+    const [expandedGroupKey, setExpandedGroupKey] = useState(activeGroupKey || groups[0]?.key || '');
+    const filteredGroups = useMemo(
+        () => filterBusinessAdminSettingsNavigationGroups(groups, query),
+        [groups, query]
+    );
+
+    return (
+        <section
+            ref={navigationRef}
+            className="business-admin-card business-admin-settings-nav"
+            aria-label="Settings sections"
+            data-testid="business-admin-settings-navigation"
+        >
+            <div className="business-admin-card-header business-admin-settings-nav-header">
+                <div>
+                    <div className="business-admin-card-title">Settings</div>
+                    <div className="business-admin-card-subtitle">Choose a settings area to manage.</div>
+                </div>
+            </div>
+            <div className="business-admin-card-body business-admin-settings-nav-body">
+                <label className="business-admin-settings-nav-search" htmlFor="business-admin-settings-search">
+                    <Search size={16} aria-hidden="true" />
+                    <span className="business-admin-visually-hidden">Find a setting</span>
+                    <input
+                        id="business-admin-settings-search"
+                        type="search"
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        placeholder="Find a setting..."
+                        autoComplete="off"
+                    />
+                </label>
+                <div className="business-admin-settings-nav-groups" data-testid="business-admin-administrative-tools">
+                    {filteredGroups.map((group) => {
+                        const GroupIcon = group.icon || Settings;
+                        const isExpanded = Boolean(query) || expandedGroupKey === group.key;
+                        return (
+                            <div
+                                className="business-admin-settings-nav-group"
+                                key={group.key}
+                            >
+                                <button
+                                    type="button"
+                                    className="business-admin-settings-nav-group-toggle"
+                                    aria-expanded={isExpanded}
+                                    aria-controls={`business-admin-settings-group-${group.key}`}
+                                    onClick={() => setExpandedGroupKey((current) => current === group.key ? '' : group.key)}
+                                >
+                                    <span className="business-admin-settings-nav-group-title">
+                                        <GroupIcon size={16} aria-hidden="true" />
+                                        <span>{group.label}</span>
+                                    </span>
+                                    <ChevronDown
+                                        size={16}
+                                        aria-hidden="true"
+                                        className={`business-admin-settings-nav-chevron ${isExpanded ? 'is-expanded' : ''}`}
+                                    />
+                                </button>
+                                {isExpanded ? (
+                                    <div
+                                        id={`business-admin-settings-group-${group.key}`}
+                                        className="business-admin-settings-nav-items"
+                                    >
+                                        {group.items.map((item) => {
+                                            const ItemIcon = item.icon || Settings;
+                                            const isActive = item.itemType === 'section' && item.key === settingsSection;
+                                            const showPendingBadge = item.itemType === 'administrative-tool'
+                                                && item.key === 'approvals'
+                                                && Number.isInteger(pendingApprovalsCount)
+                                                && pendingApprovalsCount > 0;
+                                            return (
+                                                <button
+                                                    type="button"
+                                                    key={item.key}
+                                                    className={`business-admin-settings-nav-item ${isActive ? 'active' : ''}`}
+                                                    onClick={() => item.itemType === 'administrative-tool'
+                                                        ? onOpenAdministrativeTool(item.key)
+                                                        : onSelectSection(item.key)}
+                                                    aria-current={isActive ? 'page' : undefined}
+                                                    data-testid={item.itemType === 'administrative-tool'
+                                                        ? `business-admin-admin-tool-${item.key}`
+                                                        : `business-admin-settings-nav-${item.key}`}
+                                                >
+                                                    <span className="business-admin-settings-nav-item-icon">
+                                                        <ItemIcon size={15} aria-hidden="true" />
+                                                    </span>
+                                                    <span className="business-admin-settings-nav-item-copy">
+                                                        <strong>{item.label}</strong>
+                                                        {item.itemType === 'section' ? (
+                                                            <small>{item.canEdit ? 'Edit access' : 'View only'}</small>
+                                                        ) : null}
+                                                    </span>
+                                                    {showPendingBadge ? (
+                                                        <span className="business-admin-settings-nav-badge">{pendingApprovalsCount}</span>
+                                                    ) : null}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                ) : null}
+                            </div>
+                        );
+                    })}
+                </div>
+                {!filteredGroups.length ? (
+                    <div className="business-admin-settings-nav-empty">No accessible settings match “{query}”.</div>
+                ) : null}
+            </div>
+        </section>
+    );
+}
+
 function BusinessAdminSettingsWorkspace({
     bootstrap,
     rootPath = '/business-admin',
@@ -2599,52 +2734,32 @@ function BusinessAdminSettingsWorkspace({
     const definition = getBusinessAdminSettingsSectionDefinition(settingsSection);
     const sectionCapability = definition ? capabilities[definition.key] : null;
     const isVisible = definition ? canAccessBusinessAdminSettingsSection(rawCapabilities, definition.key, 'view') : false;
-    const settingsSectionListRef = useRef(null);
-    const [settingsSectionScrollState, setSettingsSectionScrollState] = useState({
-        canScrollLeft: false,
-        canScrollRight: false
-    });
+    const settingsNavigationRef = useRef(null);
 
-    const updateSettingsSectionScrollState = useCallback(() => {
-        const element = settingsSectionListRef.current;
-        if (!element) return;
-        const maxScrollLeft = Math.max(0, element.scrollWidth - element.clientWidth);
-        setSettingsSectionScrollState({
-            canScrollLeft: element.scrollLeft > 1,
-            canScrollRight: element.scrollLeft < maxScrollLeft - 1
-        });
-    }, []);
+    const confirmSettingsNavigation = (message) => {
+        if (!shouldBlockSettingsNavigation(settingsDirty)) return true;
+        const confirmed = typeof window === 'undefined'
+            || typeof window.confirm !== 'function'
+            || window.confirm(message);
+        if (confirmed) onLeaveSettings?.();
+        return confirmed;
+    };
 
-    const scrollSettingsSections = useCallback((direction) => {
-        const element = settingsSectionListRef.current;
-        if (!element) return;
-        const distance = Math.max(220, Math.round(element.clientWidth * 0.72));
-        element.scrollBy({ left: direction * distance, behavior: 'smooth' });
-    }, []);
+    const handleSectionSelect = (nextSectionKey) => {
+        if (String(nextSectionKey || '') === String(definition?.key || '')) return;
+        if (!confirmSettingsNavigation('You have unsaved settings changes. Change settings section and discard them?')) return;
+        onSelectSection(nextSectionKey);
+    };
 
-    useEffect(() => {
-        const element = settingsSectionListRef.current;
-        if (!element) return undefined;
-        updateSettingsSectionScrollState();
-        element.addEventListener('scroll', updateSettingsSectionScrollState, { passive: true });
-        window.addEventListener('resize', updateSettingsSectionScrollState);
-        const resizeObserver = typeof ResizeObserver === 'function'
-            ? new ResizeObserver(updateSettingsSectionScrollState)
-            : null;
-        resizeObserver?.observe(element);
-        return () => {
-            element.removeEventListener('scroll', updateSettingsSectionScrollState);
-            window.removeEventListener('resize', updateSettingsSectionScrollState);
-            resizeObserver?.disconnect();
-        };
-    }, [updateSettingsSectionScrollState, visibleSections.length]);
+    const handleAdministrativeToolSelect = (toolKey) => {
+        if (!confirmSettingsNavigation('You have unsaved settings changes. Open this administrative tool and discard them?')) return;
+        onOpenAdministrativeTool(toolKey);
+    };
 
-    useEffect(() => {
-        const activeSection = settingsSectionListRef.current?.querySelector('.business-admin-settings-section.active');
-        if (typeof activeSection?.scrollIntoView === 'function') {
-            activeSection.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-        }
-    }, [definition?.key]);
+    const scrollToSettingsNavigation = () => {
+        settingsNavigationRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        settingsNavigationRef.current?.querySelector('input')?.focus({ preventScroll: true });
+    };
 
     const handleBranchChange = (nextBranchId) => {
         if (String(nextBranchId || '') === String(settingsBranchId || '')) return;
@@ -2658,7 +2773,7 @@ function BusinessAdminSettingsWorkspace({
         onBranchChange(nextBranchId);
     };
 
-    if (!visibleSections.length) {
+    if (!visibleSections.length && !administrativeTools.length) {
         return (
             <div className="business-admin-alert error" data-testid="business-admin-settings-denied">
                 <Lock size={17} />
@@ -2671,98 +2786,36 @@ function BusinessAdminSettingsWorkspace({
     }
 
     return (
-        <>
-            <div className="business-admin-settings-workspace">
-                <div className="business-admin-settings-layout">
-                    <section className="business-admin-card business-admin-settings-nav" aria-label="Settings sections">
-                        <div className="business-admin-card-header">
-                            <div>
-                                <div className="business-admin-card-title">Settings sections</div>
-                            </div>
-                        </div>
-                        <div className="business-admin-card-body business-admin-settings-nav-body">
-                            <div className="business-admin-settings-nav-strip">
-                                <button
-                                    type="button"
-                                    className="business-admin-settings-nav-control"
-                                    aria-label="Scroll settings sections left"
-                                    title="Scroll settings sections left"
-                                    onClick={() => scrollSettingsSections(-1)}
-                                    disabled={!settingsSectionScrollState.canScrollLeft}
-                                >
-                                    <ChevronLeft size={17} aria-hidden="true" />
-                                </button>
-                                <div className="business-admin-settings-section-list" ref={settingsSectionListRef}>
-                                    {visibleSections.map((section) => {
-                                        const sectionAccess = capabilities[section.key] || {};
-                                        return (
-                                            <button
-                                                type="button"
-                                                key={section.key}
-                                                className={`business-admin-settings-section ${section.key === definition?.key ? 'active' : ''}`}
-                                                onClick={() => onSelectSection(section.key)}
-                                                aria-current={section.key === definition?.key ? 'page' : undefined}
-                                            >
-                                                <span><strong>{section.label}</strong></span>
-                                                <span className={`business-admin-status ${sectionAccess.edit ? 'available' : ''}`}>
-                                                    {sectionAccess.edit ? 'Edit' : 'View'}
-                                                </span>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                                <button
-                                    type="button"
-                                    className="business-admin-settings-nav-control"
-                                    aria-label="Scroll settings sections right"
-                                    title="Scroll settings sections right"
-                                    onClick={() => scrollSettingsSections(1)}
-                                    disabled={!settingsSectionScrollState.canScrollRight}
-                                >
-                                    <ChevronRight size={17} aria-hidden="true" />
-                                </button>
-                            </div>
-                        </div>
-                    </section>
-                </div>
-                {administrativeTools.length > 0 ? (
-                    <section className="business-admin-card business-admin-settings-admin-tools" data-testid="business-admin-administrative-tools">
-                        <div className="business-admin-card-header">
-                            <div>
-                                <div className="business-admin-card-title">Administrative tools</div>
-                                <div className="business-admin-card-subtitle">Review protected approvals, fiscal evidence, and audit history.</div>
-                            </div>
-                        </div>
-                        <div className="business-admin-card-body grid gap-3 md:grid-cols-3">
-                            {administrativeTools.map((tool) => {
-                                const Icon = tool.icon || Settings;
-                                const showPendingBadge = tool.key === 'approvals'
-                                    && Number.isInteger(pendingApprovalsCount)
-                                    && pendingApprovalsCount > 0;
-                                return (
-                                    <button
-                                        type="button"
-                                        key={tool.key}
-                                        className="business-admin-button justify-between text-left"
-                                        onClick={() => onOpenAdministrativeTool(tool.key)}
-                                        data-testid={`business-admin-admin-tool-${tool.key}`}
-                                    >
-                                        <span className="flex items-center gap-2"><Icon size={16} /> {tool.label}</span>
-                                        {showPendingBadge ? <span className="business-admin-nav-item-badge rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] text-amber-800">{pendingApprovalsCount}</span> : null}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </section>
-                ) : null}
-                <section className="business-admin-card" data-testid="business-admin-settings-section">
+        <div className="business-admin-settings-workspace">
+            <div className="business-admin-settings-layout">
+                <BusinessAdminSettingsNavigation
+                    key={definition?.key || settingsSection}
+                    visibleSections={visibleSections}
+                    sectionCapabilities={capabilities}
+                    administrativeTools={administrativeTools}
+                    pendingApprovalsCount={pendingApprovalsCount}
+                    settingsSection={definition?.key || settingsSection}
+                    onSelectSection={handleSectionSelect}
+                    onOpenAdministrativeTool={handleAdministrativeToolSelect}
+                    navigationRef={settingsNavigationRef}
+                />
+                <section className="business-admin-card business-admin-settings-content" data-testid="business-admin-settings-section">
+                    <button
+                        type="button"
+                        className="business-admin-settings-mobile-back"
+                        onClick={scrollToSettingsNavigation}
+                    >
+                        <ChevronLeft size={15} aria-hidden="true" /> All settings
+                    </button>
                     {!definition || !isVisible ? (
                         <div className="business-admin-card-body">
                             <div className="business-admin-alert error mb-0">
                                 <Lock size={17} />
                                 <div>
-                                    <strong>Settings section unavailable.</strong>
-                                    <div>This section is not enabled for your current Back Office permissions.</div>
+                                    <strong>{visibleSections.length ? 'Settings section unavailable.' : 'General settings access is not assigned.'}</strong>
+                                    <div>{visibleSections.length
+                                        ? 'This section is not enabled for your current Back Office permissions.'
+                                        : 'Choose an authorized administrative tool from the Settings navigation.'}</div>
                                 </div>
                             </div>
                         </div>
@@ -2829,7 +2882,7 @@ function BusinessAdminSettingsWorkspace({
                     )}
                 </section>
             </div>
-        </>
+        </div>
     );
 }
 
@@ -4228,7 +4281,7 @@ export default function BusinessAdminPage() {
             capabilities: bootstrap.access?.capabilities || {},
             settingsCapabilities
         })) return false;
-        if (item.accessKey === 'settings' && visibleSettingsSections.length === 0) return false;
+        if (item.accessKey === 'settings' && visibleSettingsSections.length === 0 && administrativeTools.length === 0) return false;
         const workflowPageName = getBusinessAdminWorkflowPageName(item.accessKey);
         if (!workflowPageName) return true;
         if (!workflowVisibilityReady) return false;

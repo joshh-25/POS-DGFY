@@ -13,12 +13,12 @@ const businessAdminCss = fs.readFileSync(
 describe('Business Admin responsive layout contract', () => {
   it('keeps the settings editor usable through tablet and mobile breakpoints', () => {
     expect(businessAdminCss).toContain('@media (max-width: 900px)');
-    expect(businessAdminCss).toContain('.business-admin-settings-layout { display: grid; grid-template-columns: minmax(0, 1fr);');
-    expect(businessAdminCss).toMatch(/\.business-admin-settings-section-list\s*\{[\s\S]*?display: flex;/);
+    expect(businessAdminCss).toContain('.business-admin-settings-layout { display: grid; grid-template-columns: minmax(220px, 238px) minmax(0, 1fr);');
+    expect(businessAdminCss).toContain('.business-admin-settings-nav-groups { display: grid; gap: 5px; }');
+    expect(businessAdminCss).toContain('.business-admin-settings-nav-item { width: 100%; min-width: 0; min-height: 44px;');
     expect(businessAdminCss).toContain('.business-admin-settings-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }');
-    expect(businessAdminCss).toContain('overflow-x: auto;');
-    expect(businessAdminCss).toContain('scroll-snap-type: x proximity;');
-    expect(businessAdminCss).toContain('.business-admin-settings-nav-control');
+    expect(businessAdminCss).toContain('.business-admin-settings-nav { position: static; }');
+    expect(businessAdminCss).toContain('.business-admin-settings-nav-groups { grid-template-columns: repeat(2, minmax(0, 1fr));');
     expect(businessAdminCss).toContain('.business-admin-settings-workspace { display: grid; gap: 12px; }');
     expect(businessAdminCss).toContain('.business-admin-settings-compact-copy');
     expect(businessAdminCss).toContain('.business-admin-settings-terminal-link');
@@ -26,6 +26,8 @@ describe('Business Admin responsive layout contract', () => {
     expect(businessAdminCss).toContain('.business-admin-settings-editor .business-admin-storefront-save-bar');
     expect(businessAdminCss).toContain('@media (max-width: 680px)');
     expect(businessAdminCss).toContain('.business-admin-shell { display: block; }');
+    expect(businessAdminCss).toContain('.business-admin-settings-nav-groups { grid-template-columns: minmax(0, 1fr); }');
+    expect(businessAdminCss).toContain('.business-admin-settings-mobile-back { display: inline-flex;');
     expect(businessAdminCss).toContain('.business-admin-settings-context-grid { grid-template-columns: 1fr; }');
   });
 
