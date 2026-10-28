@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: pos
 date: 2026-08-18
-last_reviewed: 2026-09-22
+last_reviewed: 2026-10-28
 review_by: 2027-02-18
 applies_to: architecture_decision
 topic: frontend_browser_support_baseline_and_es_compat_guardrail
@@ -359,3 +359,29 @@ to those two is tracked as a follow-up, not done here" — this is that follow-u
 The 2026-09-08 sentence "`apps/dgfy-pos`/`apps/dgfy-storefront` lint remains promotion-leg-only"
 is superseded for develop-PR purposes; the promotion-leg `run_pos_lint`/`run_storefront_lint`
 steps are unchanged.
+
+### 2026-10-28 — POS MapLibre worker compatibility bootstrap and guard (#2919)
+
+Closes the worker-realm gap in Layer 1 and Layer 2 for the POS MapLibre worker, without changing
+the shared picker loading contract or the binding Chrome 80 floor:
+
+- **Layer 1 now reaches the POS MapLibre worker realm.** The POS Vite worker output prepends the
+  exact current `packages/web-core/src/compat/chrome80Runtime.js` source to the MapLibre worker,
+  inside a function scope so its declarations do not collide with worker code. A SHA-256 identity
+  marker brackets the bootstrap, and Rollup applies it before naming the emitted worker asset so a
+  shim change changes the worker URL. The existing `?worker&url` import and `setWorkerUrl` setup in
+  `MapPinPicker.jsx` remain unchanged; Storefront's worker path is unchanged.
+- **Layer 2 now checks the POS worker output.** The POS app build scans worker-named JavaScript
+  chunks and emitted assets for the existing denylist and for the methods already covered by
+  Layer 1. A shim-dependent worker call passes only when the final output contains the current
+  shim's matching identity markers before the worker code. The existing denylist remains active,
+  including for worker output, and worker-only checks do not extend to unrelated main-thread
+  assets.
+- **`structuredClone` remains a review gate for worker use.** The current runtime fallback is
+  partial; a bootstrapped worker that calls it still fails the build until its payload semantics
+  are verified or the shim is extended. The emitted MapLibre worker in this change contains no
+  `structuredClone` call.
+- **Validation boundary:** the production POS build verified that the MapLibre worker is emitted
+  with the bootstrap and a changed content-hashed URL. A Chrome 80 browser or iMin device was not
+  available for runtime verification; that device-level reproduction and map-flow check remains
+  outstanding.
