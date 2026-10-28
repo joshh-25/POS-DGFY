@@ -125,6 +125,60 @@ const configureMockSmtp = () => {
   delete process.env.EMAIL_FROM_NAME;
 };
 
+const renderedEmailStyles = (html) => {
+  const inlineStyles = [...html.matchAll(/\bstyle="([^"]*)"/gi)].map((match) => match[1]);
+  const legacyBackgrounds = [...html.matchAll(/\bbgcolor="([^"]*)"/gi)].map((match) => `bgcolor:${match[1]}`);
+  return [...inlineStyles, ...legacyBackgrounds].join(';').toLowerCase();
+};
+
+const contrastRatio = (foreground, background) => {
+  const luminance = (color) => {
+    const channels = color.match(/[\da-f]{2}/gi).map((channel) => parseInt(channel, 16) / 255);
+    const [red, green, blue] = channels.map((channel) => (
+      channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+    ));
+    return (0.2126 * red) + (0.7152 * green) + (0.0722 * blue);
+  };
+
+  const first = luminance(foreground.replace('#', ''));
+  const second = luminance(background.replace('#', ''));
+  const lighter = Math.max(first, second);
+  const darker = Math.min(first, second);
+  return (lighter + 0.05) / (darker + 0.05);
+};
+
+const brandHeaderContracts = {
+  getInvitationTemplate: ['#1a4e8d', '#ffffff'],
+  getAffiliateInviteTemplate: ['#1a4e8d', '#ffffff'],
+  getWelcomeTemplate: ['#1a4e8d', '#ffffff'],
+  getCashierCredentialTemplate: ['#1a4e8d', '#ffffff'],
+  getCompanyApprovedTemplate: ['#1a4e8d', '#ffffff'],
+  getCompanyRejectedTemplate: ['#1a4e8d', '#ffffff'],
+  getSubscriptionExpiringTemplate: ['#1a4e8d', '#ffffff'],
+  getSubscriptionCancelledTemplate: ['#1a4e8d', '#ffffff'],
+  getPayMongoSetupTemplate: ['#1a4e8d', '#ffffff'],
+  getResubmissionConfirmationTemplate: ['#1a4e8d', '#ffffff'],
+  getStorefrontOrderConfirmationTemplate: ['#1a4e8d', '#ffffff']
+};
+
+const semanticHeaderContracts = {
+  getPaymentFailedTemplate: ['#dc2626', '#ffffff'],
+  getPaymentFailedGracePeriodTemplate: ['#f59e0b', '#0f172a'],
+  getPayMongoSetupExpiredTemplate: ['#dc2626', '#ffffff'],
+  getPlanChangePendingTemplate: ['#2563eb', '#ffffff'],
+  getPlanChangeAppliedTemplate: ['#166534', '#ffffff'],
+  getReactivationRequestTemplate: ['#f59e0b', '#0f172a'],
+  getReactivationApprovedTemplate: ['#166534', '#ffffff']
+};
+
+const buttonBackgrounds = (html) => [...html.matchAll(/<td\b(?=[^>]*\bbgcolor="([^"]+)")([^>]*)>([\s\S]*?)<\/td>/gi)]
+  .filter(([, , , content]) => /<a\b/i.test(content))
+  .map(([, background, attributes, content]) => {
+    const style = content.match(/<a\b[^>]*\bstyle="([^"]*)"/i)?.[1] || '';
+    const foreground = style.match(/(?:^|;)\s*color:\s*([^;]+)/i)?.[1] || '#ffffff';
+    return { background: background.toLowerCase(), foreground: foreground.toLowerCase(), attributes };
+  });
+
 describe('outbound email branding contract', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -152,6 +206,99 @@ describe('outbound email branding contract', () => {
     }
   });
 
+  it('uses solid, accessible palette fallbacks on DGFY and semantic surfaces', () => {
+    for (const [name, fixture] of Object.entries(templateFixtures)) {
+      const html = emailTemplates[name](fixture);
+      const styles = renderedEmailStyles(html);
+      expect(styles).not.toMatch(/linear-gradient|#0d9488|#0891b2/i);
+    }
+
+    for (const [name, [background, foreground]] of Object.entries({
+      ...brandHeaderContracts,
+      ...semanticHeaderContracts
+    })) {
+      const html = emailTemplates[name](templateFixtures[name]);
+      const header = html.match(/<td\b(?=[^>]*\bbgcolor="([^"]+)")[^>]*>([\s\S]*?)<\/td>/i);
+      const backgroundColor = header?.[1].toLowerCase();
+      const headerStyle = header?.[0].match(/\bstyle="([^"]*)"/i)?.[1].toLowerCase() || '';
+      const headerForeground = header?.[2].match(/<h1\b[^>]*\bstyle="[^"]*color:\s*([^;"]+)/i)?.[1].toLowerCase()
+        || headerStyle.match(/(?:^|;)\s*color:\s*([^;]+)/i)?.[1].toLowerCase();
+
+      expect(backgroundColor).toBe(background);
+      expect(headerStyle).toContain(`background-color:${background}`);
+      expect(headerForeground).toBe(foreground);
+      expect(contrastRatio(foreground, background)).toBeGreaterThanOrEqual(4.5);
+    }
+
+    const buttonContracts = {
+      getInvitationTemplate: ['#1a4e8d'],
+      getAffiliateInviteTemplate: ['#1a4e8d'],
+      getWelcomeTemplate: ['#1a4e8d'],
+      getCashierCredentialTemplate: ['#1a4e8d', '#ffffff'],
+      getCompanyApprovedTemplate: ['#1a4e8d'],
+      getCompanyRejectedTemplate: ['#1a4e8d'],
+      getSubscriptionExpiringTemplate: ['#1a4e8d'],
+      getPayMongoSetupTemplate: ['#1a4e8d'],
+      getPlanChangePendingTemplate: ['#1a4e8d'],
+      getReactivationApprovedTemplate: ['#1a4e8d'],
+      getStorefrontOrderConfirmationTemplate: ['#1a4e8d']
+    };
+
+    for (const [name, expectedBackgrounds] of Object.entries(buttonContracts)) {
+      const html = emailTemplates[name](templateFixtures[name]);
+      const buttons = buttonBackgrounds(html);
+      expect(buttons.map(({ background }) => background)).toEqual(expectedBackgrounds);
+
+      for (const button of buttons) {
+        expect(button.attributes.toLowerCase()).toContain(`background-color:${button.background}`);
+        expect(contrastRatio(button.foreground, button.background)).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+
+    const statusSurfaces = {
+      getCompanyApprovedTemplate: '#16a34a',
+      getCompanyRejectedTemplate: '#dc2626',
+      getPaymentFailedTemplate: '#dc2626',
+      getPaymentFailedGracePeriodTemplate: '#f59e0b',
+      getPayMongoSetupExpiredTemplate: '#dc2626',
+      getPlanChangePendingTemplate: '#2563eb',
+      getPlanChangeAppliedTemplate: '#16a34a',
+      getReactivationRequestTemplate: '#f59e0b',
+      getReactivationApprovedTemplate: '#16a34a',
+      getResubmissionConfirmationTemplate: '#2563eb'
+    };
+
+    for (const [name, color] of Object.entries(statusSurfaces)) {
+      expect(renderedEmailStyles(emailTemplates[name](templateFixtures[name]))).toContain(color);
+    }
+
+    const readableSurfaceContracts = [
+      ['getCashierCredentialTemplate', '#aee8f4', '#1a4586'],
+      ['getCompanyApprovedTemplate', '#aee8f4', '#1a4586'],
+      ['getCompanyRejectedTemplate', '#fef2f2', '#7f1d1d'],
+      ['getInvitationTemplate', '#fef3c7', '#92400e'],
+      ['getPlanChangePendingTemplate', '#eff6ff', '#1a4586'],
+      ['getPlanChangeAppliedTemplate', '#f0fdf4', '#166534']
+    ];
+
+    for (const [name, background, foreground] of readableSurfaceContracts) {
+      const styles = renderedEmailStyles(emailTemplates[name](templateFixtures[name]));
+      expect(styles).toContain(background);
+      expect(styles).toContain(foreground);
+      expect(contrastRatio(foreground, background)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('does not mistake tenant-provided color-like text for authored email styling', () => {
+    const html = emailTemplates.getInvitationTemplate({
+      ...templateFixtures.getInvitationTemplate,
+      tenantName: 'North Shop #0d9488'
+    });
+
+    expect(html).toContain('North Shop #0d9488');
+    expect(renderedEmailStyles(html)).not.toContain('#0d9488');
+  });
+
   it('sends every active email-specific wrapper with DGFY fallback and clean subject, HTML, and text', async () => {
     const activeWrapperNames = Object.keys(emailService)
       .filter((name) => /^send[A-Z]/.test(name) && name !== 'sendEmail')
@@ -168,6 +315,14 @@ describe('outbound email branding contract', () => {
       expect(message.from).toBe('"DGFY" <smtp-user@example.test>');
       expect(message.text).toEqual(expect.any(String));
       expect(`${message.subject}\n${message.html}\n${message.text}`).not.toMatch(LEGACY_BRANDING);
+
+      if (message.subject === 'Your DGFY email verification code') {
+        expect(renderedEmailStyles(message.html)).not.toMatch(/(?:color|background(?:-color)?):|bgcolor:/i);
+      }
+
+      if (message.subject.startsWith('Registration received:')) {
+        expect(renderedEmailStyles(message.html)).not.toMatch(/(?:color|background(?:-color)?):|bgcolor:/i);
+      }
     }
 
     const invitation = sendMailMock.mock.calls.find(([message]) => message.subject.startsWith("You've been invited"))[0];
@@ -196,6 +351,8 @@ describe('outbound email branding contract', () => {
 
     const storefront = sendMailMock.mock.calls.find(([message]) => message.subject.startsWith('Order confirmation'))[0];
     expect(storefront.html).toContain('href="https://store.example.test/track?pin=SK-ABC123"');
+    expect(storefront.html).toContain('src="https://cdn.example.test/north-shop.png"');
+    expect(storefront.html).toContain('alt="North Shop"');
     expect(storefront.text).toContain('https://store.example.test/contact');
 
     await emailService.sendAffiliateInviteEmail({
@@ -205,6 +362,8 @@ describe('outbound email branding contract', () => {
     const [newAccountAffiliateInvite] = sendMailMock.mock.calls.at(-1);
     expect(newAccountAffiliateInvite.html).toContain('href="https://store.example.test/register?email=staff%40example.test&amp;aff_invite=affiliate-token');
     expect(newAccountAffiliateInvite.html).toContain('Create your DGFY account');
+    expect(buttonBackgrounds(newAccountAffiliateInvite.html).map(({ background }) => background)).toEqual(['#1a4e8d']);
+    expect(renderedEmailStyles(newAccountAffiliateInvite.html)).not.toMatch(/linear-gradient|#0d9488|#0891b2/i);
   });
 
   it('keeps configured sender identity precedence and explicit DGFY senders', async () => {
