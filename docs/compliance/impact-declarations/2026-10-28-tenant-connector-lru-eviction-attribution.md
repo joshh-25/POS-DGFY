@@ -11,8 +11,8 @@ verification_evidence: focused Jest suites,API JavaScript syntax checks,npm run 
 rollback_note: Revert the fixed caller-label arguments, LRU diagnostic, aggregation utility, and this declaration. One-argument getConnection calls remain compatible; cache sizing, connection selection, API responses, and database schema are unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-28T13:21:08Z
-preflight_request_ref: NOT-EXECUTED-2920-TENANT-CONNECTOR-LRU-EVICTION-ATTRIBUTION
+preflight_run_at: 2026-10-28T13:52:06.083Z
+preflight_request_ref: PREFLIGHT-40698305571-2026-10-28-TENANT-CONNECTOR-LRU-EVICTION-ATTRIBUTION
 ---
 
 # Tenant Connector LRU eviction attribution (#2920)
