@@ -6,7 +6,7 @@ import path from 'path';
 import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../packages/web-core/vite/sentryViteConfig.js';
 import { buildWebCoreRuntimeDepAliases } from '../../packages/web-core/vite/webCoreRuntimeDeps.js';
 import { posOfflinePrecachePlugin } from './vitePosOfflinePrecachePlugin.js';
-import esCompatGuardPlugin from '../../packages/web-core/vite/esCompatGuardPlugin.js';
+import esCompatGuardPlugin, { createMapLibreWorkerBootstrapBanner } from '../../packages/web-core/vite/esCompatGuardPlugin.js';
 import { resolveAppVersion, resolveReleaseFloor, buildStampPlugin } from '../../packages/web-core/vite/buildStampPlugin.js';
 import productionAutoLoginGuard from '../../packages/web-core/vite/productionAutoLoginGuard.js';
 
@@ -15,6 +15,7 @@ const __dirname = path.dirname(__filename);
 // Shared trunk extracted to packages/web-core (issue #322). Alias key is unchanged from
 // before the split -- only its target moved. See docs/architecture/frontend-split-sync.md.
 const webCoreRoot = path.resolve(__dirname, '../../packages/web-core');
+const chrome80RuntimePath = path.resolve(webCoreRoot, 'src/compat/chrome80Runtime.js');
 const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:5000';
 const allowedHosts = true;
 const appSurface = 'pos';
@@ -87,12 +88,26 @@ const proxyTargets = {
 
 export default defineConfig({
   base: './',
-  plugins: [react(), esCompatGuardPlugin(), productionAutoLoginGuard(), posOfflinePrecachePlugin(), buildStampPlugin(appVersion, releaseInfo), ...buildSentryVitePlugins(appSurface)],
+  plugins: [
+    react(),
+    esCompatGuardPlugin({ inspectWorkerOutputs: true, runtimeShimPath: chrome80RuntimePath }),
+    productionAutoLoginGuard(),
+    posOfflinePrecachePlugin(),
+    buildStampPlugin(appVersion, releaseInfo),
+    ...buildSentryVitePlugins(appSurface)
+  ],
   // `config.plugins` above only applies to workers in dev -- Vite 6 requires `worker.plugins`
   // separately for the production worker build, or the ADR 0067 Layer 2 guardrail silently
   // stops covering any module Worker's bundled output (epic #265, Phase 296).
   worker: {
     plugins: () => [esCompatGuardPlugin()],
+    rollupOptions: {
+      // Rollup applies this banner to the worker output before naming the
+      // emitted asset, so the content hash changes with the compatibility shim.
+      output: {
+        banner: createMapLibreWorkerBootstrapBanner(chrome80RuntimePath)
+      }
+    }
   },
   define: {
     'import.meta.env.VITE_APP_SURFACE': JSON.stringify('pos'),
