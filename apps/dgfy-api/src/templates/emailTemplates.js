@@ -41,6 +41,30 @@ const escapeHtml = (value) => String(value ?? '')
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&#39;');
 
+const DGFY_OCEAN_BLUE = '#1A4E8D';
+const DGFY_DEEP_BLUE = '#1A4586';
+const DGFY_ICE_BLUE = '#AEE8F4';
+const EMAIL_SEMANTIC_COLORS = Object.freeze({
+  success: '#16A34A',
+  warning: '#F59E0B',
+  error: '#DC2626',
+  information: '#2563EB'
+});
+
+const renderEmailButton = ({
+  href,
+  label,
+  backgroundColor = DGFY_OCEAN_BLUE,
+  textColor = '#ffffff',
+  padding = '14px 40px',
+  fontSize = 16,
+  borderColor = null
+}) => {
+  const border = borderColor ? `border:1px solid ${borderColor};` : '';
+
+  return `<table role="presentation" align="center" border="0" cellspacing="0" cellpadding="0"><tr><td align="center" bgcolor="${backgroundColor}" style="background-color:${backgroundColor};background:${backgroundColor};border-radius:8px;${border}"><a href="${href}" style="display:inline-block;background-color:${backgroundColor};background:${backgroundColor};color:${textColor};text-decoration:none;padding:${padding};border-radius:8px;${border}font-weight:600;font-size:${fontSize}px;">${label}</a></td></tr></table>`;
+};
+
 export const getInvitationTemplate = ({ inviterName, role, invitationToken, tenantName, expiresIn, appUrl }) => {
   const inviteQuery = new URLSearchParams({
     token: invitationToken
@@ -76,7 +100,7 @@ export const getInvitationTemplate = ({ inviterName, role, invitationToken, tena
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%;">
           <!-- Header -->
           <tr>
-            <td style="background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); padding: 30px 40px; border-radius: 12px 12px 0 0; text-align: center;">
+            <td bgcolor="#1A4E8D" style="background-color:#1A4E8D;background:#1A4E8D;padding:30px 40px;border-radius:12px 12px 0 0;text-align:center;">
               <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">
                 DGFY
               </h1>
@@ -88,8 +112,8 @@ export const getInvitationTemplate = ({ inviterName, role, invitationToken, tena
             <td style="background-color: #ffffff; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
               <!-- Icon -->
               <div style="text-align: center; margin-bottom: 24px;">
-                <div style="display: inline-block; background-color: #e0f7fa; border-radius: 50%; padding: 16px;">
-                  <span style="font-size: 32px;">&#9993;</span>
+                <div style="display: inline-block; background-color: ${DGFY_ICE_BLUE}; border-radius: 50%; padding: 16px;">
+                  <span style="color:${DGFY_DEEP_BLUE};font-size: 32px;">&#9993;</span>
                 </div>
               </div>
 
@@ -118,9 +142,7 @@ export const getInvitationTemplate = ({ inviterName, role, invitationToken, tena
 
               <!-- CTA Button -->
               <div style="text-align: center; margin-bottom: 32px;">
-                <a href="${safeInviteUrl}" style="display: inline-block; background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 14px rgba(13, 148, 136, 0.4);">
-                  Accept Invitation
-                </a>
+                ${renderEmailButton({ href: safeInviteUrl, label: 'Accept Invitation' })}
               </div>
 
               <!-- Expiry Notice -->
@@ -133,7 +155,7 @@ export const getInvitationTemplate = ({ inviterName, role, invitationToken, tena
               <!-- Alternative Link -->
               <p style="margin: 0; color: #9ca3af; font-size: 12px; text-align: center; word-break: break-all;">
                 If the button doesn't work, copy and paste this link into your browser:<br>
-                <a href="${safeInviteUrl}" style="color: #0891b2;">${safeInviteUrl}</a>
+                <a href="${safeInviteUrl}" style="color:#1A4E8D;">${safeInviteUrl}</a>
               </p>
             </td>
           </tr>
@@ -223,7 +245,7 @@ export const getAffiliateInviteTemplate = ({
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%;">
           <!-- Header -->
           <tr>
-            <td style="background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); padding: 30px 40px; border-radius: 12px 12px 0 0; text-align: center;">
+            <td bgcolor="#1A4E8D" style="background-color:#1A4E8D;background:#1A4E8D;padding:30px 40px;border-radius:12px 12px 0 0;text-align:center;">
               <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">
                 DGFY
               </h1>
@@ -235,8 +257,8 @@ export const getAffiliateInviteTemplate = ({
             <td style="background-color: #ffffff; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
               <!-- Icon -->
               <div style="text-align: center; margin-bottom: 24px;">
-                <div style="display: inline-block; background-color: #e0f7fa; border-radius: 50%; padding: 16px;">
-                  <span style="font-size: 32px;">&#128176;</span>
+                <div style="display: inline-block; background-color: ${DGFY_ICE_BLUE}; border-radius: 50%; padding: 16px;">
+                  <span style="color:${DGFY_DEEP_BLUE};font-size: 32px;">&#128176;</span>
                 </div>
               </div>
 
@@ -257,9 +279,7 @@ export const getAffiliateInviteTemplate = ({
 
               <!-- CTA Button -->
               <div style="text-align: center; margin-bottom: 32px;">
-                <a href="${safeInviteUrl}" style="display: inline-block; background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 14px rgba(13, 148, 136, 0.4);">
-                  ${ctaLabel}
-                </a>
+                ${renderEmailButton({ href: safeInviteUrl, label: ctaLabel })}
               </div>
 
               <!-- Expiry Notice -->
@@ -272,7 +292,7 @@ export const getAffiliateInviteTemplate = ({
               <!-- Alternative Link -->
               <p style="margin: 0; color: #9ca3af; font-size: 12px; text-align: center; word-break: break-all;">
                 If the button doesn't work, copy and paste this link into your browser:<br>
-                <a href="${safeInviteUrl}" style="color: #0891b2;">${safeInviteUrl}</a>
+                <a href="${safeInviteUrl}" style="color:#1A4E8D;">${safeInviteUrl}</a>
               </p>
             </td>
           </tr>
@@ -329,7 +349,7 @@ export const getWelcomeTemplate = ({ username, role, tenantName, appUrl }) => {
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%;">
           <!-- Header -->
           <tr>
-            <td style="background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); padding: 30px 40px; border-radius: 12px 12px 0 0; text-align: center;">
+            <td bgcolor="#1A4E8D" style="background-color:#1A4E8D;background:#1A4E8D;padding:30px 40px;border-radius:12px 12px 0 0;text-align:center;">
               <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">
                 Welcome to ${safeTenantName}!
               </h1>
@@ -352,9 +372,7 @@ export const getWelcomeTemplate = ({ username, role, tenantName, appUrl }) => {
               </p>
 
               <div style="text-align: center;">
-                <a href="${safeLoginUrl}" style="display: inline-block; background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 600; font-size: 16px;">
-                  Go to Login
-                </a>
+                ${renderEmailButton({ href: safeLoginUrl, label: 'Go to Login' })}
               </div>
             </td>
           </tr>
@@ -407,7 +425,7 @@ export const getCashierCredentialTemplate = ({
       <td align="center" style="padding:40px 20px;">
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width:600px;width:100%;">
           <tr>
-            <td style="background:linear-gradient(135deg,#1A4E8D 0%,#2563EB 100%);padding:30px 40px;border-radius:12px 12px 0 0;text-align:center;">
+            <td bgcolor="#1A4E8D" style="background-color:#1A4E8D;background:#1A4E8D;padding:30px 40px;border-radius:12px 12px 0 0;text-align:center;">
               <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">Cashier Login Details</h1>
             </td>
           </tr>
@@ -416,21 +434,17 @@ export const getCashierCredentialTemplate = ({
               <p style="margin:0 0 16px;color:#1f2937;font-size:16px;">
                 Your cashier access for <strong>${safeTenantName}</strong> is ready.
               </p>
-              <div style="background-color:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:16px 18px;margin-bottom:20px;">
-                <p style="margin:0 0 8px;color:#1e3a8a;font-size:14px;"><strong>Cashier Gmail:</strong> ${safeCashierEmail}</p>
-                <p style="margin:0 0 8px;color:#1e3a8a;font-size:14px;"><strong>Temporary Password:</strong> ${safeTemporaryPassword}</p>
-                <p style="margin:0 0 8px;color:#1e3a8a;font-size:14px;"><strong>Terminal:</strong> ${safeTerminalLabel}</p>
-                <p style="margin:0;color:#1e3a8a;font-size:14px;"><strong>Store:</strong> ${safeStoreName}</p>
+              <div style="background-color:${DGFY_ICE_BLUE};border:1px solid ${DGFY_DEEP_BLUE};border-radius:12px;padding:16px 18px;margin-bottom:20px;">
+                <p style="margin:0 0 8px;color:${DGFY_DEEP_BLUE};font-size:14px;"><strong>Cashier Gmail:</strong> ${safeCashierEmail}</p>
+                <p style="margin:0 0 8px;color:${DGFY_DEEP_BLUE};font-size:14px;"><strong>Temporary Password:</strong> ${safeTemporaryPassword}</p>
+                <p style="margin:0 0 8px;color:${DGFY_DEEP_BLUE};font-size:14px;"><strong>Terminal:</strong> ${safeTerminalLabel}</p>
+                <p style="margin:0;color:${DGFY_DEEP_BLUE};font-size:14px;"><strong>Store:</strong> ${safeStoreName}</p>
               </div>
               <div style="text-align:center;margin:24px 0;">
-                <a href="${safeLoginUrl}" style="display:inline-block;background:linear-gradient(135deg,#1A4E8D 0%,#2563EB 100%);color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-weight:700;font-size:16px;">
-                  Open Login
-                </a>
+                ${renderEmailButton({ href: safeLoginUrl, label: 'Open Login', padding: '14px 36px', fontSize: 16 })}
               </div>
               <div style="text-align:center;margin:0 0 24px;">
-                <a href="${safeResetPasswordUrl}" style="display:inline-block;background:#ffffff;color:#1A4E8D;text-decoration:none;padding:12px 28px;border-radius:8px;border:1px solid #bfdbfe;font-weight:700;font-size:14px;">
-                  Reset Password
-                </a>
+                ${renderEmailButton({ href: safeResetPasswordUrl, label: 'Reset Password', backgroundColor: '#ffffff', textColor: DGFY_OCEAN_BLUE, padding: '12px 28px', fontSize: 14, borderColor: DGFY_OCEAN_BLUE })}
               </div>
               <div style="background-color:#f8fafc;border-left:4px solid #2563eb;padding:14px 16px;border-radius:0 8px 8px 0;margin-bottom:16px;">
                 <p style="margin:0;color:#334155;font-size:14px;">
@@ -464,14 +478,14 @@ export const getCompanyApprovedTemplate = ({ companyName, adminEmail, appUrl, st
   const safeContinueUrl = escapeHtml(continueUrl || '');
   const safeStatusUrl = escapeHtml(statusUrl || '');
   const onboardingSection = posUrl ? `
-              <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
-                <h3 style="margin: 0 0 12px; color: #1d4ed8; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
+              <div style="background-color: ${DGFY_ICE_BLUE}; border: 1px solid ${EMAIL_SEMANTIC_COLORS.information}; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+                <h3 style="margin: 0 0 12px; color: ${DGFY_DEEP_BLUE}; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
                   Next step: POS onboarding
                 </h3>
-                <p style="margin: 0 0 12px; color: #1e3a8a; font-size: 14px;">
+                <p style="margin: 0 0 12px; color: ${DGFY_DEEP_BLUE}; font-size: 14px;">
                   Open POS onboarding to finish your business setup. You can add items and categories now; selling and storefront visibility remain disabled until DGFY Admin enables them.
                 </p>
-                ${statusUrl ? `<p style="margin: 0; color: #1e3a8a; font-size: 13px;"><a href="${safeStatusUrl}" style="color: #1d4ed8;">View registration status</a></p>` : ''}
+                ${statusUrl ? `<p style="margin: 0; color: ${DGFY_DEEP_BLUE}; font-size: 13px;"><a href="${safeStatusUrl}" style="color:${DGFY_OCEAN_BLUE};">View registration status</a></p>` : ''}
               </div>
   ` : '';
 
@@ -490,7 +504,7 @@ export const getCompanyApprovedTemplate = ({ companyName, adminEmail, appUrl, st
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%;">
           <!-- Header -->
           <tr>
-            <td style="background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); padding: 30px 40px; border-radius: 12px 12px 0 0; text-align: center;">
+            <td bgcolor="#1A4E8D" style="background-color:#1A4E8D;background:#1A4E8D;padding:30px 40px;border-radius:12px 12px 0 0;text-align:center;">
               <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">
                 DGFY
               </h1>
@@ -502,8 +516,8 @@ export const getCompanyApprovedTemplate = ({ companyName, adminEmail, appUrl, st
             <td style="background-color: #ffffff; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
               <!-- Success Icon -->
               <div style="text-align: center; margin-bottom: 24px;">
-                <div style="display: inline-block; background-color: #d1fae5; border-radius: 50%; padding: 16px;">
-                  <span style="font-size: 32px;">&#10003;</span>
+                <div style="display: inline-block; background-color: #d1fae5; border:1px solid ${EMAIL_SEMANTIC_COLORS.success}; border-radius: 50%; padding: 16px;">
+                  <span style="color:#166534;font-size: 32px;">&#10003;</span>
                 </div>
               </div>
 
@@ -518,8 +532,8 @@ export const getCompanyApprovedTemplate = ({ companyName, adminEmail, appUrl, st
               </p>
 
               <!-- Account Access Box -->
-              <div style="background-color: #f0fdfa; border: 1px solid #99f6e4; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
-                <h3 style="margin: 0 0 12px; color: #0f766e; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
+              <div style="background-color: ${DGFY_ICE_BLUE}; border: 1px solid ${DGFY_DEEP_BLUE}; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+                <h3 style="margin: 0 0 12px; color: ${DGFY_DEEP_BLUE}; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
                   Account Access
                 </h3>
                 <table style="width: 100%; border-collapse: collapse;">
@@ -534,9 +548,7 @@ export const getCompanyApprovedTemplate = ({ companyName, adminEmail, appUrl, st
 
               <!-- CTA Button -->
               <div style="text-align: center; margin-bottom: 24px;">
-                <a href="${safeContinueUrl}" style="display: inline-block; background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 14px rgba(13, 148, 136, 0.4);">
-                  ${posUrl ? 'Open POS onboarding' : 'View company status'}
-                </a>
+                ${renderEmailButton({ href: safeContinueUrl, label: posUrl ? 'Open POS onboarding' : 'View company status' })}
               </div>
 
             </td>
@@ -573,7 +585,7 @@ export const getCompanyRejectedTemplate = ({ companyName, rejectionReason, statu
   const reasonSection = rejectionReason ? `
               <!-- Reason Box -->
               <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
-                <h3 style="margin: 0 0 12px; color: #991b1b; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
+                <h3 style="margin: 0 0 12px; color: #DC2626; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
                   Reason
                 </h3>
                 <p style="margin: 0; color: #7f1d1d; font-size: 14px;">
@@ -597,7 +609,7 @@ export const getCompanyRejectedTemplate = ({ companyName, rejectionReason, statu
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%;">
           <!-- Header -->
           <tr>
-            <td style="background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); padding: 30px 40px; border-radius: 12px 12px 0 0; text-align: center;">
+            <td bgcolor="#1A4E8D" style="background-color:#1A4E8D;background:#1A4E8D;padding:30px 40px;border-radius:12px 12px 0 0;text-align:center;">
               <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">
                 DGFY
               </h1>
@@ -633,9 +645,7 @@ ${reasonSection}
 
               <!-- CTA Button -->
               <div style="text-align: center; margin-bottom: 24px;">
-                <a href="${correctionUrl}" style="display: inline-block; background-color: #6b7280; color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 8px; font-weight: 600; font-size: 14px;">
-                  Correct and resubmit
-                </a>
+                ${renderEmailButton({ href: correctionUrl, label: 'Correct and resubmit', padding: '12px 32px', fontSize: 14 })}
               </div>
 
               <!-- Contact Info -->
@@ -688,7 +698,7 @@ export const getSubscriptionExpiringTemplate = ({ companyName, expiryDate, appUr
       <td align="center" style="padding: 40px 20px;">
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%;">
           <tr>
-            <td style="background: #0f172a; padding: 30px 40px; border-radius: 12px 12px 0 0; text-align: center;">
+            <td bgcolor="#1A4E8D" style="background-color:#1A4E8D;background:#1A4E8D;padding:30px 40px;border-radius:12px 12px 0 0;text-align:center;">
               <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">DGFY</h1>
             </td>
           </tr>
@@ -702,9 +712,7 @@ export const getSubscriptionExpiringTemplate = ({ companyName, expiryDate, appUr
                 To ensure uninterrupted access to AI features and premium tools, please ensure your payment method is up to date or renew your subscription.
               </p>
               <div style="text-align: center; margin-bottom: 24px;">
-                <a href="${upgradeUrl}" style="display: inline-block; background: #0f172a; color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 600; font-size: 16px;">
-                  Manage Subscription
-                </a>
+                ${renderEmailButton({ href: upgradeUrl, label: 'Manage Subscription' })}
               </div>
             </td>
           </tr>
@@ -733,7 +741,7 @@ export const getSubscriptionCancelledTemplate = ({ companyName, downgradeDate })
       <td align="center" style="padding: 40px 20px;">
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%;">
           <tr>
-            <td style="background: #334155; padding: 30px 40px; border-radius: 12px 12px 0 0; text-align: center;">
+            <td bgcolor="#1A4E8D" style="background-color:#1A4E8D;background:#1A4E8D;padding:30px 40px;border-radius:12px 12px 0 0;text-align:center;">
               <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">DGFY</h1>
             </td>
           </tr>
@@ -773,13 +781,13 @@ export const getPaymentFailedTemplate = ({ companyName, retryDate }) => {
       <td align="center" style="padding: 40px 20px;">
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%;">
           <tr>
-            <td style="background: #991b1b; padding: 30px 40px; border-radius: 12px 12px 0 0; text-align: center;">
+            <td bgcolor="#DC2626" style="background-color:#DC2626;background:#DC2626;padding:30px 40px;border-radius:12px 12px 0 0;text-align:center;">
               <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">DGFY</h1>
             </td>
           </tr>
           <tr>
             <td style="background-color: #ffffff; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-              <h2 style="margin: 0 0 16px; color: #b91c1c; font-size: 22px;">Important: Payment Failed</h2>
+              <h2 style="margin: 0 0 16px; color: #DC2626; font-size: 22px;">Important: Payment Failed</h2>
               <p style="margin: 0 0 24px; color: #4b5563; font-size: 16px;">
                 We were unable to process the latest payment for your <strong>${companyName}</strong> subscription.
               </p>
@@ -811,8 +819,8 @@ export const getPaymentFailedGracePeriodTemplate = ({ companyName, gracePeriodEn
       <td align="center" style="padding: 40px 20px;">
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%;">
           <tr>
-            <td style="background: #f59e0b; padding: 30px 40px; border-radius: 12px 12px 0 0; text-align: center;">
-              <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">DGFY</h1>
+            <td bgcolor="#F59E0B" style="background-color:#F59E0B;background:#F59E0B;padding:30px 40px;border-radius:12px 12px 0 0;text-align:center;">
+              <h1 style="margin: 0; color: #0F172A; font-size: 24px; font-weight: 600;">DGFY</h1>
             </td>
           </tr>
           <tr>
@@ -841,7 +849,7 @@ export const getPaymentFailedGracePeriodTemplate = ({ companyName, gracePeriodEn
 
 // ─── Subscription Lifecycle Templates (Phase 2) ──────────────────────────────
 
-const emailWrap = (headerBg, headerText, bodyContent) => `
+const emailWrap = (headerBg, headerText, bodyContent, headerTextColor = '#ffffff') => `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -854,9 +862,9 @@ const emailWrap = (headerBg, headerText, bodyContent) => `
       <td align="center" style="padding:40px 20px;">
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width:600px;width:100%;">
           <tr>
-            <td style="background:${headerBg};padding:30px 40px;border-radius:12px 12px 0 0;text-align:center;">
-              <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:600;">DGFY</h1>
-              ${headerText ? `<p style="margin:8px 0 0;color:rgba(255,255,255,0.85);font-size:14px;">${headerText}</p>` : ''}
+            <td bgcolor="${headerBg}" style="background-color:${headerBg};background:${headerBg};padding:30px 40px;border-radius:12px 12px 0 0;text-align:center;">
+              <h1 style="margin:0;color:${headerTextColor};font-size:24px;font-weight:600;">DGFY</h1>
+              ${headerText ? `<p style="margin:8px 0 0;color:${headerTextColor};font-size:14px;">${headerText}</p>` : ''}
             </td>
           </tr>
           <tr>
@@ -933,27 +941,25 @@ export const getPayMongoSetupTemplate = ({ companyName, checkoutLink, expiresAt,
       Click the button below to complete your recurring payment setup on PayMongo.
     </p>
     <div style="text-align:center;margin-bottom:24px;">
-      <a href="${checkoutLink}" style="display:inline-block;background:linear-gradient(135deg,#0d9488 0%,#0891b2 100%);color:#ffffff;text-decoration:none;padding:14px 40px;border-radius:8px;font-weight:600;font-size:16px;">
-        Set Up on PayMongo
-      </a>
+      ${renderEmailButton({ href: checkoutLink, label: 'Set Up on PayMongo' })}
     </div>
     <div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:12px 16px;border-radius:0 8px 8px 0;">
       <p style="margin:0;color:#92400e;font-size:13px;">This link expires in 72 hours. If it has expired, please contact your administrator.</p>
     </div>`;
-  return emailWrap('linear-gradient(135deg, #0d9488 0%, #0891b2 100%)', 'Billing Setup', body);
+  return emailWrap(DGFY_OCEAN_BLUE, 'Billing Setup', body);
 };
 
 /** Admin notified when PayMongo setup link expired */
 export const getPayMongoSetupExpiredTemplate = ({ companyName }) => {
   const body = `
-    <h2 style="margin:0 0 16px;color:#b91c1c;font-size:22px;">PayMongo Setup Link Expired</h2>
+    <h2 style="margin:0 0 16px;color:${EMAIL_SEMANTIC_COLORS.error};font-size:22px;">PayMongo Setup Link Expired</h2>
     <p style="margin:0 0 16px;color:#4b5563;font-size:16px;">
       The PayMongo recurring billing setup link you sent to <strong>${companyName}</strong> has expired without being completed.
     </p>
     <p style="margin:0 0 24px;color:#4b5563;font-size:16px;">
       You can re-initiate the setup from the admin panel on the tenant's detail page.
     </p>`;
-  return emailWrap('#991b1b', 'Setup Expired', body);
+  return emailWrap(EMAIL_SEMANTIC_COLORS.error, 'Setup Expired', body);
 };
 
 /** Plan change queued (pending user re-consent on PayPal) - DISABLED, updating for PayMongo */
@@ -963,19 +969,17 @@ export const getPlanChangePendingTemplate = ({ companyName, currentPlan, newPlan
     <p style="margin:0 0 16px;color:#4b5563;font-size:16px;">
       A plan change has been initiated for <strong>${companyName}</strong>.
     </p>
-    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin-bottom:24px;">
-      <p style="margin:0;color:#1d4ed8;font-size:14px;"><strong>Current plan:</strong> ${currentPlan}</p>
-      <p style="margin:4px 0 0;color:#1d4ed8;font-size:14px;"><strong>New plan:</strong> ${newPlan}</p>
+    <div style="background:#eff6ff;border:1px solid ${EMAIL_SEMANTIC_COLORS.information};border-radius:8px;padding:16px;margin-bottom:24px;">
+      <p style="margin:0;color:#1A4586;font-size:14px;"><strong>Current plan:</strong> ${currentPlan}</p>
+      <p style="margin:4px 0 0;color:#1A4586;font-size:14px;"><strong>New plan:</strong> ${newPlan}</p>
     </div>
     <p style="margin:0 0 24px;color:#4b5563;font-size:16px;">
       Please approve this change through your payment provider. The new pricing will take effect on your next billing cycle.
     </p>
     ${approvalUrl ? `<div style="text-align:center;margin-bottom:16px;">
-      <a href="${approvalUrl}" style="display:inline-block;background:#1d4ed8;color:#ffffff;text-decoration:none;padding:14px 40px;border-radius:8px;font-weight:600;font-size:16px;">
-        Approve Change
-      </a>
+      ${renderEmailButton({ href: approvalUrl, label: 'Approve Change' })}
     </div>` : ''}`;
-  return emailWrap('#1d4ed8', 'Plan Change', body);
+  return emailWrap(EMAIL_SEMANTIC_COLORS.information, 'Plan Change', body);
 };
 
 /** Plan change successfully applied */
@@ -985,7 +989,7 @@ export const getPlanChangeAppliedTemplate = ({ companyName, oldPlan, newPlan }) 
     <p style="margin:0 0 16px;color:#4b5563;font-size:16px;">
       The plan for <strong>${companyName}</strong> has been successfully changed.
     </p>
-    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:16px;margin-bottom:24px;">
+    <div style="background:#f0fdf4;border:1px solid ${EMAIL_SEMANTIC_COLORS.success};border-radius:8px;padding:16px;margin-bottom:24px;">
       <p style="margin:0;color:#166534;font-size:14px;"><strong>Previous plan:</strong> ${oldPlan}</p>
       <p style="margin:4px 0 0;color:#166534;font-size:14px;"><strong>New plan:</strong> ${newPlan}</p>
     </div>
@@ -1000,13 +1004,13 @@ export const getReactivationRequestTemplate = ({ companyName, requestedAt }) => 
     <p style="margin:0 0 16px;color:#4b5563;font-size:16px;">
       <strong>${companyName}</strong> has submitted a reactivation request.
     </p>
-    <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:16px;margin-bottom:24px;">
+    <div style="background:#fef3c7;border:1px solid ${EMAIL_SEMANTIC_COLORS.warning};border-radius:8px;padding:16px;margin-bottom:24px;">
       <p style="margin:0;color:#92400e;font-size:14px;"><strong>Requested at:</strong> ${requestedAt}</p>
     </div>
     <p style="margin:0;color:#4b5563;font-size:16px;">
       Please review this request in the admin panel and approve after confirming payment.
     </p>`;
-  return emailWrap('#d97706', 'Reactivation Request', body);
+  return emailWrap(EMAIL_SEMANTIC_COLORS.warning, 'Reactivation Request', body, '#0F172A');
 };
 
 /** Sent to the user when admin approves their reactivation */
@@ -1016,17 +1020,15 @@ export const getReactivationApprovedTemplate = ({ companyName, companyToken, log
     <p style="margin:0 0 16px;color:#4b5563;font-size:16px;">
       Great news! Your <strong>${companyName}</strong> account is now active again.
     </p>
-    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:16px;margin-bottom:24px;">
+    <div style="background:#f0fdf4;border:1px solid ${EMAIL_SEMANTIC_COLORS.success};border-radius:8px;padding:16px;margin-bottom:24px;">
       <p style="margin:0;color:#166534;font-size:13px;">Your company token:</p>
       <p style="margin:4px 0 0;color:#166534;font-size:18px;font-weight:700;letter-spacing:1px;">${companyToken}</p>
     </div>
     <p style="margin:0 0 24px;color:#4b5563;font-size:16px;">All your existing data is intact. Log in to continue where you left off.</p>
     <div style="text-align:center;">
-      <a href="${loginUrl}" style="display:inline-block;background:linear-gradient(135deg,#0d9488 0%,#0891b2 100%);color:#ffffff;text-decoration:none;padding:14px 40px;border-radius:8px;font-weight:600;font-size:16px;">
-        Log In Now
-      </a>
+      ${renderEmailButton({ href: loginUrl, label: 'Log In Now' })}
     </div>`;
-  return emailWrap('linear-gradient(135deg, #0d9488 0%, #0891b2 100%)', 'Account Reactivated', body);
+  return emailWrap('#166534', 'Account Reactivated', body);
 };
 
 /** Sent to user when their rejected registration is re-submitted */
@@ -1039,10 +1041,10 @@ export const getResubmissionConfirmationTemplate = ({ companyName }) => {
     <p style="margin:0 0 24px;color:#4b5563;font-size:16px;">
       You will receive an email once our team has reviewed your request. This typically takes 1–2 business days.
     </p>
-    <div style="background:#eff6ff;border-left:4px solid #3b82f6;padding:12px 16px;border-radius:0 8px 8px 0;">
-      <p style="margin:0;color:#1d4ed8;font-size:13px;">If you have any questions, please contact our support team.</p>
+    <div style="background:#eff6ff;border-left:4px solid ${EMAIL_SEMANTIC_COLORS.information};padding:12px 16px;border-radius:0 8px 8px 0;">
+      <p style="margin:0;color:#1A4586;font-size:13px;">If you have any questions, please contact our support team.</p>
     </div>`;
-  return emailWrap('linear-gradient(135deg, #0d9488 0%, #0891b2 100%)', 'Registration Re-submitted', body);
+  return emailWrap(DGFY_OCEAN_BLUE, 'Registration Re-submitted', body);
 };
 
 const formatOrderConfirmationLabel = (value) => String(value || '')

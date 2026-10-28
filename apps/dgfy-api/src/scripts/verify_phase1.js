@@ -46,7 +46,7 @@ async function verifyInfrastructure() {
         console.log('--- Testing TenantConnector ---');
 
         const start = Date.now();
-        const tenantDb = await tenantConnector.getConnection(tenant);
+        const tenantDb = await tenantConnector.getConnection(tenant, 'script.verify-phase1');
         const duration = Date.now() - start;
         console.log(`✅ Connection 1 (New): ${duration}ms`);
 
@@ -56,7 +56,7 @@ async function verifyInfrastructure() {
 
         // 4. Test Caching
         const start2 = Date.now();
-        await tenantConnector.getConnection(tenant);
+        await tenantConnector.getConnection(tenant, 'script.verify-phase1');
         const duration2 = Date.now() - start2;
         console.log(`✅ Connection 2 (Cached): ${duration2}ms`);
 

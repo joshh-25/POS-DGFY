@@ -13,6 +13,7 @@ import {
   fetchAffiliateInvitePreview,
   fetchDgfyLegalTerms,
   fetchDgfyMe,
+  getStoredDgfyAccount,
   getStoredDgfyToken,
   hasDgfyExplicitSignOut,
   loginDgfyAccount,
@@ -797,21 +798,23 @@ export default function StorefrontAuthPage({ initialMode }) {
     setIsLoading(true);
     try {
       if (legacyVerificationToken && typeof verifyDgfyEmail === 'function') {
-        await verifyDgfyEmail(verifyCode.trim());
-        toast.success('Account created successfully. Please sign in to continue.');
-        clearDgfySession();
+        const verification = await verifyDgfyEmail(verifyCode.trim());
+        toast.success('Account created successfully. Opening your DGFY account...');
         setVerificationState({
           requestStatus: 'verified',
           guidance: '',
           errorCode: ''
         });
-        setLegacyVerificationToken('');
-        goToSignIn(authForm.email);
+        await handleAuthSuccess({
+          ...(verification || {}),
+          token: legacyVerificationToken,
+          account: verification?.account || getStoredDgfyAccount()
+        });
         return;
       }
       const normalizedPhoneDigits = normalizePhPhoneDigits(authForm.phone);
       const normalizedPhoneNumber = `${DGFY_PHONE_COUNTRIES[0].dialCode}${normalizedPhoneDigits}`;
-      await registerDgfyAccount({
+      const session = await registerDgfyAccount({
         first_name: authForm.firstName,
         middle_name: authForm.middleName,
         last_name: authForm.lastName,
@@ -826,14 +829,13 @@ export default function StorefrontAuthPage({ initialMode }) {
         marketplace_terms_version: accountLegalSnapshot.marketplace_terms_version,
         ...(oidcInteractionId ? { oidc_interaction_id: oidcInteractionId } : {})
       });
-      toast.success('Account created successfully. Please sign in to continue.');
-      clearDgfySession();
+      toast.success('Account created successfully. Opening your DGFY account...');
       setVerificationState({
         requestStatus: 'verified',
         guidance: '',
         errorCode: ''
       });
-      goToSignIn(authForm.email);
+      await handleAuthSuccess(session);
     } catch (requestError) {
       const { code, message } = extractRequestErrorDetails(requestError);
       setVerificationState({

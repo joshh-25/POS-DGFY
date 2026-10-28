@@ -137,7 +137,7 @@ async function run() {
 
         for (const tenant of tenants) {
             try {
-                const sequelizeInstance = await tenantConnector.getConnection(tenant);
+                const sequelizeInstance = await tenantConnector.getConnection(tenant, 'script.calculate-nesting-levels');
                 const tenantModels = getTenantModels(sequelizeInstance);
                 await processTenant(tenant.id, tenant.name, tenantModels);
             } catch (err) {

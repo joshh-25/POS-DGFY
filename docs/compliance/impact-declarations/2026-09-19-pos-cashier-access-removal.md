@@ -1,15 +1,15 @@
 ---
 status: draft_pr
 owner: DGFY POS/settings
-last_reviewed: 2026-09-19
+last_reviewed: 2026-10-28
 related_adr: docs/architecture/adr/0071-frontend-split-into-three-apps.md
 declaration_id: 2026-09-19-pos-cashier-access-removal
 classification: major
-surfaces: pos,terminal
+surfaces: pos,terminal,settings
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.19
-verification_evidence: focused_POS_settings_contract_tests,npm_run_build_pos,git_diff_check
-rollback_note: Revert the POS cashier-access settings changes and this declaration; the existing server-side user removal contract and historical records remain unchanged.
+verification_evidence: focused_POS_settings_contract_tests,PosSettingsWorkspace_behavior_test,userService_dgfySync_tests,npm_run_build_pos,git_diff_check
+rollback_note: Revert the POS cashier-access settings changes, landlord membership synchronization, dry-run repair utility, and this declaration; the existing tenant-local user removal contract and historical records remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-09-26T08:42:50.557Z
@@ -40,7 +40,13 @@ and permission checks as the authority.
    sales, shifts, and attendance records are retained.
 4. No database schema, migration, payment, fiscal, or credential authority
    changes are included.
-5. This is local implementation evidence only; no production deployment or
+5. Removing a tenant user marks matching pending or accepted landlord membership
+   rows as removed before the tenant-local soft delete completes; the repair
+   utility is dry-run by default and requires an explicit apply flag.
+6. POS settings account/session continuation keeps DGFY authentication and
+   tenant authorization server-controlled; the frontend does not grant access
+   or expose credentials when the session is restored.
+7. This is local implementation evidence only; no production deployment or
    live-tenant qualification is claimed.
 
 ## Verification Evidence

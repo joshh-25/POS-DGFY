@@ -26,8 +26,8 @@ async function verifyConnectionPool() {
 
     // Test 1: Get connections for both tenants
     console.log('\n--- Test 1: Multi-Tenant Connection ---');
-    const connA = await tenantConnector.getConnection(tenantA);
-    const connB = await tenantConnector.getConnection(tenantB);
+    const connA = await tenantConnector.getConnection(tenantA, 'script.verify-pools');
+    const connB = await tenantConnector.getConnection(tenantB, 'script.verify-pools');
 
     console.log(`✓ Tenant A connection: ${connA.config.database}`);
     console.log(`✓ Tenant B connection: ${connB.config.database}`);
@@ -44,8 +44,8 @@ async function verifyConnectionPool() {
     // Test 3: Multiple rapid switches (stress test)
     console.log('\n--- Test 3: Rapid Context Switching (50 cycles) ---');
     for (let i = 0; i < 50; i++) {
-        await tenantConnector.getConnection(tenantA);
-        await tenantConnector.getConnection(tenantB);
+        await tenantConnector.getConnection(tenantA, 'script.verify-pools');
+        await tenantConnector.getConnection(tenantB, 'script.verify-pools');
     }
     console.log('✓ PASS: Survived 50 rapid switches');
 

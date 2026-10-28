@@ -216,7 +216,7 @@ const run = async () => {
     };
 
     try {
-      const tenantSequelize = await activeTenantConnector.getConnection(tenant);
+      const tenantSequelize = await activeTenantConnector.getConnection(tenant, 'script.audit-mode-rbac-users');
       const tenantModels = getTenantModels(tenantSequelize);
       const { User, SystemSetting, AuditLog } = tenantModels;
       if (!User || !SystemSetting) throw new Error('User or SystemSetting model unavailable');

@@ -166,7 +166,7 @@ export const processImageTask = async (task) => {
             return;
         }
 
-        const sequelize = await tenantConnector.getConnection(tenant);
+        const sequelize = await tenantConnector.getConnection(tenant, 'worker.item-image');
         const context = {
             sequelize,
             tenantId: tenant.id,

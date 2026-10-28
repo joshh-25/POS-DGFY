@@ -115,7 +115,7 @@ const repairCurrentStockFromLocationLedger = async (tenantSequelize) => {
 const toNumber = (value) => Number(value || 0);
 
 const auditTenantLocationParity = async (tenant) => {
-    const tenantSequelize = await tenantConnector.getConnection(tenant);
+    const tenantSequelize = await tenantConnector.getConnection(tenant, 'script.audit-location-stock-parity');
     const hasTables = await hasRequiredTables(tenantSequelize);
     if (!hasTables) {
         return {

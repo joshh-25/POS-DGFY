@@ -417,6 +417,9 @@ export default function PosSettingsWorkspace({
   const [pendingTopLevelTab, setPendingTopLevelTab] = useState(null);
   const [pendingTaxNavigation, setPendingTaxNavigation] = useState(null);
   const [pendingStorefrontNavigation, setPendingStorefrontNavigation] = useState(null);
+  const [pendingProfileNavigation, setPendingProfileNavigation] = useState(null);
+  const [profileBrowserTabReminder, setProfileBrowserTabReminder] = useState(false);
+  const profileVisibilityHiddenRef = useRef(false);
   const [companyInfo, setCompanyInfo] = useState(null);
   const [cashierUsers, setCashierUsers] = useState([]);
   const [cashiersLoading, setCashiersLoading] = useState(false);
@@ -536,6 +539,9 @@ export default function PosSettingsWorkspace({
   );
   const profileFormDirty = profileFormBaseline != null
     && JSON.stringify(profileFormSnapshot) !== profileFormBaselineSnapshot;
+  const profileEmailBaseline = profileFormBaseline?.email ?? terminalUser?.email ?? '';
+  const profileEmailChangePending = profileFormBaseline != null
+    && normalizeProfileEmail(profileForm.email) !== normalizeProfileEmail(profileEmailBaseline);
   const hasUnsavedSettingsChanges = posSetupDirty || taxPoliciesDirty || storefrontContentDirty || profileFormDirty;
   const discardStorefrontContentChanges = useCallback(() => {
     const baseline = storefrontContentBaselineRef.current;
@@ -1189,6 +1195,10 @@ export default function PosSettingsWorkspace({
 
   const handleTabChange = useCallback((nextTab) => {
     if (!nextTab || nextTab === activeTab) return;
+    if (activeTab === 'profile' && profileEmailChangePending) {
+      setPendingProfileNavigation(nextTab);
+      return;
+    }
     if (activeTab === 'taxes' && taxPoliciesDirty) {
       setPendingTaxNavigation(nextTab);
       return;
@@ -1202,17 +1212,40 @@ export default function PosSettingsWorkspace({
       return;
     }
     transitionToTab(nextTab);
-  }, [activeTab, posSetupDirty, storefrontContentDirty, taxPoliciesDirty, transitionToTab]);
+  }, [activeTab, posSetupDirty, profileEmailChangePending, storefrontContentDirty, taxPoliciesDirty, transitionToTab]);
 
   useEffect(() => {
-    if (!posSetupDirty && !taxPoliciesDirty && !storefrontContentDirty) return undefined;
+    if (!posSetupDirty && !taxPoliciesDirty && !storefrontContentDirty && !profileEmailChangePending) return undefined;
     const handleBeforeUnload = (event) => {
       event.preventDefault();
       event.returnValue = '';
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [posSetupDirty, storefrontContentDirty, taxPoliciesDirty]);
+  }, [posSetupDirty, profileEmailChangePending, storefrontContentDirty, taxPoliciesDirty]);
+
+  useEffect(() => {
+    if (!profileEmailChangePending) {
+      profileVisibilityHiddenRef.current = false;
+      setProfileBrowserTabReminder(false);
+      setPendingProfileNavigation(null);
+      return undefined;
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        profileVisibilityHiddenRef.current = true;
+        return;
+      }
+      if (document.visibilityState === 'visible' && profileVisibilityHiddenRef.current) {
+        profileVisibilityHiddenRef.current = false;
+        setProfileBrowserTabReminder(true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [profileEmailChangePending]);
 
   useEffect(() => {
     if (!taxPoliciesDirty) setPendingTaxNavigation(null);
@@ -2177,6 +2210,25 @@ export default function PosSettingsWorkspace({
     onSettingsSaved
   };
 
+  const profilePane = (
+    <div className="grid min-w-0 gap-5">
+      {profileSettingsHeader}
+      <PosProfileSettingsPane
+        terminalUser={terminalUser}
+        companyInfo={companyInfo}
+        profileForm={profileForm}
+        setProfileForm={setProfileForm}
+        profileEmailBaseline={profileEmailBaseline}
+        locked={locked}
+        loading={loading}
+        savingTab={savingTab}
+        onSave={handleProfileSave}
+        onRequestEmailOtp={handleRequestProfileEmailOtp}
+        onChangePassword={handlePasswordChange}
+      />
+    </div>
+  );
+
   const renderPane = () => {
     if (loading) {
       return (
@@ -2192,26 +2244,6 @@ export default function PosSettingsWorkspace({
           <Button type="button" variant="outline" className="mt-3" onClick={hydrateSettingsWorkspace}>
             Retry
           </Button>
-        </div>
-      );
-    }
-    if (renderedTab === 'profile') {
-      return (
-        <div className="grid min-w-0 gap-5">
-          {profileSettingsHeader}
-          <PosProfileSettingsPane
-            terminalUser={terminalUser}
-            companyInfo={companyInfo}
-            profileForm={profileForm}
-            setProfileForm={setProfileForm}
-            profileEmailBaseline={profileFormBaseline?.email ?? terminalUser?.email ?? ''}
-            locked={locked}
-            loading={loading}
-            savingTab={savingTab}
-            onSave={handleProfileSave}
-            onRequestEmailOtp={handleRequestProfileEmailOtp}
-            onChangePassword={handlePasswordChange}
-          />
         </div>
       );
     }
@@ -2284,8 +2316,47 @@ export default function PosSettingsWorkspace({
         className="min-w-0"
         style={paneInlineStyle}
       >
-        {renderPane()}
+        {loading || loadError ? renderPane() : (
+          <>
+            <div
+              hidden={renderedTab !== 'profile'}
+              aria-hidden={renderedTab !== 'profile'}
+            >
+              {profilePane}
+            </div>
+            {renderedTab !== 'profile' ? renderPane() : null}
+          </>
+        )}
       </div>
+      <ConfirmActionDialog
+        open={Boolean(pendingProfileNavigation)}
+        onOpenChange={(open) => { if (!open) setPendingProfileNavigation(null); }}
+        title="Finish the email change first?"
+        description={`The new email address ${profileForm.email || 'you entered'} is still pending. Verify the code and click Save Profile before it becomes active. If you continue to ${visibleSettingsTabs.find((tab) => tab.id === pendingProfileNavigation)?.label || 'the next settings tab'}, the draft will remain unsaved and the current email will remain active after refresh.`}
+        confirmLabel={`Continue to ${visibleSettingsTabs.find((tab) => tab.id === pendingProfileNavigation)?.label || 'next tab'}`}
+        cancelLabel="Stay on Profile"
+        overlayClassName="bg-black/30 backdrop-blur-none"
+        onConfirm={() => {
+          const nextTab = pendingProfileNavigation;
+          setPendingProfileNavigation(null);
+          transitionToTab(nextTab);
+          return true;
+        }}
+      />
+      <ConfirmActionDialog
+        open={profileBrowserTabReminder}
+        onOpenChange={(open) => { if (!open) setProfileBrowserTabReminder(false); }}
+        title="Email change still pending"
+        description="You left the settings workspace while the new email was not verified and saved. The current email is still active. Return to Profile Setting, enter the latest 6-digit code, and click Save Profile to apply the change."
+        confirmLabel="Review Profile"
+        cancelLabel="Keep current tab"
+        overlayClassName="bg-black/30 backdrop-blur-none"
+        onConfirm={() => {
+          setProfileBrowserTabReminder(false);
+          if (activeTab !== 'profile') transitionToTab('profile');
+          return true;
+        }}
+      />
       {externalSettingsRefreshPending ? (
         <div
           role="status"

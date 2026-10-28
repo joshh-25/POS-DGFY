@@ -57,7 +57,7 @@ export const buildForfeitureLedgerIdempotencyKey = (sessionPublicReference) => {
 const resolvePosOrderPaymentModel = async ({ commercePaymentRepository, session }) => {
   const tenant = await commercePaymentRepository.findTenantById(session?.tenant_id);
   if (!tenant) return null;
-  const sequelizeInstance = await tenantConnector.getConnection(tenant);
+  const sequelizeInstance = await tenantConnector.getConnection(tenant, 'repository.tenant-order-payment-ledger');
   const tenantModels = getTenantModels(sequelizeInstance);
   return tenantModels?.PosOrderPayment || null;
 };

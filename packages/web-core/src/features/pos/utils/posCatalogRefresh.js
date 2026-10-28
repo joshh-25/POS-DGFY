@@ -100,7 +100,9 @@ export const subscribeToRemotePosCatalogUpdates = ({
         if (event === 'connected') {
             consecutiveReconnectFailures = 0;
             onConnected?.();
-            notifyPosCatalogUpdated();
+            // The handshake only confirms that the stream is ready. It does not
+            // mean the catalog changed; broadcasting here causes every active
+            // catalog subscriber to perform a redundant initial read.
             return;
         }
         if (event === 'pos.catalog.changed') {

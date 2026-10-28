@@ -19,6 +19,18 @@ const CONNECTION_WAIT_TIMEOUT_MS = 5000; // Max wait for a pending connection
 // manager was closed!" under normal LRU/idle eviction, not just at shutdown).
 const CONNECTION_CLOSE_GRACE_MS = 3000;
 const CONNECTION_CLOSE_POLL_MS = 100;
+const UNKNOWN_CALLER = 'unknown';
+const MAX_CALLER_LABEL_LENGTH = 64;
+const CALLER_LABEL_PATTERN = /^[a-z][a-z0-9_.-]*$/;
+
+const normalizeCallerLabel = (callerLabel) => {
+    if (typeof callerLabel !== 'string'
+        || callerLabel.length > MAX_CALLER_LABEL_LENGTH
+        || !CALLER_LABEL_PATTERN.test(callerLabel)) {
+        return UNKNOWN_CALLER;
+    }
+    return callerLabel;
+};
 
 class TenantConnector {
     constructor() {
@@ -136,13 +148,16 @@ class TenantConnector {
     /**
      * Get or create a database connection for a specific tenant
      * @param {Object} tenant - Tenant object (must have db_name)
+     * @param {string} [callerLabel='unknown'] - Fixed, code-defined component label;
+     *   never pass tenant, user, request, or other runtime-controlled data.
      * @returns {Promise<Sequelize>} Sequelize instance
      */
-    async getConnection(tenant) {
+    async getConnection(tenant, callerLabel = UNKNOWN_CALLER) {
         if (!tenant || !tenant.db_name) {
             throw new Error('Invalid tenant configuration: missing db_name');
         }
 
+        const normalizedCallerLabel = normalizeCallerLabel(callerLabel);
         const tenantId = tenant.id;
 
         // 1. Check cache
@@ -178,7 +193,7 @@ class TenantConnector {
             const totalCount = this.connections.size + this.pendingConnections.size;
             if (totalCount > MAX_CACHED_CONNECTIONS) {
                 const toEvict = totalCount - MAX_CACHED_CONNECTIONS;
-                await this.evictConnections(toEvict);
+                await this.evictConnections(toEvict, normalizedCallerLabel);
             }
 
             // 5. Create new connection
@@ -279,9 +294,12 @@ class TenantConnector {
      * intentional and preferred over closing a connection a live request is
      * still holding.
      * @param {number} count - Number of connections to evict
+     * @param {string} [callerLabel='unknown'] - Component that triggered cache pressure.
      */
-    async evictConnections(count) {
+    async evictConnections(count, callerLabel = UNKNOWN_CALLER) {
         if (count <= 0 || this.connections.size === 0) return;
+
+        const normalizedCallerLabel = normalizeCallerLabel(callerLabel);
 
         // Sort by lastUsed ascending (oldest first), then keep only entries
         // that are actually idle right now.
@@ -300,9 +318,8 @@ class TenantConnector {
         logger.info(`Evicting ${toEvict.length} oldest idle connections (pool: ${this.connections.size}/${MAX_CACHED_CONNECTIONS}${busySkipped > 0 ? `, ${busySkipped} busy skipped` : ''})`);
 
         const results = await Promise.allSettled(
-            toEvict.map(([id, data]) => {
-                logger.debug(`  Evicting: ${data.tenantName} (ID: ${id}, idle: ${Date.now() - data.lastUsed}ms)`);
-                return this.closeConnection(id);
+            toEvict.map(([id]) => {
+                return this.closeConnection(id, { lruCaller: normalizedCallerLabel });
             })
         );
 
@@ -317,8 +334,8 @@ class TenantConnector {
     /**
      * Remove oldest idle connection (backward-compatible wrapper)
      */
-    async evictOldestConnection() {
-        await this.evictConnections(1);
+    async evictOldestConnection(callerLabel = UNKNOWN_CALLER) {
+        await this.evictConnections(1, callerLabel);
     }
 
     /**
@@ -456,15 +473,35 @@ class TenantConnector {
      * getConnection()'s existing "wait for pending" branch for the entire
      * window instead.
      */
-    async closeConnection(tenantId) {
-        if (!this.connections.has(tenantId)) return;
+    async closeConnection(tenantId, { lruCaller = null } = {}) {
+        const cached = this.connections.get(tenantId);
+        if (!cached) return;
 
-        const { sequelize, tenantName } = this.connections.get(tenantId);
+        const { sequelize, tenantName } = cached;
         // Remove from cache up front: whether or not the close below succeeds
         // or has to wait out the grace period, no new getConnection() call
         // should be able to hand this instance out again.
-        this.connections.delete(tenantId);
+        const removedFromCache = this.connections.delete(tenantId);
+        if (!removedFromCache) return;
         this.evictedTotal += 1;
+
+        const isLruEviction = lruCaller !== null;
+        if (isLruEviction) {
+            // This event is deliberately limited to stable caller attribution.
+            // Map.delete() above makes concurrent eviction attempts count only
+            // the attempt that actually removed this cached entry.
+            try {
+                logger.info(JSON.stringify({
+                    event: 'tenant_connector.lru_eviction',
+                    timestamp: new Date().toISOString(),
+                    caller: normalizeCallerLabel(lruCaller)
+                }));
+            } catch { /* Diagnostics must not change connection-close behavior. */ }
+        }
+
+        const closeLabel = isLruEviction
+            ? 'LRU-evicted tenant connection'
+            : `tenant ${tenantName} (ID: ${tenantId})`;
 
         const wasBusy = this.isBusy(sequelize);
         // Claim the pending slot only if nothing else already holds it
@@ -476,21 +513,25 @@ class TenantConnector {
 
         try {
             if (wasBusy) {
-                logger.debug(`Deferring close for tenant ${tenantName} (ID: ${tenantId}) -- connection busy`);
+                logger.debug(`Deferring close for ${closeLabel} -- connection busy`);
                 const deadline = Date.now() + CONNECTION_CLOSE_GRACE_MS;
                 while (this.isBusy(sequelize) && Date.now() < deadline) {
                     await new Promise(resolve => setTimeout(resolve, CONNECTION_CLOSE_POLL_MS));
                 }
                 if (this.isBusy(sequelize)) {
-                    logger.warn(`Closing tenant connection for ${tenantName} (ID: ${tenantId}) still busy after ${CONNECTION_CLOSE_GRACE_MS}ms grace period -- closing anyway`);
+                    logger.warn(`Closing ${closeLabel} still busy after ${CONNECTION_CLOSE_GRACE_MS}ms grace period -- closing anyway`);
                 }
             }
 
             try {
                 await sequelize.close();
-                logger.info(`Closed DB connection for tenant ID: ${tenantId}`);
+                logger.info(`Closed DB connection for ${closeLabel}`);
             } catch (err) {
-                logger.error(`Error closing tenant connection ${tenantId}:`, err);
+                if (isLruEviction) {
+                    logger.error(`Error closing ${closeLabel}`);
+                } else {
+                    logger.error(`Error closing tenant connection ${tenantId}:`, err);
+                }
             }
         } finally {
             // Release the pending slot only after the physical close has

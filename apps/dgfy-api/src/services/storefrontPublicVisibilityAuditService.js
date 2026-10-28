@@ -91,7 +91,7 @@ const inspectTenant = async ({
     let repairedMissingSetting = false;
 
     try {
-        const tenantSequelize = await tenantConnectorService.getConnection(tenantPlain);
+        const tenantSequelize = await tenantConnectorService.getConnection(tenantPlain, 'service.storefront-public-visibility-audit');
         const { SystemSetting, TenantLocation } = tenantModelFactory(tenantSequelize);
 
         const settingsRows = await SystemSetting.findAll({

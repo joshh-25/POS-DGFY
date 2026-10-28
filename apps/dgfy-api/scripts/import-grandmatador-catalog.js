@@ -428,7 +428,7 @@ const run = async () => {
     const tenant = await db.Tenant.findByPk(config.tenantId);
     if (!tenant) throw new Error(`Tenant ${config.tenantId} was not found.`);
     if (tenant.status !== 'active') throw new Error(`Tenant ${config.tenantId} is not active.`);
-    const tenantSequelize = await tenantConnector.getConnection(tenant);
+    const tenantSequelize = await tenantConnector.getConnection(tenant, 'script.import-grandmatador-catalog');
     const tenantModels = getTenantModels(tenantSequelize);
     const applyResult = await dbStore.run({
         ...tenantModels,

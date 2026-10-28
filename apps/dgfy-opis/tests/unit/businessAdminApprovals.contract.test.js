@@ -16,7 +16,8 @@ describe('Business Admin approval queue contract', () => {
     it('keeps approval review and decision actions on the OPIS Business Admin surface', () => {
         expect(businessAdminPage).toContain("activeSection === 'approvals'");
         expect(businessAdminPage).toContain('data-testid="business-admin-administrative-tools"');
-        expect(businessAdminPage).toContain('data-testid={`business-admin-admin-tool-${tool.key}`}');
+        expect(businessAdminPage).toContain('business-admin-admin-tool-${item.key}');
+        expect(businessAdminPage).toContain("item.itemType === 'administrative-tool'");
         expect(businessAdminPage).toContain('onOpenAdministrativeTool={handleAdministrativeToolNavigate}');
         expect(businessAdminPage).toContain("businessAdminApi.approvals({ status: 'pending', limit: 100 }, requestConfig)");
         expect(businessAdminPage).toContain("businessAdminApi.decideApproval(id, decision, `${decision} requested from Back Office.`)");

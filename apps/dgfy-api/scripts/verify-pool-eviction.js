@@ -49,7 +49,7 @@ async function run() {
     const tenants = [];
     for (const t of allTenants) {
         try {
-            const conn = await tenantConnector.getConnection(t);
+            const conn = await tenantConnector.getConnection(t, 'script.verify-pool-eviction');
             tenants.push(t);
         } catch (err) {
             // Skip tenants whose databases don't exist
@@ -81,7 +81,7 @@ async function run() {
     console.log('\n--- Test 2: Concurrent requests for same tenant ---');
     const tenant0 = tenants[0];
     const concurrentSame = Array(5).fill(null).map(() =>
-        tenantConnector.getConnection(tenant0)
+        tenantConnector.getConnection(tenant0, 'script.verify-pool-eviction')
     );
     const results = await Promise.all(concurrentSame);
 
@@ -97,7 +97,7 @@ async function run() {
     const tenantsToUse = tenants.slice(0, Math.min(tenants.length, MAX_CACHED));
 
     for (const t of tenantsToUse) {
-        await tenantConnector.getConnection(t);
+        await tenantConnector.getConnection(t, 'script.verify-pool-eviction');
     }
 
     const filledStats = tenantConnector.getPoolStats();
@@ -111,7 +111,7 @@ async function run() {
     if (tenants.length > MAX_CACHED) {
         console.log('\n--- Test 4: Eviction when exceeding capacity ---');
         const extraTenant = tenants[MAX_CACHED];
-        await tenantConnector.getConnection(extraTenant);
+        await tenantConnector.getConnection(extraTenant, 'script.verify-pool-eviction');
 
         const afterEvict = tenantConnector.getPoolStats();
         console.log(`  Pool after adding extra: ${afterEvict.total}/${afterEvict.capacity}`);
@@ -131,7 +131,7 @@ async function run() {
 
     const concurrentDifferent = tenants
         .slice(0, Math.min(tenants.length, MAX_CACHED + 5))
-        .map(t => tenantConnector.getConnection(t));
+        .map(t => tenantConnector.getConnection(t, 'script.verify-pool-eviction'));
 
     await Promise.allSettled(concurrentDifferent);
 

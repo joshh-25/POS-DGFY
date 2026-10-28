@@ -2,7 +2,7 @@
 
 Status: authoritative
 Owner: operations
-Last reviewed: 2026-10-20
+Last reviewed: 2026-10-28
 
 Use this runbook when production bugs, tenant reports, release regressions, or AI-agent investigations need traceable evidence.
 
@@ -59,6 +59,36 @@ instance counts. Fast growth in both while the cache stays near capacity suggest
 the 12-second POS poll interval; tenant instances still close after 10 minutes without use.
 Search API logs for `[DbPool] Slow tenant DB connect` and `[DbPool] Tenant DB connect failed`.
 Both identify the tenant and connect duration. The failure log also includes the driver error code.
+
+### Tenant Connector LRU eviction attribution (#2920)
+
+Each cached entry actually removed by LRU pressure emits one `tenant_connector.lru_eviction`
+event. Its JSON message contains only an ISO timestamp and a fixed `caller` label. The label is
+the `getConnection()` caller that triggered cache pressure; it does not identify the evicted
+tenant or prove the ultimate source of demand. Missing or invalid labels appear as `unknown`.
+Cache hits, idle cleanup, shutdown, skipped busy entries, and absent entries emit no event.
+
+For a representative business-hours interval, choose at least 60 consecutive minutes of normal
+business traffic, then run this from the repository root on the authorized operator host against
+each PROD API container. Record the exact UTC start/end, the PROD runtime SHA from
+`/health.services.observability.runtime_sha`, and any known traffic or active-tenant conditions.
+Pipe the raw stream directly into the aggregator; it prints only counts and percentages by caller,
+including `unknown`, and does not save or echo the log lines:
+
+```bash
+API_CONTAINER=<prod-api-container>
+START_UTC=<iso-start-time>
+END_UTC=<iso-end-time>
+
+docker logs --timestamps --since "$START_UTC" --until "$END_UTC" "$API_CONTAINER" 2>&1 |
+  node apps/dgfy-api/scripts/aggregate-tenant-evictions.js
+```
+
+If PROD has multiple API containers, collect each over the same interval and combine their counts
+before calculating fleet-wide percentages. Keep the raw stream on the operator host. Share only
+the aggregate JSON with the issue or an AI agent. The `caller` share describes which component
+caused each eviction attempt; it does not establish which tenants were active, whether reconnects
+added request latency, or the downstream cause of the demand.
 
 Search API logs for this message:
 
