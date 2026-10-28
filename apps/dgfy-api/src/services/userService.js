@@ -1071,6 +1071,20 @@ export const removeUserFromCompany = async (adminUserId, targetUserId) => {
 
   await assertNoOpenOperatingState(targetUser.user_id);
 
+  const store = dbStore.getStore();
+  const tenantId = String(store?.tenantId || '').trim();
+
+  // Keep the landlord membership lifecycle in sync with the tenant-local
+  // soft-delete. Otherwise the DGFY account remains `accepted` and the
+  // invitation search/API correctly treats it as still connected.
+  if (tenantId && tenantId !== 'default') {
+    const { dgfyAccountRepository } = await import('../modules/dgfy/index.js');
+    await dgfyAccountRepository.removeMembershipForTenantUser({
+      tenantId,
+      tenantUserId: targetUser.user_id
+    });
+  }
+
   // Perform soft delete
   await targetUser.update({
     deleted_at: new Date(),
@@ -1093,8 +1107,6 @@ export const removeUserFromCompany = async (adminUserId, targetUserId) => {
   }
 
   // Remove email-tenant mapping
-  const store = dbStore.getStore();
-  const tenantId = store?.tenantId;
   if (tenantId) {
     try {
       await landlordService.removeEmailTenantMapping(targetUser.email, tenantId);

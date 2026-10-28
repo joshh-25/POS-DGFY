@@ -1616,6 +1616,22 @@ export const dgfyAccountRepository = {
         });
     },
 
+    async removeMembershipForTenantUser({ tenantId, tenantUserId }, options = {}) {
+        const [updatedCount] = await DgfyAccountTenantMembership.update(
+            { status: 'removed' },
+            {
+                where: {
+                    tenant_id: tenantId,
+                    tenant_user_id: tenantUserId,
+                    status: { [Op.in]: ['pending', 'accepted'] }
+                },
+                ...options
+            }
+        );
+
+        return updatedCount;
+    },
+
     async forceAssignTenantOwnership({ tenant, toAccountId, tenantUserId = null, role = 'admin', actorAccountId = null }, options = {}) {
         await tenant.update({
             owner_dgfy_account_id: toAccountId,
