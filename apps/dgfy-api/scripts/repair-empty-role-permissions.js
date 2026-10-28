@@ -194,7 +194,7 @@ const run = async () => {
     };
 
     try {
-      const tenantSequelize = await tenantConnector.getConnection(tenant);
+      const tenantSequelize = await tenantConnector.getConnection(tenant, 'script.repair-empty-role-permissions');
       const { User } = getTenantModels(tenantSequelize);
 
       if (!User) {

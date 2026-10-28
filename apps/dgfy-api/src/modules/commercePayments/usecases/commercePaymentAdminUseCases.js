@@ -306,7 +306,7 @@ const updateTenantPaymentStatus = async ({ commercePaymentRepository, session, p
   if (!session.pos_transaction_id) return;
   const tenant = await commercePaymentRepository.findTenantById(session.tenant_id);
   if (!tenant) return;
-  const sequelizeInstance = await tenantConnector.getConnection(tenant);
+  const sequelizeInstance = await tenantConnector.getConnection(tenant, 'usecase.commerce-payment-admin');
   const tenantModels = getTenantModels(sequelizeInstance);
   const PosTransaction = tenantModels.PosTransaction;
   if (!PosTransaction) return;

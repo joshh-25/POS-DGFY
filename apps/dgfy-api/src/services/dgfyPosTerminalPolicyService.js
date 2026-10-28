@@ -78,7 +78,7 @@ export const validateDgfyPosTerminalPolicy = async ({
     throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'Company is not available for POS unlock.', { statusCode: 403 });
   }
 
-  const sequelize = await tenantConnector.getConnection(tenant);
+  const sequelize = await tenantConnector.getConnection(tenant, 'service.dgfy-pos-terminal-policy');
   const tenantModels = getTenantModels(sequelize);
   return dbStore.run({
     sequelize,

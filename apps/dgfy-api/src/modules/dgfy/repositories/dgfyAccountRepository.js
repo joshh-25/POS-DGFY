@@ -842,7 +842,7 @@ export const dgfyAccountRepository = {
             if (existingMembership) continue;
 
             try {
-                const sequelizeInstance = await tenantConnector.getConnection(tenant);
+                const sequelizeInstance = await tenantConnector.getConnection(tenant, 'repository.dgfy-account');
                 const tenantModels = getTenantModels(sequelizeInstance);
                 const User = tenantModels.User;
                 const user = await User.findOne({ where: { email } });
@@ -1032,7 +1032,7 @@ export const dgfyAccountRepository = {
             throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'This DGFY account is already connected or invited to this company.', { statusCode: 409 });
         }
 
-        const sequelizeInstance = await tenantConnector.getConnection(tenant);
+        const sequelizeInstance = await tenantConnector.getConnection(tenant, 'repository.dgfy-account');
         const tenantModels = getTenantModels(sequelizeInstance);
         const context = {
             sequelize: sequelizeInstance,
@@ -1282,7 +1282,7 @@ export const dgfyAccountRepository = {
             );
         }
 
-        const sequelizeInstance = await tenantConnector.getConnection(tenant);
+        const sequelizeInstance = await tenantConnector.getConnection(tenant, 'repository.dgfy-account');
         const tenantModels = getTenantModels(sequelizeInstance);
         return dbStore.run({
             sequelize: sequelizeInstance,
@@ -1333,7 +1333,7 @@ export const dgfyAccountRepository = {
             );
         }
 
-        const sequelizeInstance = await tenantConnector.getConnection(tenant);
+        const sequelizeInstance = await tenantConnector.getConnection(tenant, 'repository.dgfy-account');
         const tenantModels = getTenantModels(sequelizeInstance);
         const context = {
             sequelize: sequelizeInstance,
@@ -1495,7 +1495,7 @@ export const dgfyAccountRepository = {
             }).catch(() => {});
         }
         if (membership?.tenant?.company_token && membership.tenant_user_id) {
-            const sequelizeInstance = await tenantConnector.getConnection(membership.tenant);
+            const sequelizeInstance = await tenantConnector.getConnection(membership.tenant, 'repository.dgfy-account');
             const tenantModels = getTenantModels(sequelizeInstance);
             await ensureTenantUserInvitationSchema(sequelizeInstance);
             await dbStore.run({
@@ -1535,7 +1535,7 @@ export const dgfyAccountRepository = {
         }
 
         if (tenant?.company_token && membership.tenant_user_id) {
-            const sequelizeInstance = await tenantConnector.getConnection(tenant);
+            const sequelizeInstance = await tenantConnector.getConnection(tenant, 'repository.dgfy-account');
             const tenantModels = getTenantModels(sequelizeInstance);
             await dbStore.run({
                 sequelize: sequelizeInstance,

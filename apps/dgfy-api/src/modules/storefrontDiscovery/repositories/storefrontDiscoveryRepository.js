@@ -369,7 +369,7 @@ const readStorefrontProfileSettings = async ({ tenantId, cacheVersion, cacheSign
         return {};
     }
 
-    const tenantConnection = await tenantConnector.getConnection(tenant);
+    const tenantConnection = await tenantConnector.getConnection(tenant, 'repository.storefront-discovery');
     const { SystemSetting } = getTenantModels(tenantConnection);
     if (!SystemSetting || typeof SystemSetting.findAll !== 'function') {
         return {};

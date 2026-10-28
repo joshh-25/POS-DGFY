@@ -147,7 +147,7 @@ export const finalizePaidCommerceSession = async ({
       throw new DomainError(DomainErrorCode.TENANT_NOT_FOUND, 'Tenant not found for paid commerce session', { statusCode: 404 });
     }
 
-    const sequelizeInstance = await tenantConnector.getConnection(tenant);
+    const sequelizeInstance = await tenantConnector.getConnection(tenant, 'usecase.finalize-paid-commerce-session');
     const tenantModels = getTenantModels(sequelizeInstance);
     const context = {
       sequelize: sequelizeInstance,

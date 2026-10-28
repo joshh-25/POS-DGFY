@@ -51,7 +51,7 @@ try {
     const tenant = await Tenant.findByPk(tenantId, { raw: true });
     if (!tenant || tenant.status !== 'active') throw new Error('Active tenant not found.');
 
-    const sequelize = await tenantConnector.getConnection(tenant);
+    const sequelize = await tenantConnector.getConnection(tenant, 'script.reconcile-fifo-opening-balances');
     const tenantModels = getTenantModels(sequelize);
     const locations = await sequelize.query(
         'SELECT location_id FROM tenant_locations WHERE is_active = 1 ORDER BY location_id ASC',

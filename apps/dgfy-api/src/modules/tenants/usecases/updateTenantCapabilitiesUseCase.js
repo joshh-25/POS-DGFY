@@ -203,7 +203,7 @@ export const buildUpdateTenantCapabilitiesUseCase = ({
                 ));
             }
 
-            const tenantSequelize = await tenantConnector.getConnection(tenant);
+            const tenantSequelize = await tenantConnector.getConnection(tenant, 'usecase.update-tenant-capabilities');
             const tenantModels = getTenantModels(tenantSequelize);
             const capabilityKeys = [
                 'tenant_ims_enabled',

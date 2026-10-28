@@ -224,7 +224,7 @@ const withTenantContext = async (tenantId, callback) => {
     if (!tenant) {
         throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Storefront is no longer available.', { statusCode: 404 });
     }
-    const sequelize = await tenantConnector.getConnection(tenant);
+    const sequelize = await tenantConnector.getConnection(tenant, 'usecase.dgfy-customer');
     const context = {
         sequelize,
         tenantId: tenant.id,

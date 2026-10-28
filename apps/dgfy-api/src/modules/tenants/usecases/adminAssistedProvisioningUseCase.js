@@ -170,7 +170,7 @@ const createTenantRecord = async ({
 };
 
 const createOrUpdateTenantMasterAdminForAccount = async ({ tenantConnector, getTenantModels, tenant, account }) => {
-    const sequelizeInstance = await tenantConnector.getConnection(tenant);
+    const sequelizeInstance = await tenantConnector.getConnection(tenant, 'usecase.admin-assisted-provisioning');
     const tenantModels = getTenantModels(sequelizeInstance);
     return dbStore.run({
         sequelize: sequelizeInstance,

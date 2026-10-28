@@ -72,7 +72,7 @@ async function runTest() {
     }
 
     // Initialize tenant connection and models
-    const tenantSequelize = await tenantConnector.getConnection(tenant);
+    const tenantSequelize = await tenantConnector.getConnection(tenant, 'script.qa-30-questions');
     const tenantModels = getTenantModels(tenantSequelize);
 
     // Initialize dbStore with the models and tenant info
