@@ -2347,7 +2347,7 @@ export default function PosSettingsWorkspace({
         open={profileBrowserTabReminder}
         onOpenChange={(open) => { if (!open) setProfileBrowserTabReminder(false); }}
         title="Email change still pending"
-        description="You left OPIS while the new email was not verified and saved. The current email is still active. Return to Profile Setting, enter the latest 6-digit code, and click Save Profile to apply the change."
+        description="You left the settings workspace while the new email was not verified and saved. The current email is still active. Return to Profile Setting, enter the latest 6-digit code, and click Save Profile to apply the change."
         confirmLabel="Review Profile"
         cancelLabel="Keep current tab"
         overlayClassName="bg-black/30 backdrop-blur-none"

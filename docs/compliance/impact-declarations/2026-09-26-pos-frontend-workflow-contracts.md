@@ -48,3 +48,13 @@ This declaration covers frontend-only repairs for POS terminal workflow contract
 - Storefront full suite passed: 223 files, 1,215 tests.
 - `git diff --check` passed.
 - `node scripts/check-app-version-bump.js` passed.
+
+### 2026-10-28 — PR #2922 review follow-up (RF-1)
+
+The shared POS Settings email-change reminder now uses neutral “settings workspace” wording so
+the message is accurate in both OPIS and the POS terminal. This is a copy-only change; email OTP
+verification, profile saving, and which email remains active are unchanged.
+
+- The focused `PosSettingsWorkspace.behavior.test.jsx` suite passed: 1 file, 49 tests.
+- POS and OPIS production builds passed.
+- PR-mode app-version check (`base=develop`) and `git diff --check` passed.

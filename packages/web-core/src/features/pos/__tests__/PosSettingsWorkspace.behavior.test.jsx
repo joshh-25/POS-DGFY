@@ -215,7 +215,8 @@ describe('extracted POS Settings workspace', () => {
       document.dispatchEvent(new Event('visibilitychange'));
 
       expect(await screen.findByRole('heading', { name: 'Email change still pending' })).toBeTruthy();
-      expect(screen.getByText(/new email was not verified and saved/i)).toBeTruthy();
+      expect(screen.getByText(/left the settings workspace while the new email was not verified and saved/i)).toBeTruthy();
+      expect(screen.queryByText(/left OPIS/i)).toBeNull();
       expect(updateProfile).not.toHaveBeenCalled();
     } finally {
       if (visibilityStateDescriptor) {
