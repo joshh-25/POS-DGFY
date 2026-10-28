@@ -406,7 +406,7 @@ export const tenantHandler = async (req, res, next) => {
         // (e.g. rejected registrations). Fall back to default context while keeping req.tenant.
         let sequelizeInstance;
         try {
-            sequelizeInstance = await tenantConnector.getConnection(tenant);
+            sequelizeInstance = await tenantConnector.getConnection(tenant, 'middleware.tenant-handler');
         } catch {
             logger.warn(`[TenantHandler] Could not connect to tenant DB for ${tenant.name} (${tenant.status}). Falling back to default context.`);
             // Same reasoning as the lookup-error branch: on a storefront route the

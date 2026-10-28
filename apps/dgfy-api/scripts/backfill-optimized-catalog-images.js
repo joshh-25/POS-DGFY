@@ -482,7 +482,7 @@ const processStorefrontGallery = async ({
 const processTenant = async ({ tenant, apply, clearMissing, clearMissingOnly }) => {
     const tenantPlain = toPlain(tenant);
     const summary = createSummary({ tenant: tenantPlain, apply });
-    const tenantSequelize = await tenantConnector.getConnection(tenantPlain);
+    const tenantSequelize = await tenantConnector.getConnection(tenantPlain, 'script.backfill-optimized-catalog-images');
     const { PosCatalogOverride, StorefrontCatalogOverride } = getTenantModels(tenantSequelize);
 
     const storefrontRows = StorefrontCatalogOverride

@@ -29,7 +29,7 @@ const unlinkQuietly = async (filePath) => {
 const buildTenantContext = async (tenantId) => {
     const tenant = await findTenantById(tenantId);
     if (!tenant) throw Object.assign(new Error('Tenant not found'), { code: 'TENANT_NOT_FOUND' });
-    const sequelize = await tenantConnector.getConnection(tenant);
+    const sequelize = await tenantConnector.getConnection(tenant, 'worker.pos-bulk-image-import');
     return {
         sequelize,
         tenantId: tenant.id,

@@ -62,7 +62,7 @@ export const businessAdminMultiCompanyRepository = {
         });
         if (!currentMembership) return null;
 
-        const sequelize = await tenantConnector.getConnection(tenant);
+        const sequelize = await tenantConnector.getConnection(tenant, 'repository.business-admin-multi-company');
         const tenantModels = getTenantModels(sequelize);
         return dbStore.run({
             sequelize,

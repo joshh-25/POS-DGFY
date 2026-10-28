@@ -45,7 +45,7 @@ const querySettings = async (sequelize, tables) => {
 };
 
 const auditTenant = async (tenant) => {
-  const sequelize = await tenantConnector.getConnection(tenant);
+  const sequelize = await tenantConnector.getConnection(tenant, 'script.audit-multi-location-inventory-readiness');
   const tables = await tableSet(sequelize);
   const missingTables = REQUIRED_TABLES.filter((table) => !tables.has(table));
   if (missingTables.length > 0) {

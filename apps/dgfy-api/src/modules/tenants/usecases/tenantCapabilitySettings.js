@@ -191,7 +191,7 @@ export const readTenantCapabilities = async ({ tenant, tenantConnector, downpaym
         };
     }
 
-    const tenantSequelize = await tenantConnector.getConnection(tenant);
+    const tenantSequelize = await tenantConnector.getConnection(tenant, 'usecase.tenant-capability-settings');
     const tenantModels = getTenantModels(tenantSequelize);
 
     return dbStore.run({

@@ -295,7 +295,7 @@ const runWithTenantContext = async (tenantId, callback, { allowTenantSwitch = fa
 
     let sequelize;
     try {
-        sequelize = await tenantConnector.getConnection(tenant);
+        sequelize = await tenantConnector.getConnection(tenant, 'service.pos-terminal-device-enrollment');
     } catch (error) {
         throw new DomainError(
             DomainErrorCode.SERVICE_UNAVAILABLE,

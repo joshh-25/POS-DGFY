@@ -75,7 +75,7 @@ export const createTenantSessionForDgfyAccount = async ({
     throw error;
   }
 
-  const sequelize = await tenantConnector.getConnection(tenant);
+  const sequelize = await tenantConnector.getConnection(tenant, 'service.dgfy-tenant-session');
   const tenantModels = getTenantModels(sequelize);
   const context = {
     sequelize,
@@ -184,7 +184,7 @@ export const configureTenantDayClosePinForDgfyAccount = async ({
     throw error;
   }
 
-  const sequelize = await tenantConnector.getConnection(tenant);
+  const sequelize = await tenantConnector.getConnection(tenant, 'service.dgfy-tenant-session');
   const tenantModels = getTenantModels(sequelize);
   const context = {
     sequelize,

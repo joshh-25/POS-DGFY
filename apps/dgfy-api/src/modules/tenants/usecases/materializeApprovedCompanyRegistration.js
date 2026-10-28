@@ -49,7 +49,7 @@ const toCanonicalBusinessHours = (hours) => {
 
 export const buildMaterializeApprovedCompanyRegistration = ({ connector = tenantConnector, modelFactory = getTenantModels, logger = console } = {}) => async ({ tenant, application }) => {
     const snapshot = parseSnapshot(application);
-    const sequelize = await connector.getConnection(tenant);
+    const sequelize = await connector.getConnection(tenant, 'usecase.materialize-approved-registration');
     const models = modelFactory(sequelize);
     const { SystemSetting, TenantLocation } = models;
     if (!SystemSetting) throw new Error('Tenant SystemSetting model is unavailable.');
