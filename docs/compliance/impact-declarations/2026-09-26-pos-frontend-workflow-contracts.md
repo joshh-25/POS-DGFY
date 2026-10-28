@@ -1,14 +1,14 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-09-26
+last_reviewed: 2026-10-28
 related_adr: docs/architecture/adr/0007-dual-mode-pos-compliance-program.md
 declaration_id: 2026-09-26-pos-frontend-workflow-contracts
 classification: regulatory
 surfaces: pos,terminal,settings,compliance,payments,inventory
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.26
-verification_evidence: npm --prefix apps/dgfy-ims run lint,npm --prefix apps/dgfy-ims run build,npm --prefix apps/dgfy-pos run build,npm --prefix apps/dgfy-storefront run lint,npm --prefix apps/dgfy-storefront run build,npm --prefix apps/dgfy-storefront test -- --reporter=dot,focused POS regression tests,git diff --check,node scripts/check-app-version-bump.js
+verification_evidence: npm --prefix apps/dgfy-ims run lint,npm --prefix apps/dgfy-ims run build,npm --prefix apps/dgfy-pos run build,npm --prefix apps/dgfy-storefront run lint,npm --prefix apps/dgfy-storefront run build,npm --prefix apps/dgfy-storefront test -- --reporter=dot,focused POS regression tests including online cash collection,git diff --check,node scripts/check-app-version-bump.js
 rollback_note: Revert this declaration and the paired POS frontend workflow-contract commit together, then rerun the POS/Storefront lint, build, and focused regression checks. No database migration or backend rollback is required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -37,7 +37,8 @@ This declaration covers frontend-only repairs for POS terminal workflow contract
 2. Existing-order non-cash confirmation remains required before split payment can proceed.
 3. Procurement CSV export continues to use the existing authorized frontend service; no new data endpoint or permission bypass is introduced.
 4. Delivery, pickup, and dine-in terminal flows continue to use their existing dedicated handlers and status contracts.
-5. No database schema, migration, seed, or persistent-data change is included.
+5. Online cash collection continues through the existing backend order/payment contract and opens the existing cash drawer workflow; the UI change does not authorize or settle payment by itself.
+6. No database schema, migration, seed, or persistent-data change is included.
 
 ## Verification Evidence
 

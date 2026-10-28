@@ -8507,14 +8507,39 @@ export default function TerminalPage() {
           getOnlineOrderCashIdempotencyPrefix(cashCollectionOrder)
         )
       });
+      let cashDrawerOpened = false;
+      try {
+        const drawerOutcome = await posHardware.openDrawer({
+          shiftId: activeShiftId,
+          transactionId: orderId,
+          terminalId,
+          reason: 'checkout_auto_online_order_cash_collection',
+          idempotencyKey: createIdempotencyKey('pos-online-order-cash-drawer')
+        });
+        cashDrawerOpened = drawerOutcome?.success === true;
+        if (!cashDrawerOpened) {
+          const drawerMessage = drawerOutcome?.message || 'The cash drawer did not open.';
+          if (drawerOutcome?.reasonCode === 'NO_PRINTER_CONFIGURED') {
+            toast.message(`Cash collected, but no cash drawer is configured for this terminal. ${drawerMessage}`);
+          } else {
+            toast.error(`Cash collected, but the cash drawer did not open. ${drawerMessage}`);
+          }
+        }
+      } catch (drawerError) {
+        toast.error(`Cash collected, but the cash drawer did not open. ${drawerError?.message || 'Retry the drawer action before handing over cash.'}`);
+      }
       try {
         await printOnlineOrderReceiptById(orderId, { automatic: true });
       } catch (printError) {
         toast.message(printError?.response?.data?.message || 'Cash collected, but the online order receipt still needs printing.');
       }
       toast.success(isDeliveryOrder
-          ? 'Delivery cash payment collected. You can now complete the order after delivery.'
-          : 'Cash payment collected. You can now mark the order as picked up.');
+          ? cashDrawerOpened
+            ? 'Delivery cash payment collected and cash drawer opened. You can now complete the order after delivery.'
+            : 'Delivery cash payment collected. You can now complete the order after delivery.'
+          : cashDrawerOpened
+            ? 'Cash payment collected and cash drawer opened. You can now mark the order as picked up.'
+            : 'Cash payment collected. You can now mark the order as picked up.');
       setCashCollectionOrder(null);
       await refreshIncomingOrders({ silent: true });
     } catch (error) {
