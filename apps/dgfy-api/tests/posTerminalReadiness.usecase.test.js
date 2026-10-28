@@ -76,6 +76,35 @@ describe('POS terminal readiness context', () => {
     });
   });
 
+  it('uses the explicitly selected shift and base account for branch resume validation', async () => {
+    const findOpenTerminalShift = jest.fn().mockResolvedValue(null);
+    const useCase = buildGetCurrentTerminalShiftUseCase({
+      posRepository: {
+        getShiftLocationBindingReadinessSummary: jest.fn().mockResolvedValue(null),
+        findOpenTerminalShift
+      }
+    });
+
+    await useCase({
+      query: {
+        terminal_id: 'JOHN-01',
+        location_id: 9,
+        shift_id: 44
+      },
+      user: {
+        user_id: 7,
+        register_shift_owner_user_id: 12
+      }
+    });
+
+    expect(findOpenTerminalShift).toHaveBeenNthCalledWith(1, {
+      terminalId: 'JOHN-01',
+      cashierId: 7,
+      locationId: 9,
+      shiftId: 44
+    });
+  });
+
   it('returns sales totals scoped to the active cashier shift', async () => {
     const shift = {
       pos_terminal_shift_id: 44,

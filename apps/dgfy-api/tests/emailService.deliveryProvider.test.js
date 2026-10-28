@@ -142,7 +142,7 @@ describe('email service delivery providers', () => {
       expect(sendMailMock).toHaveBeenCalled();
     });
 
-    it('keeps SKUpervisor as the generic default sender display name', async () => {
+    it('uses DGFY as the generic default sender display name', async () => {
       sendMailMock.mockResolvedValue({ messageId: '<smtp-message-id>' });
 
       await sendEmail({
@@ -152,7 +152,7 @@ describe('email service delivery providers', () => {
       });
 
       expect(sendMailMock).toHaveBeenCalledWith(expect.objectContaining({
-        from: '"SKUpervisor" <smtp-user@example.com>',
+        from: '"DGFY" <smtp-user@example.com>',
         subject: 'Generic notification'
       }));
     });

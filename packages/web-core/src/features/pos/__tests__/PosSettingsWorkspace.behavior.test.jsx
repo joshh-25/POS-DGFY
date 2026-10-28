@@ -81,10 +81,14 @@ describe('extracted POS Settings workspace', () => {
     expect(await screen.findByTestId('canonical-business-name-header')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('tab', { name: 'POS Setup', exact: true }));
-    await waitFor(() => expect(screen.queryByTestId('canonical-business-name-header')).toBeNull());
+    await waitFor(() => {
+      expect(screen.getByTestId('canonical-business-name-header').closest('[hidden]')).toBeTruthy();
+    });
 
     fireEvent.click(screen.getByRole('tab', { name: 'Profile Setting', exact: true }));
-    await waitFor(() => expect(screen.getByTestId('canonical-business-name-header')).toBeTruthy());
+    await waitFor(() => {
+      expect(screen.getByTestId('canonical-business-name-header').closest('[hidden]')).toBeNull();
+    });
   });
 
   it('switches the POS settings tabs and moves the active underline state', async () => {
@@ -146,8 +150,8 @@ describe('extracted POS Settings workspace', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Storefront', exact: true }));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Save Profile' })).toBeNull());
     fireEvent.click(screen.getByRole('tab', { name: 'Profile Setting', exact: true }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit profile' }));
     expect(await screen.findByDisplayValue('Updated Operator')).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save Profile' })).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: 'Save Profile' }));
     await waitFor(() => expect(updateProfile).toHaveBeenCalledWith({
       username: 'Updated Operator',
@@ -156,6 +160,69 @@ describe('extracted POS Settings workspace', () => {
     expect(updateProfile.mock.calls[0][0]).not.toHaveProperty('email');
     expect(onRefreshTerminalUser).toHaveBeenCalledWith({ suppressGlobalErrors: true });
     expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it('warns before leaving a pending email change and keeps the draft available', async () => {
+    render(<PosSettingsWorkspace {...buildProps({ allowedTabIds: ['profile', 'pos_setup'] })} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit profile' }));
+    fireEvent.change(await screen.findByDisplayValue('operator@example.test'), {
+      target: { value: 'new-operator@example.test' }
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'POS Setup', exact: true }));
+
+    expect(await screen.findByRole('heading', { name: 'Finish the email change first?' })).toBeTruthy();
+    expect(screen.getByText(/new-operator@example\.test.*still pending/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Stay on Profile', exact: true })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Continue to POS Setup', exact: true })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Profile Setting', exact: true }).getAttribute('aria-selected')).toBe('true');
+    expect(updateProfile).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to POS Setup', exact: true }));
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'POS Setup', exact: true }).getAttribute('aria-selected')).toBe('true'));
+    expect(updateProfile).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Profile Setting', exact: true }));
+    expect(await screen.findByDisplayValue('new-operator@example.test')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Save Profile', exact: true })).toBeTruthy();
+  });
+
+  it('protects a pending email change from browser navigation', async () => {
+    render(<PosSettingsWorkspace {...buildProps()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit profile' }));
+    fireEvent.change(await screen.findByDisplayValue('operator@example.test'), {
+      target: { value: 'new-operator@example.test' }
+    });
+
+    const beforeUnload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(beforeUnload);
+
+    expect(beforeUnload.defaultPrevented).toBe(true);
+  });
+
+  it('reminds the user when they return after leaving with a pending email change', async () => {
+    render(<PosSettingsWorkspace {...buildProps()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit profile' }));
+    fireEvent.change(await screen.findByDisplayValue('operator@example.test'), {
+      target: { value: 'new-operator@example.test' }
+    });
+
+    const visibilityStateDescriptor = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+    try {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+      document.dispatchEvent(new Event('visibilitychange'));
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+      document.dispatchEvent(new Event('visibilitychange'));
+
+      expect(await screen.findByRole('heading', { name: 'Email change still pending' })).toBeTruthy();
+      expect(screen.getByText(/left the settings workspace while the new email was not verified and saved/i)).toBeTruthy();
+      expect(screen.queryByText(/left OPIS/i)).toBeNull();
+      expect(updateProfile).not.toHaveBeenCalled();
+    } finally {
+      if (visibilityStateDescriptor) {
+        Object.defineProperty(document, 'visibilityState', visibilityStateDescriptor);
+      }
+    }
   });
 
   it('exposes the Taxes tab to POS settings editors and saves the category VAT policy', async () => {
@@ -315,6 +382,55 @@ describe('extracted POS Settings workspace', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel', exact: true }));
     expect(screen.getByRole('button', { name: 'Set Up Now', exact: true })).toBeTruthy();
+  });
+
+  it('uses explicit taxpayer choices and exposes fiscal setup readiness', () => {
+    const setPosForm = vi.fn();
+    render(<PosBusinessReceiptsSection
+      locked={false}
+      loading={false}
+      posForm={{ taxpayerType: 'VAT' }}
+      setPosForm={setPosForm}
+    />);
+
+    const taxpayerType = screen.getByRole('combobox', { name: 'Taxpayer Type' });
+    expect(taxpayerType.value).toBe('vat_registered');
+    expect(screen.getByTestId('fiscal-setup-readiness').dataset.readinessState).toBe('configured');
+    expect(screen.getByText('Taxpayer type configured')).toBeTruthy();
+  });
+
+  it('marks unknown stored taxpayer values for review without rewriting them', () => {
+    const setPosForm = vi.fn();
+    render(<PosBusinessReceiptsSection
+      locked={false}
+      loading={false}
+      posForm={{ taxpayerType: 'legacy-custom-value' }}
+      setPosForm={setPosForm}
+    />);
+
+    const taxpayerType = screen.getByRole('combobox', { name: 'Taxpayer Type' });
+    expect(taxpayerType.value).toBe('__needs_review__');
+    expect(screen.getByTestId('fiscal-setup-readiness').dataset.readinessState).toBe('needs_review');
+    expect(screen.getByText('Needs review')).toBeTruthy();
+
+    fireEvent.change(taxpayerType, { target: { value: 'non_vat_registered' } });
+    const updateForm = setPosForm.mock.calls.at(-1)[0];
+    expect(updateForm({ taxpayerType: 'legacy-custom-value' }).taxpayerType).toBe('non_vat_registered');
+  });
+
+  it('blocks POS setup save when a nonblank taxpayer value is unrecognized', async () => {
+    getAllSettings.mockResolvedValue({ pos_taxpayer_type: { value: 'legacy-custom-value' } });
+    render(<PosSettingsWorkspace {...buildProps({
+      initialTab: 'pos_setup',
+      terminalUser: { ...buildProps().terminalUser, is_master_admin: true }
+    })} />);
+
+    expect(await screen.findByTestId('fiscal-setup-readiness')).toBeTruthy();
+    fireEvent.change(await screen.findByPlaceholderText('e.g. Tinda Han'), { target: { value: 'Updated Style' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Save Changes', exact: true }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Choose VAT registered or Non-VAT registered before saving POS setup.'));
+    expect(updateSettings).not.toHaveBeenCalled();
   });
 
   it('keeps the canonical business name out of the OPIS receipt metadata editor', () => {

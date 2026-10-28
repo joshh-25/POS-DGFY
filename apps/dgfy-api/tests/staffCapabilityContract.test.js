@@ -47,19 +47,49 @@ describe('staff capability contract', () => {
       staffRole: { is_active: true, capabilities: ['orders:pack'] }
     })).toEqual(['orders:pack']);
   });
-  test('inactive staff role falls back to legacy role defaults', () => {
-    expect(resolveEffectivePermissions({ role: 'staff', permissions: [], staffRole: { is_active: false, capabilities: ['orders:pack'] } })).toEqual(expect.arrayContaining(['items:view']));
+  test('inactive assigned staff roles fail closed instead of restoring legacy defaults', () => {
+    expect(resolveEffectivePermissions({
+      role: 'staff',
+      staff_role_id: 4,
+      permissions: [],
+      staffRole: { staff_role_id: 4, is_active: false, capabilities: ['orders:pack'] }
+    })).toEqual([]);
   });
   test('inactive staff role never escalates a cashier-base assignee to the full cashier preset (#1901)', () => {
     const permissions = resolveEffectivePermissions({
       role: 'cashier',
+      staff_role_id: 4,
       permissions: [],
-      staffRole: { is_active: false, capabilities: ['orders:pack'] }
+      staffRole: { staff_role_id: 4, is_active: false, capabilities: ['orders:pack'] }
     });
     expect(permissions).not.toContain('pos:transact');
-    expect(permissions).toContain('items:view');
+    expect(permissions).toEqual([]);
     expect(permissions).not.toContain('items:edit');
     expect(permissions).not.toContain('items:delete');
+  });
+  test('legacy explicit permissions fail closed when an assigned role is inactive', () => {
+    expect(resolveEffectivePermissions({
+      role: 'staff',
+      staff_role_id: 4,
+      permissions: ['pos:view', 'pos:transact'],
+      staffRole: { staff_role_id: 4, is_active: false, capabilities: ['orders:pack'] }
+    })).toEqual([]);
+  });
+  test('pre-resolved permissions cannot bypass a missing or mismatched assigned role', () => {
+    expect(resolveEffectivePermissions({
+      role: 'staff',
+      staff_role_id: 4,
+      permissions_resolved: true,
+      permissions: ['pos:view'],
+      staffRole: null
+    })).toEqual([]);
+    expect(resolveEffectivePermissions({
+      role: 'staff',
+      staff_role_id: 4,
+      permissions_resolved: true,
+      permissions: ['pos:view'],
+      staffRole: { staff_role_id: 9, is_active: true, capabilities: ['orders:pack'] }
+    })).toEqual([]);
   });
   test('cashier account with no staff-role assignment keeps the full cashier preset (#1901)', () => {
     const permissions = resolveEffectivePermissions({ role: 'cashier', permissions: [] });
@@ -80,7 +110,7 @@ describe('staff capability contract', () => {
     await expect(assertStaffAssignment({ user: { user_id: 1, permissions: [] }, resourceType: 'order', resourceId: 1 })).rejects.toMatchObject({ code: 'AUTHORIZATION_FAILED', details: { reason_code: 'NOT_PERMITTED' } });
   });
   test('deactivating a staff role restores the narrow-assignment denial for a cashier-base account (#1901)', async () => {
-    const user = { user_id: 7, role: 'cashier', permissions: [], staffRole: { is_active: false, capabilities: ['orders:pack'] } };
+    const user = { user_id: 7, role: 'cashier', staff_role_id: 4, permissions: [], staffRole: { staff_role_id: 4, is_active: false, capabilities: ['orders:pack'] } };
     await expect(assertStaffAssignment({ user, resourceType: 'order', resourceId: 1 }))
       .rejects.toMatchObject({ code: 'AUTHORIZATION_FAILED', details: { reason_code: 'NOT_PERMITTED' } });
   });

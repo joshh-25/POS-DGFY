@@ -17,14 +17,28 @@ function monitorRuntime(page) {
     && /tiles\.openfreemap\.org|openfreemap/i.test(request.url());
   const isExpectedMapNetworkBlock = (request) => request.failure()?.errorText === 'net::ERR_NETWORK_ACCESS_DENIED'
     && /tiles\.openfreemap\.org|openfreemap/i.test(request.url());
+  const isExpectedMissingStorefrontAsset = (url) => {
+    const pathname = new URL(url).pathname;
+    return pathname.startsWith('/uploads/storefront-assets/')
+      || pathname.startsWith('/uploads/storefront-catalog/');
+  };
   page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
   page.on('console', (message) => {
-    if (message.type() === 'error' && message.text() !== 'Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED') {
+    const text = message.text();
+    if (
+      message.type() === 'error'
+      && text !== 'Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED'
+      && !/^Failed to load resource: the server responded with a status of 404 \(Not Found\)$/.test(text)
+    ) {
       errors.push(`console: ${message.text()}`);
     }
   });
   page.on('response', (response) => {
-    if (response.status() >= 500) errors.push(`HTTP ${response.status()}: ${response.url()}`);
+    if (response.status() >= 500) {
+      errors.push(`HTTP ${response.status()}: ${response.url()}`);
+    } else if (response.status() === 404 && !isExpectedMissingStorefrontAsset(response.url())) {
+      errors.push(`HTTP 404: ${response.url()}`);
+    }
   });
   page.on('requestfailed', (request) => {
     if (!isExpectedMapAbort(request) && !isExpectedMapNetworkBlock(request)) {
@@ -57,6 +71,16 @@ async function openSettings(page) {
     await expect(settingsButton).toBeEnabled({ timeout: 20_000 });
   }
   await expect(page.locator('#root')).not.toBeEmpty();
+
+  const branchDialog = page.getByTestId('pos-branch-selector-dialog');
+  await branchDialog.waitFor({ state: 'visible', timeout: 8_000 }).catch(() => {});
+  if (await branchDialog.isVisible().catch(() => false)) {
+    const closeBranchDialog = branchDialog.getByRole('button', { name: 'Close', exact: true });
+    if (await closeBranchDialog.isVisible().catch(() => false)) {
+      await closeBranchDialog.click();
+      await expect(branchDialog).toBeHidden({ timeout: 8_000 });
+    }
+  }
 
   const skipShift = page.getByRole('button', { name: 'Skip for Admin', exact: true });
   await skipShift.waitFor({ state: 'visible', timeout: 8_000 }).catch(() => {});
@@ -321,7 +345,7 @@ test('Employees pagination controls remain consistently sized on mobile', async 
   test.skip(!(await employees.count()), 'Employees settings are unavailable for this role.');
   await employees.click();
   await expect(page.getByRole('heading', { name: 'Employees', exact: true })).toBeVisible();
-  const pageSize = page.getByRole('combobox', { name: 'Employees per page', exact: true });
+  const pageSize = page.getByRole('button', { name: 'Employees per page', exact: true });
   await expect(pageSize).toBeVisible();
   const fontSize = await pageSize.evaluate((element) => parseFloat(getComputedStyle(element).fontSize));
   expect(fontSize).toBe(12);
@@ -349,7 +373,7 @@ test('All Settings views load without API or responsive layout regressions', asy
         ['Business & Receipts', 'Receipt & POS Metadata'],
         ['Operations & Access', 'Cashier Closeout'],
         ['Terminals', 'Terminal Registry'],
-        ['Discounts & Automation', 'POS Discount Presets'],
+        ['Discounts & Automation', 'Discount Management'],
       ],
     },
     {
@@ -364,7 +388,7 @@ test('All Settings views load without API or responsive layout regressions', asy
     },
     {
       top: 'Payments',
-      heading: 'Payment Mode',
+      headingPattern: /^(Payment Mode|Downpayment unavailable)$/,
     },
     {
       top: 'Delivery Pricing',
@@ -392,8 +416,11 @@ test('All Settings views load without API or responsive layout regressions', asy
       await topTab.click();
       await expect(topTab).toHaveAttribute('aria-selected', 'true');
 
-      if (view.heading) {
-        await expect(page.getByRole('heading', { name: view.heading, exact: true })).toBeVisible();
+      if (view.heading || view.headingPattern) {
+        const heading = view.headingPattern
+          ? page.getByRole('heading', { name: view.headingPattern })
+          : page.getByRole('heading', { name: view.heading, exact: true });
+        await expect(heading).toBeVisible();
       }
 
       for (const [nestedName, heading] of view.nested || []) {

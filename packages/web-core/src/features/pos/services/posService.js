@@ -807,21 +807,6 @@ export const fetchPosReportsBreakdown = async (params = {}, requestConfig = {}) 
     return response.data?.data;
 };
 
-export const fetchPosReportsTopItems = async (params = {}, requestConfig = {}) => {
-    const response = await api.get('/pos/reports/top-items', { params, ...requestConfig });
-    return response.data?.data;
-};
-
-export const fetchPosReportsComparison = async (params = {}, requestConfig = {}) => {
-    const response = await api.get('/pos/reports/comparison', { params, ...requestConfig });
-    return response.data?.data;
-};
-
-export const fetchPosReportsProfitLoss = async (params = {}, requestConfig = {}) => {
-    const response = await api.get('/pos/reports/profit-loss', { params, ...requestConfig });
-    return response.data?.data;
-};
-
 export const exportPosReportCsv = async (params = {}) => {
     const response = await api.get('/pos/reports/export', {
         params: normalizePosReportParams(params),
@@ -831,19 +816,6 @@ export const exportPosReportCsv = async (params = {}) => {
         blob: response.data,
         filename: String(response.headers?.['content-disposition'] || '')
             .match(/filename="?([^"]+)"?$/i)?.[1] || 'pos-report.csv'
-    };
-};
-
-// Phase 261 (#1488): pre-run procurement CSV export.
-export const exportProcurementCsv = async (params = {}) => {
-    const response = await api.get('/pos/reports/procurement-export', {
-        params,
-        responseType: 'blob'
-    });
-    return {
-        blob: response.data,
-        filename: String(response.headers?.['content-disposition'] || '')
-            .match(/filename="?([^"]+)"?$/i)?.[1] || 'procurement-export.csv'
     };
 };
 
@@ -1040,10 +1012,7 @@ export const fetchFiscalTerminalRegistrations = async () => {
 
 export const saveFiscalTerminalRegistration = async (payload = {}) => {
     try {
-        const id = payload?.pos_fiscal_terminal_registration_id;
-        const response = id
-            ? await api.put(`/pos/fiscal-terminal-registrations/${id}`, payload)
-            : await api.post('/pos/fiscal-terminal-registrations', payload);
+        const response = await api.put('/pos/fiscal-terminal-registrations', payload);
         return getDataOrFallback(response);
     } catch (error) {
         if (error?.response?.status === 404) {
@@ -1067,7 +1036,7 @@ export const fetchESalesReports = async (params = {}) => {
 
 export const generateESalesReport = async (payload = {}) => {
     try {
-        const response = await api.post('/pos/esales-reports', payload);
+        const response = await api.post('/pos/esales-reports/generate', payload);
         return getDataOrFallback(response);
     } catch (error) {
         if (error?.response?.status === 404) {
@@ -1078,8 +1047,14 @@ export const generateESalesReport = async (payload = {}) => {
 };
 
 export const updateESalesReportStatus = async (reportId, payload = {}) => {
+    const id = String(reportId ?? '').trim();
+    if (!id) {
+        const error = new Error('eSales report ID is required');
+        error.code = 'POS_FISCAL_REPORT_ID_REQUIRED';
+        throw error;
+    }
     try {
-        const response = await api.patch(`/pos/esales-reports/${reportId}`, payload);
+        const response = await api.patch(`/pos/esales-reports/${encodeURIComponent(id)}/status`, payload);
         return getDataOrFallback(response);
     } catch (error) {
         if (error?.response?.status === 404) {
@@ -1091,7 +1066,7 @@ export const updateESalesReportStatus = async (reportId, payload = {}) => {
 
 export const fetchFiscalLedgerIntegrity = async (params = {}) => {
     try {
-        const response = await api.get('/pos/fiscal-ledger-integrity', { params });
+        const response = await api.get('/pos/fiscal-ledger/integrity', { params });
         return getDataOrFallback(response) || null;
     } catch (error) {
         if (error?.response?.status === 404) {
@@ -1140,11 +1115,7 @@ export default {
     fetchTerminalTodayDashboard,
     fetchPosReportsOverview,
     fetchPosReportsBreakdown,
-    fetchPosReportsTopItems,
-    fetchPosReportsComparison,
-    fetchPosReportsProfitLoss,
     exportPosReportCsv,
-    exportProcurementCsv,
     fetchIncomingOnlineOrders,
     fetchOnlineOrderHistory,
     fetchActiveDeliveryPersonnel,

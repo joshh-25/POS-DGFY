@@ -1,5 +1,19 @@
 import { getRelevanceWeightedDistanceRank, scoreStoresByRelevance } from './discoverySearchRanking.js';
 
+export const DISCOVERY_PARTNER_PROVIDER_BY_CATEGORY = Object.freeze({
+  hotel: 'synqcore',
+  'real estate': 'mapviu',
+  taxi: 'eytitu',
+  job: 'proventus'
+});
+
+const normalizeCategoryKey = (value, normalizeDiscoveryCategoryKey) => {
+  const normalized = typeof normalizeDiscoveryCategoryKey === 'function'
+    ? normalizeDiscoveryCategoryKey(value)
+    : String(value || '').trim().toLowerCase();
+  return normalized || 'all';
+};
+
 export function buildStoresWithNearestBranch({
   DEFAULT_CENTER,
   discoveryCoords,
@@ -151,6 +165,39 @@ export function sortDiscoveryResultStores({
   return sorted;
 }
 
+export function filterDiscoveryStoresByCategory({
+  DISCOVERY_CATEGORY_MATCHERS,
+  discoveryCategoryFilter,
+  discoveryResultStores,
+  normalizeDiscoveryCategoryKey,
+  normalizeStorefrontCategories
+}) {
+  const categoryKey = normalizeCategoryKey(discoveryCategoryFilter, normalizeDiscoveryCategoryKey);
+  const partnerProvider = DISCOVERY_PARTNER_PROVIDER_BY_CATEGORY[categoryKey];
+  const rows = Array.isArray(discoveryResultStores) ? discoveryResultStores : [];
+
+  return rows.filter((store) => {
+    if (partnerProvider) {
+      return store?.entity_type === 'external_listing'
+        && String(store?.external_provider || '').trim().toLowerCase() === partnerProvider;
+    }
+
+    if (store?.entity_type !== 'dgfy_native') return false;
+    if (categoryKey === 'all') return true;
+
+    const categories = normalizeStorefrontCategories(store?.storefront_categories).map((entry) => String(entry || '').trim().toLowerCase());
+    const primaryCategory = categories[0] || String(store?.workflow_mode || store?.business_mode || 'store').replace(/_/g, ' ').trim().toLowerCase();
+    const haystack = [
+      primaryCategory,
+      ...categories,
+      String(store?.workflow_mode || '').replace(/_/g, ' ').trim().toLowerCase(),
+      String(store?.business_mode || '').replace(/_/g, ' ').trim().toLowerCase()
+    ].filter(Boolean);
+    const matchers = DISCOVERY_CATEGORY_MATCHERS?.[categoryKey] || [categoryKey];
+    return matchers.some((matcher) => haystack.some((entry) => entry.includes(matcher) || matcher.includes(entry)));
+  });
+}
+
 export function filterDiscoveryStores({
   DISCOVERY_CATEGORY_MATCHERS,
   discoveryAvailabilityFilter,
@@ -163,24 +210,17 @@ export function filterDiscoveryStores({
   normalizeStorefrontCategories,
   normalizeStorefrontReviewSummary
 }) {
-  return discoveryResultStores.filter((store) => {
-    const categories = normalizeStorefrontCategories(store?.storefront_categories).map((entry) => String(entry || '').trim().toLowerCase());
-    const primaryCategory = categories[0] || String(store?.workflow_mode || store?.business_mode || 'store').replace(/_/g, ' ').trim().toLowerCase();
+  return filterDiscoveryStoresByCategory({
+    DISCOVERY_CATEGORY_MATCHERS,
+    discoveryCategoryFilter,
+    discoveryResultStores,
+    normalizeDiscoveryCategoryKey,
+    normalizeStorefrontCategories
+  }).filter((store) => {
     const ratingSummary = normalizeStorefrontReviewSummary(store?.storefront_review_summary);
     const ratingValue = Number(ratingSummary?.score || 0);
     const distanceValue = Number(store?.nearest_distance_km);
 
-    if (discoveryCategoryFilter !== 'all') {
-      const haystack = [
-        primaryCategory,
-        ...categories,
-        String(store?.workflow_mode || '').replace(/_/g, ' ').trim().toLowerCase(),
-        String(store?.business_mode || '').replace(/_/g, ' ').trim().toLowerCase()
-      ].filter(Boolean);
-      const matchers = DISCOVERY_CATEGORY_MATCHERS[normalizeDiscoveryCategoryKey(discoveryCategoryFilter)] || [normalizeDiscoveryCategoryKey(discoveryCategoryFilter)];
-      const hasCategoryMatch = matchers.some((matcher) => haystack.some((entry) => entry.includes(matcher) || matcher.includes(entry)));
-      if (!hasCategoryMatch) return false;
-    }
     if (discoveryOpenFilter === 'open' && store?.storefront_open !== true) return false;
     if (discoveryAvailabilityFilter === 'in_stock' && store?.has_in_stock_match !== true) return false;
     if (discoveryRatingFilter !== 'all') {

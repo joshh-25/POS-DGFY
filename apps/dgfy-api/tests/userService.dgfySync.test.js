@@ -7,12 +7,14 @@ const dgfyAccountRepository = {
   findByEmail: jest.fn(),
   transaction: jest.fn(async (callback) => callback({ id: 'dgfy-transaction' })),
   forceAssignTenantOwnership: jest.fn(),
-  removeMembershipForAccount: jest.fn()
+  removeMembershipForAccount: jest.fn(),
+  removeMembershipForTenantUser: jest.fn()
 };
 
 const landlordService = {
   findTenantById: jest.fn(),
-  updateEmailTenantMapping: jest.fn()
+  updateEmailTenantMapping: jest.fn(),
+  removeEmailTenantMapping: jest.fn()
 };
 
 const emailOtpService = {
@@ -27,7 +29,7 @@ jest.unstable_mockModule('../src/modules/dgfy/index.js', () => ({
 jest.unstable_mockModule('../src/services/landlordService.js', () => landlordService);
 jest.unstable_mockModule('../src/services/emailOtpService.js', () => emailOtpService);
 
-const { changePassword, updateUserProfile } = await import('../src/services/userService.js');
+const { changePassword, updateUserProfile, removeUserFromCompany } = await import('../src/services/userService.js');
 
 const createMutableRecord = (values) => {
   const record = {
@@ -66,10 +68,66 @@ describe('userService DGFY account synchronization', () => {
     dgfyAccountRepository.transaction.mockImplementation(async (callback) => callback({ id: 'dgfy-transaction' }));
     dgfyAccountRepository.forceAssignTenantOwnership.mockReset();
     dgfyAccountRepository.removeMembershipForAccount.mockReset();
+    dgfyAccountRepository.removeMembershipForTenantUser.mockReset();
     landlordService.findTenantById.mockReset();
     landlordService.updateEmailTenantMapping.mockReset();
+    landlordService.removeEmailTenantMapping.mockReset();
     emailOtpService.verifyEmailOtp.mockReset();
     emailOtpService.verifyEmailOtp.mockResolvedValue(true);
+  });
+
+  it('removes the accepted DGFY membership before soft-deleting a tenant user', async () => {
+    const adminUser = {
+      user_id: 1,
+      role: 'admin',
+      is_master_admin: true,
+      invitation_status: 'accepted'
+    };
+    const targetUser = createMutableRecord({
+      user_id: 7,
+      username: 'Cashier',
+      email: 'cashier@example.test',
+      role: 'cashier',
+      is_master_admin: false,
+      is_active: true,
+      deleted_at: null,
+      invitation_status: 'accepted'
+    });
+    const User = {
+      findOne: jest.fn()
+        .mockResolvedValueOnce(adminUser)
+        .mockResolvedValueOnce(targetUser)
+    };
+    const operatingModels = {
+      PosTerminalShift: { findOne: jest.fn().mockResolvedValue(null) },
+      PosTerminalOperatorSession: {
+        findOne: jest.fn().mockResolvedValue(null),
+        update: jest.fn().mockResolvedValue([1])
+      },
+      EmployeeAttendanceSession: { findOne: jest.fn().mockResolvedValue(null) }
+    };
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ tenantId: 'tenant-1' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'User') return User;
+      return operatingModels[name] || null;
+    });
+    dgfyAccountRepository.removeMembershipForTenantUser.mockResolvedValue(1);
+
+    await removeUserFromCompany(1, 7);
+
+    expect(dgfyAccountRepository.removeMembershipForTenantUser).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      tenantUserId: 7
+    });
+    expect(targetUser.update).toHaveBeenCalledWith({
+      deleted_at: expect.any(Date),
+      deleted_by: 1,
+      is_active: false
+    });
+    expect(landlordService.removeEmailTenantMapping).toHaveBeenCalledWith(
+      'cashier@example.test',
+      'tenant-1'
+    );
   });
 
   it('repairs a linked DGFY email mismatch during the next POS profile save', async () => {

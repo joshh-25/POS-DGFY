@@ -74,7 +74,7 @@ const buildTenantDbContext = (tenant, tenantModels, tenantSequelize) => ({
 });
 
 const withTenantPosMetadataContext = async ({ tenant, tenantConnector }, callback) => {
-    const tenantSequelize = await tenantConnector.getConnection(tenant);
+    const tenantSequelize = await tenantConnector.getConnection(tenant, 'usecase.tenant-pos-metadata');
     const tenantModels = getTenantModels(tenantSequelize);
     return dbStore.run(buildTenantDbContext(tenant, tenantModels, tenantSequelize), callback);
 };

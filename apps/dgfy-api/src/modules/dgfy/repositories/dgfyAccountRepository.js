@@ -21,10 +21,21 @@ import { DEFAULT_ROLE_PERMISSIONS } from '../../../config/permissions.js';
 import { normalizePhoneNumber } from '../../../utils/phoneNumber.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
+import {
+    staffRoleRepository,
+    applyStaffRoleAssignmentInTransaction
+} from '../../staff/repositories/staffRoleRepository.js';
 
 const parsePositiveInt = (value) => {
     const parsed = Number.parseInt(value, 10);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const parseStrictPositiveInt = (value) => {
+    if (typeof value === 'number') return Number.isSafeInteger(value) && value > 0 ? value : null;
+    if (typeof value !== 'string' || !/^\d+$/.test(value.trim())) return null;
+    const parsed = Number(value.trim());
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
@@ -162,6 +173,292 @@ export const ensureTenantUserInvitationSchema = async (sequelizeInstance) => {
         type: DataTypes.ENUM('pending', 'accepted', 'expired', 'cancelled', 'declined'),
         allowNull: true
     });
+};
+
+const customRoleUnavailableError = () => new DomainError(
+    DomainErrorCode.CONFLICT,
+    'The invited custom staff role is no longer available. Ask a company administrator to send a new invitation.',
+    { statusCode: 409 }
+);
+
+const acceptCustomStaffRoleInvitation = async ({ membership, account, tenant, registry, sequelizeInstance }) => {
+    const User = dbStore.get('User');
+    const UserLocationGrant = dbStore.get('UserLocationGrant');
+    const TenantLocation = dbStore.get('TenantLocation');
+    const StaffRole = dbStore.get('StaffRole');
+    const tenantUserId = parsePositiveInt(membership.tenant_user_id);
+    const staffRoleId = parsePositiveInt(registry.staff_role_id);
+    const email = normalizeEmail(account.email);
+    const phone = normalizePhoneNumber(account.phone);
+    const now = new Date();
+
+    if (!tenantUserId || !staffRoleId || registry.status !== 'pending') {
+        throw customRoleUnavailableError();
+    }
+    if (new Date(registry.expires_at).getTime() <= now.getTime()) {
+        const expiredError = new DomainError(DomainErrorCode.CONFLICT, 'This invitation has expired. Ask a company administrator to send a new invitation.', { statusCode: 409 });
+        const transaction = await sequelizeInstance.transaction();
+        try {
+            const user = await User.findByPk(tenantUserId, { transaction, lock: transaction.LOCK.UPDATE });
+            if (user?.invitation_status === 'pending') {
+                await user.update({ invitation_status: 'expired', invitation_token: null }, { transaction });
+            }
+            await transaction.commit();
+        } catch (error) {
+            if (!transaction.finished) await transaction.rollback();
+            throw error;
+        }
+        await landlordService.transitionInvitationRegistryByTenantUser({
+            tenantId: tenant.id,
+            tenantUserId,
+            expectedStatus: 'pending',
+            updates: { status: 'expired' }
+        }).catch((error) => logger.warn('[DGFY] Expired staff-role invitation registry sync failed', {
+            tenant_id: tenant.id,
+            tenant_user_id: tenantUserId,
+            error_name: error?.name || 'Error'
+        }));
+        await DgfyAccountTenantMembership.update({ status: 'removed' }, {
+            where: { id: membership.id, status: 'pending', source: 'invite' }
+        }).catch(() => {});
+        throw expiredError;
+    }
+
+    let user = null;
+    let invitationUnavailable = false;
+    let acceptedMembership = null;
+    let registryTransitioned = false;
+    let membershipTransitioned = false;
+    const transaction = await sequelizeInstance.transaction();
+    try {
+        const role = StaffRole
+            ? await StaffRole.findByPk(staffRoleId, { transaction, lock: transaction.LOCK.UPDATE })
+            : null;
+        user = await User.findByPk(tenantUserId, { transaction, lock: transaction.LOCK.UPDATE });
+
+        if (!user || normalizeEmail(user.email) !== email) {
+            throw new DomainError(DomainErrorCode.CONFLICT, 'The invited company account does not match this DGFY account.', { statusCode: 409 });
+        }
+        if (user.invitation_status !== 'pending' || !user.invitation_expires_at || new Date(user.invitation_expires_at).getTime() <= now.getTime()) {
+            throw new DomainError(DomainErrorCode.CONFLICT, 'Only pending, unexpired invitations can be accepted.', { statusCode: 409 });
+        }
+
+        if (!role?.is_active || Number(user.staff_role_id) !== staffRoleId || String(user.role || '').toLowerCase() !== 'staff') {
+            await user.update({
+                invitation_token: null,
+                invitation_status: 'cancelled',
+                invitation_cancelled_at: now,
+                invitation_cancelled_by: null,
+                is_active: false
+            }, { transaction });
+            invitationUnavailable = true;
+        } else {
+            const grants = UserLocationGrant
+                ? await UserLocationGrant.findAll({
+                    where: { user_id: user.user_id },
+                    attributes: ['location_id'],
+                    transaction
+                })
+                : [];
+            const locationIds = [...new Set(grants.map((grant) => Number(grant.location_id)).filter((id) => Number.isInteger(id) && id > 0))];
+            const activeGrantCount = locationIds.length > 0 && TenantLocation
+                ? await TenantLocation.count({
+                    where: { location_id: { [Op.in]: locationIds }, is_active: true },
+                    transaction
+                })
+                : 0;
+            if (locationIds.length === 0 || activeGrantCount !== locationIds.length) {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'One or more assigned locations are no longer active. Ask a company administrator to review the invitation.', { statusCode: 409 });
+            }
+
+            await applyStaffRoleAssignmentInTransaction({
+                repository: staffRoleRepository,
+                target: user,
+                role,
+                actorUserId: user.invited_by || null,
+                transaction,
+                auditChanges: {
+                    assignment_source: 'invitation_acceptance',
+                    accepted_by_dgfy_account_id: account.id
+                }
+            });
+            await user.update({
+                username: await buildUniqueUsername(User, account.first_name, tenantUserId, { transaction }),
+                email,
+                phone_number: phone,
+                role: 'staff',
+                role_preset_key: null,
+                is_active: true,
+                invitation_token: null,
+                invitation_status: 'accepted',
+                invitation_accepted_at: now
+            }, { transaction });
+
+            const registryTransition = await landlordService.transitionInvitationRegistryByTenantUser({
+                tenantId: tenant.id,
+                tenantUserId,
+                expectedStatus: 'pending',
+                updates: { status: 'accepted', accepted_at: now, cancellation_reason: null }
+            });
+            if (!registryTransition) throw new DomainError(DomainErrorCode.CONFLICT, 'This invitation is no longer pending.', { statusCode: 409 });
+            registryTransitioned = true;
+
+            const [updatedMembershipCount] = await DgfyAccountTenantMembership.update({
+                tenant_user_id: tenantUserId,
+                status: 'accepted',
+                accepted_at: now
+            }, {
+                where: {
+                    id: membership.id,
+                    dgfy_account_id: account.id,
+                    tenant_id: tenant.id,
+                    source: 'invite',
+                    status: 'pending'
+                }
+            });
+            if (updatedMembershipCount !== 1) {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'This invitation is no longer pending.', { statusCode: 409 });
+            }
+            membershipTransitioned = true;
+        }
+
+        await transaction.commit();
+    } catch (error) {
+        if (!transaction.finished) await transaction.rollback();
+        try {
+            if (membershipTransitioned) {
+                await DgfyAccountTenantMembership.update({ status: 'pending', accepted_at: null }, {
+                    where: { id: membership.id, status: 'accepted', accepted_at: now }
+                });
+            }
+            if (registryTransitioned) {
+                await landlordService.transitionInvitationRegistryByTenantUser({
+                    tenantId: tenant.id,
+                    tenantUserId,
+                    expectedStatus: 'accepted',
+                    updates: { status: 'pending', accepted_at: null }
+                });
+            }
+        } catch (compensationError) {
+            logger.error('[DGFY] Accepted staff-role invitation compensation failed', {
+                tenant_id: tenant.id,
+                tenant_user_id: tenantUserId,
+                staff_role_id: staffRoleId,
+                error_name: compensationError?.name || 'Error'
+            });
+        }
+        throw error;
+    }
+
+    if (invitationUnavailable) {
+        try {
+            await landlordService.transitionInvitationRegistryByTenantUser({
+                tenantId: tenant.id,
+                tenantUserId,
+                expectedStatus: 'pending',
+                updates: {
+                    status: 'cancelled',
+                    cancellation_reason: 'staff_role_unavailable',
+                    cancelled_at: now,
+                    cancelled_by_user_id: null
+                }
+            });
+            await DgfyAccountTenantMembership.update({ status: 'removed' }, {
+                where: {
+                    id: membership.id,
+                    tenant_id: tenant.id,
+                    tenant_user_id: tenantUserId,
+                    source: 'invite',
+                    status: 'pending'
+                }
+            });
+        } catch (error) {
+            logger.error('[DGFY] Defensive staff-role invitation cancellation sync failed', {
+                tenant_id: tenant.id,
+                tenant_user_id: tenantUserId,
+                staff_role_id: staffRoleId,
+                error_name: error?.name || 'Error'
+            });
+        }
+        throw customRoleUnavailableError();
+    }
+
+    await landlordService.addEmailTenantMapping(email, tenant.id).catch(() => {});
+    acceptedMembership = await DgfyAccountTenantMembership.findByPk(membership.id, {
+        include: [{ association: 'tenant', attributes: ['id', 'name', 'company_token', 'status', 'plan', 'owner_dgfy_account_id'] }]
+    });
+    return { membership: acceptedMembership, staffRoleAssigned: true };
+};
+
+const cancelOrphanedCustomStaffRoleInvitation = async ({ membership, tenant, tenantUser, sequelizeInstance }) => {
+    const User = dbStore.get('User');
+    const StaffRole = dbStore.get('StaffRole');
+    const tenantUserId = parsePositiveInt(membership.tenant_user_id);
+    const staffRoleId = parseStrictPositiveInt(tenantUser?.staff_role_id);
+    const now = new Date();
+
+    if (tenantUserId && staffRoleId) {
+        const transaction = await sequelizeInstance.transaction();
+        try {
+            if (StaffRole) {
+                await StaffRole.findByPk(staffRoleId, { transaction, lock: transaction.LOCK.UPDATE });
+            }
+            const user = await User.findByPk(tenantUserId, { transaction, lock: transaction.LOCK.UPDATE });
+            if (user?.invitation_status === 'pending' && Number(user.staff_role_id) === staffRoleId) {
+                await user.update({
+                    invitation_token: null,
+                    invitation_status: 'cancelled',
+                    invitation_cancelled_at: now,
+                    invitation_cancelled_by: null,
+                    is_active: false
+                }, { transaction });
+            }
+            await transaction.commit();
+        } catch (error) {
+            if (!transaction.finished) await transaction.rollback();
+            throw error;
+        }
+    }
+
+    try {
+        await landlordService.transitionInvitationRegistryByTenantUser({
+            tenantId: tenant.id,
+            tenantUserId,
+            expectedStatus: 'pending',
+            updates: {
+                status: 'cancelled',
+                cancellation_reason: 'staff_role_unavailable',
+                cancelled_at: now,
+                cancelled_by_user_id: null
+            }
+        });
+    } catch (error) {
+        logger.error('[DGFY] Orphaned staff-role invitation registry cancellation failed', {
+            tenant_id: tenant.id,
+            tenant_user_id: tenantUserId,
+            staff_role_id: staffRoleId,
+            error_name: error?.name || 'Error'
+        });
+    }
+
+    try {
+        await DgfyAccountTenantMembership.update({ status: 'removed' }, {
+            where: {
+                id: membership.id,
+                tenant_id: tenant.id,
+                tenant_user_id: tenantUserId,
+                source: 'invite',
+                status: 'pending'
+            }
+        });
+    } catch (error) {
+        logger.error('[DGFY] Orphaned staff-role membership cancellation failed', {
+            tenant_id: tenant.id,
+            tenant_user_id: tenantUserId,
+            staff_role_id: staffRoleId,
+            error_name: error?.name || 'Error'
+        });
+    }
 };
 
 export const dgfyAccountRepository = {
@@ -545,7 +842,7 @@ export const dgfyAccountRepository = {
             if (existingMembership) continue;
 
             try {
-                const sequelizeInstance = await tenantConnector.getConnection(tenant);
+                const sequelizeInstance = await tenantConnector.getConnection(tenant, 'repository.dgfy-account');
                 const tenantModels = getTenantModels(sequelizeInstance);
                 const User = tenantModels.User;
                 const user = await User.findOne({ where: { email } });
@@ -710,6 +1007,7 @@ export const dgfyAccountRepository = {
         adminUser,
         role = 'staff',
         rolePresetKey = null,
+        staffRoleId = null,
         permissions = [],
         locationIds = []
     }) {
@@ -734,7 +1032,7 @@ export const dgfyAccountRepository = {
             throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'This DGFY account is already connected or invited to this company.', { statusCode: 409 });
         }
 
-        const sequelizeInstance = await tenantConnector.getConnection(tenant);
+        const sequelizeInstance = await tenantConnector.getConnection(tenant, 'repository.dgfy-account');
         const tenantModels = getTenantModels(sequelizeInstance);
         const context = {
             sequelize: sequelizeInstance,
@@ -751,65 +1049,85 @@ export const dgfyAccountRepository = {
             const User = dbStore.get('User');
             const UserLocationGrant = dbStore.get('UserLocationGrant');
             const TenantLocation = dbStore.get('TenantLocation');
+            const StaffRole = dbStore.get('StaffRole');
             const now = new Date();
             const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-            const transaction = await sequelizeInstance.transaction();
             let user;
-            let createdTenantUser = false;
-            let previousTenantUserState;
-            const normalizedLocationIds = Array.from(new Set(locationIds
-                .map((id) => Number.parseInt(id, 10))
-                .filter((id) => Number.isInteger(id) && id > 0)));
-            if (normalizedLocationIds.length > 0) {
-                const activeLocationCount = await TenantLocation.count({
-                    where: {
-                        location_id: { [Op.in]: normalizedLocationIds },
-                        is_active: true
-                    }
-                });
-                if (activeLocationCount !== normalizedLocationIds.length) {
-                    throw new DomainError(
-                        DomainErrorCode.VALIDATION_FAILED,
-                        'Every invited user location must exist and be active in this company.',
-                        { statusCode: 422 }
-                    );
-                }
+            let membership;
+            let membershipCreated = false;
+            let membershipWriteAttempted = false;
+            let registryWriteAttempted = false;
+            let previousRegistry = null;
+            const previousMembershipState = existingMembership?.get
+                ? existingMembership.get({ plain: true })
+                : existingMembership;
+            const hasCustomStaffRole = staffRoleId !== null && staffRoleId !== undefined;
+            const normalizedStaffRoleId = hasCustomStaffRole ? parseStrictPositiveInt(staffRoleId) : null;
+            const requestedLocationIds = Array.isArray(locationIds) ? locationIds : [];
+            if (hasCustomStaffRole && !normalizedStaffRoleId) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'staff_role_id must be a positive integer.', { statusCode: 422 });
             }
+            const numericLocationIds = requestedLocationIds.map((id) => Number(id));
+            if (hasCustomStaffRole && (numericLocationIds.length === 0 || numericLocationIds.some((id) => !Number.isInteger(id) || id <= 0))) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Custom staff-role invitations require at least one valid active store location.', { statusCode: 422 });
+            }
+            const normalizedLocationIds = Array.from(new Set((hasCustomStaffRole ? numericLocationIds : requestedLocationIds
+                .map((id) => Number.parseInt(id, 10)))
+                .filter((id) => Number.isInteger(id) && id > 0)));
+            let staffRole = null;
+            const transaction = await sequelizeInstance.transaction();
+
             try {
-                user = await User.findOne({ where: { email: normalizeEmail(account.email) }, transaction });
-                previousTenantUserState = user ? {
-                    username: user.username,
-                    email: user.email,
-                    phone_number: user.phone_number,
-                    password_hash: user.password_hash,
-                    role: user.role,
-                    role_preset_key: user.role_preset_key,
-                    permissions: user.permissions,
-                    permission_mode: user.permission_mode,
-                    is_active: user.is_active,
-                    invitation_token: user.invitation_token,
-                    invitation_expires_at: user.invitation_expires_at,
-                    invited_by: user.invited_by,
-                    invitation_status: user.invitation_status,
-                    invitation_delivery_status: user.invitation_delivery_status,
-                    invitation_delivery_error: user.invitation_delivery_error,
-                    invitation_last_sent_at: user.invitation_last_sent_at,
-                    invitation_accepted_at: user.invitation_accepted_at,
-                    invitation_cancelled_at: user.invitation_cancelled_at,
-                    invitation_cancelled_by: user.invitation_cancelled_by,
-                    deleted_at: user.deleted_at,
-                    deleted_by: user.deleted_by
-                } : null;
+                if (normalizedStaffRoleId) {
+                    if (!StaffRole) {
+                        throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Custom staff roles are not available for this company.', { statusCode: 404 });
+                    }
+                    staffRole = await StaffRole.findByPk(normalizedStaffRoleId, {
+                        transaction,
+                        lock: transaction.LOCK.UPDATE
+                    });
+                    if (!staffRole || !staffRole.is_active) {
+                        throw new DomainError(DomainErrorCode.CONFLICT, 'The selected staff role is no longer available. Refresh roles and choose an active role.', { statusCode: 409 });
+                    }
+                }
+
+                if (normalizedLocationIds.length > 0) {
+                    const activeLocationCount = await TenantLocation.count({
+                        where: {
+                            location_id: { [Op.in]: normalizedLocationIds },
+                            is_active: true
+                        },
+                        transaction
+                    });
+                    if (activeLocationCount !== normalizedLocationIds.length) {
+                        throw new DomainError(
+                            DomainErrorCode.VALIDATION_FAILED,
+                            'Every invited user location must exist and be active in this company.',
+                            { statusCode: 422 }
+                        );
+                    }
+                }
+
+                if (normalizedStaffRoleId && !UserLocationGrant) {
+                    throw new DomainError(DomainErrorCode.INTERNAL_ERROR, 'Location grants are not available for this company.', { statusCode: 500 });
+                }
+
+                user = await User.findOne({
+                    where: { email: normalizeEmail(account.email) },
+                    transaction,
+                    lock: transaction.LOCK.UPDATE
+                });
                 const username = await buildUniqueUsername(User, account.first_name, user?.user_id || null, { transaction });
                 const payload = {
                     username,
                     email: normalizeEmail(account.email),
                     phone_number: normalizePhoneNumber(account.phone),
                     password_hash: user?.password_hash || INERT_TENANT_DGFY_HASH,
-                    role,
-                    role_preset_key: rolePresetKey || null,
-                    permissions: Array.isArray(permissions) && permissions.length > 0 ? permissions : (DEFAULT_ROLE_PERMISSIONS[role] || []),
-                    permission_mode: 'custom',
+                    role: staffRole ? 'staff' : role,
+                    role_preset_key: staffRole ? null : (rolePresetKey || null),
+                    staff_role_id: staffRole?.staff_role_id || null,
+                    permissions: staffRole ? [] : (Array.isArray(permissions) && permissions.length > 0 ? permissions : (DEFAULT_ROLE_PERMISSIONS[role] || [])),
+                    permission_mode: staffRole ? 'inherit' : 'custom',
                     is_active: false,
                     invitation_token: null,
                     invitation_expires_at: expiresAt,
@@ -828,10 +1146,9 @@ export const dgfyAccountRepository = {
                     await user.update(payload, { transaction });
                 } else {
                     user = await User.create(payload, { transaction });
-                    createdTenantUser = true;
                 }
 
-                if (UserLocationGrant && Array.isArray(locationIds)) {
+                if (UserLocationGrant) {
                     await UserLocationGrant.destroy({ where: { user_id: user.user_id }, transaction });
                     if (normalizedLocationIds.length > 0) {
                         await UserLocationGrant.bulkCreate(normalizedLocationIds.map((locationId) => ({
@@ -841,15 +1158,12 @@ export const dgfyAccountRepository = {
                         })), { transaction });
                     }
                 }
-                await transaction.commit();
-            } catch (error) {
-                await transaction.rollback();
-                throw error;
-            }
 
-            let membership;
-            try {
-                const [resolvedMembership] = await DgfyAccountTenantMembership.findOrCreate({
+                previousRegistry = await landlordService.findInvitationRegistryByTenantUser({
+                    tenantId: tenant.id,
+                    tenantUserId: user.user_id
+                });
+                const [resolvedMembership, created] = await DgfyAccountTenantMembership.findOrCreate({
                     where: {
                         dgfy_account_id: account.id,
                         tenant_id: tenant.id
@@ -864,6 +1178,8 @@ export const dgfyAccountRepository = {
                     }
                 });
                 membership = resolvedMembership;
+                membershipCreated = created;
+                membershipWriteAttempted = true;
                 await membership.update({
                     tenant_user_id: user.user_id,
                     role,
@@ -872,6 +1188,7 @@ export const dgfyAccountRepository = {
                     accepted_at: null
                 });
 
+                registryWriteAttempted = true;
                 await landlordService.upsertUserInvitationRegistry({
                     tenantId: tenant.id,
                     tenantUserId: user.user_id,
@@ -880,34 +1197,63 @@ export const dgfyAccountRepository = {
                     token: `${membership.id}:${account.id}:${tenant.id}`,
                     status: 'pending',
                     deliveryStatus: 'not_configured',
+                    staffRoleId: staffRole?.staff_role_id || null,
+                    staffRoleName: staffRole?.name || null,
+                    cancellationReason: null,
                     invitedByUserId: adminUser?.user_id || null,
                     invitedByName: adminUser?.username || null,
                     expiresAt
                 });
+                await transaction.commit();
             } catch (error) {
-                await membership?.destroy?.().catch(() => null);
-                const compensationTransaction = await sequelizeInstance.transaction();
+                if (!transaction.finished) await transaction.rollback();
                 try {
-                    const currentUser = await User.findByPk(user.user_id, { transaction: compensationTransaction });
-                    if (currentUser && createdTenantUser) {
-                        await currentUser.destroy({ transaction: compensationTransaction });
-                    } else if (currentUser && previousTenantUserState) {
-                        await currentUser.update(previousTenantUserState, { transaction: compensationTransaction });
-                    } else if (currentUser) {
-                        await currentUser.update({
-                            is_active: false,
-                            invitation_status: 'cancelled',
-                            invitation_cancelled_at: new Date()
-                        }, { transaction: compensationTransaction });
+                    if (membershipWriteAttempted && membership) {
+                        if (membershipCreated) {
+                            await membership.destroy();
+                        } else if (previousMembershipState) {
+                            await membership.update({
+                                tenant_user_id: previousMembershipState.tenant_user_id,
+                                role: previousMembershipState.role,
+                                status: previousMembershipState.status,
+                                source: previousMembershipState.source,
+                                accepted_at: previousMembershipState.accepted_at
+                            });
+                        }
                     }
-                    await compensationTransaction.commit();
+                    if (registryWriteAttempted && user?.user_id) {
+                        if (previousRegistry) {
+                            await previousRegistry.update({
+                                email: previousRegistry.email,
+                                role: previousRegistry.role,
+                                staff_role_id: previousRegistry.staff_role_id,
+                                staff_role_name: previousRegistry.staff_role_name,
+                                cancellation_reason: previousRegistry.cancellation_reason,
+                                token_hash: previousRegistry.token_hash,
+                                status: previousRegistry.status,
+                                delivery_status: previousRegistry.delivery_status,
+                                delivery_error: previousRegistry.delivery_error,
+                                invited_by_user_id: previousRegistry.invited_by_user_id,
+                                invited_by_name: previousRegistry.invited_by_name,
+                                expires_at: previousRegistry.expires_at,
+                                last_sent_at: previousRegistry.last_sent_at,
+                                accepted_at: previousRegistry.accepted_at,
+                                cancelled_at: previousRegistry.cancelled_at,
+                                cancelled_by_user_id: previousRegistry.cancelled_by_user_id
+                            });
+                        } else {
+                            await landlordService.deleteInvitationRegistryByTenantUser({
+                                tenantId: tenant.id,
+                                tenantUserId: user.user_id
+                            });
+                        }
+                    }
                 } catch (compensationError) {
-                    await compensationTransaction.rollback();
                     logger.error('[DGFY] Invitation compensation failed after landlord write failure', {
                         tenant_id: tenant.id,
                         tenant_user_id: user?.user_id || null,
                         dgfy_account_id: account.id,
-                        error: compensationError?.message
+                        error_name: compensationError?.name || 'Error'
                     });
                 }
                 throw error;
@@ -936,7 +1282,7 @@ export const dgfyAccountRepository = {
             );
         }
 
-        const sequelizeInstance = await tenantConnector.getConnection(tenant);
+        const sequelizeInstance = await tenantConnector.getConnection(tenant, 'repository.dgfy-account');
         const tenantModels = getTenantModels(sequelizeInstance);
         return dbStore.run({
             sequelize: sequelizeInstance,
@@ -987,7 +1333,7 @@ export const dgfyAccountRepository = {
             );
         }
 
-        const sequelizeInstance = await tenantConnector.getConnection(tenant);
+        const sequelizeInstance = await tenantConnector.getConnection(tenant, 'repository.dgfy-account');
         const tenantModels = getTenantModels(sequelizeInstance);
         const context = {
             sequelize: sequelizeInstance,
@@ -1002,6 +1348,38 @@ export const dgfyAccountRepository = {
 
         return dbStore.run(context, async () => {
             const User = dbStore.get('User');
+            const invitationRegistry = await landlordService.findInvitationRegistryByTenantUser({
+                tenantId: tenant.id,
+                tenantUserId: membership.tenant_user_id
+            });
+            const tenantInvitation = membership.tenant_user_id
+                ? await User.findByPk(membership.tenant_user_id, {
+                    attributes: ['user_id', 'staff_role_id', 'invitation_status']
+                })
+                : null;
+            const registryStaffRoleId = invitationRegistry?.staff_role_id == null
+                ? null
+                : parseStrictPositiveInt(invitationRegistry.staff_role_id);
+            const tenantStaffRoleId = parseStrictPositiveInt(tenantInvitation?.staff_role_id);
+            if (registryStaffRoleId) {
+                return acceptCustomStaffRoleInvitation({
+                    membership,
+                    account,
+                    tenant,
+                    registry: invitationRegistry,
+                    sequelizeInstance
+                });
+            }
+            if (tenantStaffRoleId) {
+                await cancelOrphanedCustomStaffRoleInvitation({
+                    membership,
+                    tenant,
+                    tenantUser: tenantInvitation,
+                    sequelizeInstance
+                });
+                throw customRoleUnavailableError();
+            }
+
             const tenantUserId = parsePositiveInt(membership.tenant_user_id);
             const role = String(membership.role || 'staff').trim().toLowerCase() || 'staff';
             const email = normalizeEmail(account.email);
@@ -1013,7 +1391,7 @@ export const dgfyAccountRepository = {
             try {
                 const username = await buildUniqueUsername(User, account.first_name, tenantUserId, { transaction: tenantTransaction });
 
-                user = tenantUserId ? await User.findByPk(tenantUserId, { transaction: tenantTransaction }) : null;
+                user = tenantUserId ? await User.findByPk(tenantUserId, { transaction: tenantTransaction, lock: tenantTransaction.LOCK.UPDATE }) : null;
                 if (tenantUserId && !user) {
                     throw new DomainError(
                         DomainErrorCode.VALIDATION_FAILED,
@@ -1031,6 +1409,17 @@ export const dgfyAccountRepository = {
                         'Invitation tenant user does not match the DGFY account email.',
                         { statusCode: 409 }
                     );
+                }
+
+                if (user && user.invitation_status && user.invitation_status !== 'pending') {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Only pending invitations can be accepted. Ask a company administrator to send a new invitation.',
+                        { statusCode: 409 }
+                    );
+                }
+                if (user?.staff_role_id !== null && user?.staff_role_id !== undefined) {
+                    throw customRoleUnavailableError();
                 }
 
                 if (user) {
@@ -1106,7 +1495,7 @@ export const dgfyAccountRepository = {
             }).catch(() => {});
         }
         if (membership?.tenant?.company_token && membership.tenant_user_id) {
-            const sequelizeInstance = await tenantConnector.getConnection(membership.tenant);
+            const sequelizeInstance = await tenantConnector.getConnection(membership.tenant, 'repository.dgfy-account');
             const tenantModels = getTenantModels(sequelizeInstance);
             await ensureTenantUserInvitationSchema(sequelizeInstance);
             await dbStore.run({
@@ -1146,7 +1535,7 @@ export const dgfyAccountRepository = {
         }
 
         if (tenant?.company_token && membership.tenant_user_id) {
-            const sequelizeInstance = await tenantConnector.getConnection(tenant);
+            const sequelizeInstance = await tenantConnector.getConnection(tenant, 'repository.dgfy-account');
             const tenantModels = getTenantModels(sequelizeInstance);
             await dbStore.run({
                 sequelize: sequelizeInstance,
@@ -1225,6 +1614,22 @@ export const dgfyAccountRepository = {
             }],
             ...options
         });
+    },
+
+    async removeMembershipForTenantUser({ tenantId, tenantUserId }, options = {}) {
+        const [updatedCount] = await DgfyAccountTenantMembership.update(
+            { status: 'removed' },
+            {
+                where: {
+                    tenant_id: tenantId,
+                    tenant_user_id: tenantUserId,
+                    status: { [Op.in]: ['pending', 'accepted'] }
+                },
+                ...options
+            }
+        );
+
+        return updatedCount;
     },
 
     async forceAssignTenantOwnership({ tenant, toAccountId, tenantUserId = null, role = 'admin', actorAccountId = null }, options = {}) {

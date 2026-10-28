@@ -13,7 +13,7 @@ const SCHEDULER_LOCK_KEY = 'scheduler:business_admin_alert_snapshots';
 const intervalMinutes = () => Math.max(5, Number.parseInt(process.env.BUSINESS_ADMIN_ALERT_SNAPSHOT_MINUTES || '15', 10) || 15);
 const lockTtlSeconds = () => Math.max(60, Number.parseInt(process.env.BUSINESS_ADMIN_ALERT_SNAPSHOT_LOCK_SECONDS || '900', 10) || 900);
 const withTenant = async (tenant, callback) => {
-    const sequelize = await tenantConnector.getConnection(tenant);
+    const sequelize = await tenantConnector.getConnection(tenant, 'scheduler.business-admin-alert');
     const models = getTenantModels(sequelize);
     return dbStore.run({ ...models, sequelize, tenantId: tenant.id, tenantName: tenant.name }, callback);
 };

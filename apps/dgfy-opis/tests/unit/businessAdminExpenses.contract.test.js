@@ -11,7 +11,7 @@ const css = fs.readFileSync(path.resolve(__dirname, '../../src/features/business
 
 describe('Business Admin expense ledger contract', () => {
   it('loads, creates, and voids tenant-local expense records', () => {
-    expect(service).toContain("expenses: (params) => get('/business-admin/expenses', params)");
+    expect(service).toContain("expenses: (params, config) => get('/business-admin/expenses', params, config)");
     expect(service).toContain("createExpense: (body) => api.post('/business-admin/expenses', body)");
     expect(service).toContain("voidExpense: (expenseId, body) => api.post(`/business-admin/expenses/${encodeURIComponent(expenseId)}/void`, body)");
     expect(page).toContain("else if (activeSection === 'expenses') payload = await businessAdminApi.expenses");

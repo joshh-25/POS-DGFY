@@ -601,7 +601,16 @@ const hasPosAttendanceLifecyclePermission = (user) => {
 export default function TerminalPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { workflowMode, profile, modeChangeNotice, dismissModeChangeNotice } = useWorkflowMode();
+  const {
+    workflowMode,
+    workflowSource,
+    loading: workflowLoading,
+    refreshWorkflowMode,
+    profile,
+    modeChangeNotice,
+    dismissModeChangeNotice
+  } = useWorkflowMode();
+  const retryWorkflowMode = useCallback(() => refreshWorkflowMode({ force: true }), [refreshWorkflowMode]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     const stored = safeLocalStorageGet('posTerminalSidebarCollapsed');
     return stored === '1';
@@ -1043,6 +1052,7 @@ export default function TerminalPage() {
   const [branchSelectorOpen, setBranchSelectorOpen] = useState(false);
   const [branchSelectorMode, setBranchSelectorMode] = useState('directory');
   const branchSelectorContinuationRef = useRef(null);
+  const branchDirectoryDismissedRef = useRef(false);
   const cashierBranchOperatorRef = useRef(null);
   const [cashierBranchSelectionReady, setCashierBranchSelectionReady] = useState(false);
   const cashierBranchOperationSelectedRef = useRef(false);
@@ -1902,6 +1912,7 @@ export default function TerminalPage() {
   const refreshOperationalContext = useCallback(async ({
     terminalIdOverride = null,
     operatingLocationIdOverride = null,
+    shiftIdOverride = null,
     suppressGlobalErrors = false,
     allowWhileLocked = false,
     canViewPosOverride = null
@@ -1910,6 +1921,8 @@ export default function TerminalPage() {
     const scopedOperatingLocationId = Number.isInteger(Number(operatingLocationIdOverride || operatingLocationId))
       ? Number(operatingLocationIdOverride || operatingLocationId)
       : null;
+    const requestedShiftId = Number.parseInt(shiftIdOverride, 10);
+    const hasRequestedShiftId = Number.isInteger(requestedShiftId) && requestedShiftId > 0;
     const canViewOperationalContext = canViewPosOverride == null ? canViewPos : canViewPosOverride;
     if ((!allowWhileLocked && locked) || !canViewOperationalContext) {
       // A stale locked/permission snapshot must not cancel or hide a valid refresh
@@ -1949,6 +1962,7 @@ export default function TerminalPage() {
       preservedTakeoverContext?.shift
       && preservedTakeoverContext.terminalId === terminalId
       && (!scopedOperatingLocationId || preservedTakeoverLocationId === scopedOperatingLocationId)
+      && (!hasRequestedShiftId || Number(preservedTakeoverContext.shift?.pos_terminal_shift_id || 0) === requestedShiftId)
     ) {
       const preservedShiftState = preservedTakeoverContext.shiftState || {};
       const preservedDashboard = preservedTakeoverContext.todayDashboard || {};
@@ -1973,8 +1987,15 @@ export default function TerminalPage() {
     setTodayDashboard((prev) => ({ ...prev, loading: true }));
     try {
       const currentShiftParams = scopedOperatingLocationId
-        ? { terminal_id: terminalId, location_id: scopedOperatingLocationId }
-        : { terminal_id: terminalId };
+        ? {
+          terminal_id: terminalId,
+          location_id: scopedOperatingLocationId,
+          ...(hasRequestedShiftId ? { shift_id: requestedShiftId } : {})
+        }
+        : {
+          terminal_id: terminalId,
+          ...(hasRequestedShiftId ? { shift_id: requestedShiftId } : {})
+        };
       let currentShiftResult = await fetchCurrentTerminalShift(
         currentShiftParams,
         suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
@@ -1985,7 +2006,10 @@ export default function TerminalPage() {
         currentShiftResult
       })) {
         const unscopedCurrentShiftResult = await fetchCurrentTerminalShift(
-          { terminal_id: terminalId },
+          {
+            terminal_id: terminalId,
+            ...(hasRequestedShiftId ? { shift_id: requestedShiftId } : {})
+          },
           suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
         );
         if (!isCurrentRequest()) return null;
@@ -2008,8 +2032,14 @@ export default function TerminalPage() {
         )
         : null;
       if (!isCurrentRequest()) return null;
-      const activeShift = dashboardResult?.active_shift || shiftPayload;
-      const activeShiftSummary = dashboardResult?.active_shift_cash_summary || cashSummary;
+      // An exact Resume request must never fall back to another open shift
+      // returned by the location dashboard after the selected shift changed.
+      const activeShift = hasRequestedShiftId
+        ? (Number(shiftPayload?.pos_terminal_shift_id || 0) === requestedShiftId ? shiftPayload : null)
+        : (dashboardResult?.active_shift || shiftPayload);
+      const activeShiftSummary = hasRequestedShiftId
+        ? (activeShift ? cashSummary : null)
+        : (dashboardResult?.active_shift_cash_summary || cashSummary);
       const readinessSummary = dashboardResult?.location_binding_readiness || currentShiftResult?.location_binding_readiness || null;
 
       setShiftState({
@@ -2649,9 +2679,13 @@ export default function TerminalPage() {
   const openBranchSelector = useCallback(({
     mode = 'directory',
     continuation = null,
-    cashierData = null
+    cashierData = null,
+    resetDirectoryDismissal = false
   } = {}) => {
     const branchOperator = cashierData?.user || terminalUser;
+    if (mode === 'directory' && resetDirectoryDismissal) {
+      branchDirectoryDismissedRef.current = false;
+    }
     branchSelectorContinuationRef.current = continuation;
     cashierBranchOperatorRef.current = branchOperator;
     setBranchSelectorMode(mode);
@@ -2736,6 +2770,7 @@ export default function TerminalPage() {
       continueFromBranchSelector();
       return;
     }
+    if (branchSelectorMode === 'directory') branchDirectoryDismissedRef.current = true;
     branchSelectorContinuationRef.current = null;
     setBranchSelectorOpen(false);
   }, [branchSelectorMode, continueFromBranchSelector]);
@@ -2802,7 +2837,7 @@ export default function TerminalPage() {
     // directory after leaving read-only mode so the generic no-shift prompt
     // cannot take over before the administrator chooses an operating path.
     if (canViewBranchLocations) {
-      openBranchSelector({ mode: 'directory' });
+      openBranchSelector({ mode: 'directory', resetDirectoryDismissal: true });
       void refreshBranchDirectory({ silent: true });
     }
   }, [
@@ -3529,25 +3564,12 @@ export default function TerminalPage() {
       setTerminalUser(user);
       setDgfyAdminBypassActive(userCanAccessSettings && !storedLockActive);
 
-      if (IS_DGFY_POS_SURFACE && dgfyTenantId && userCanViewBranchLocations) {
-        setStoredTerminalLock(false);
-        setStoredTerminalLockReason('');
-        setTerminalUnlockRequired(false);
-        setTerminalUnlockModalOpen(false);
-        setLocked(false);
-        setDrawerOpen(false);
-        setBranchSelectorMode('directory');
-        setBranchSelectorOpen(true);
-        return;
-      }
-
-      if (shouldOpenBranchDirectoryOnHydrate({
-        isDgfyPosSurface: IS_DGFY_POS_SURFACE,
-        dgfyTenantId,
-        canViewBranchLocations: userCanViewBranchLocations,
-        storedLockActive,
-        background
-      })) {
+      if (
+        IS_DGFY_POS_SURFACE
+        && dgfyTenantId
+        && userCanViewBranchLocations
+        && !branchDirectoryDismissedRef.current
+      ) {
         setStoredTerminalLock(false);
         setStoredTerminalLockReason('');
         setTerminalUnlockRequired(false);
@@ -3798,13 +3820,13 @@ export default function TerminalPage() {
 
       const shouldRestoreStoredTerminal = (
         IS_DGFY_POS_SURFACE
-        && !userCanAccessSettings
         && storedTerminalId
         && !storedLockActive
         && storedReason !== 'full_auth'
         && storedReason !== 'shift_closed'
         && storedReason !== 'terminal_reunlock'
       );
+      let restoredStoredTerminalContext = false;
       let restoreTerminalRegistry = activeTerminalRegistry;
       if (shouldRestoreStoredTerminal && !terminalMetaHydratedForSessionRef.current) {
         const terminalBootstrap = await hydrateTerminalMeta({ suppressGlobalErrors: true });
@@ -3856,7 +3878,27 @@ export default function TerminalPage() {
           if (Number.isInteger(restoredLocationId) && restoredLocationId > 0) {
             setOperatingLocationId(restoredLocationId);
           }
+          restoredStoredTerminalContext = true;
         }
+      }
+
+      if (!restoredStoredTerminalContext && shouldOpenBranchDirectoryOnHydrate({
+        isDgfyPosSurface: IS_DGFY_POS_SURFACE,
+        dgfyTenantId,
+        canViewBranchLocations: userCanViewBranchLocations,
+        storedLockActive,
+        background,
+        branchDirectoryDismissed: branchDirectoryDismissedRef.current
+      })) {
+        setStoredTerminalLock(false);
+        setStoredTerminalLockReason('');
+        setTerminalUnlockRequired(false);
+        setTerminalUnlockModalOpen(false);
+        setLocked(false);
+        setDrawerOpen(false);
+        setBranchSelectorMode('directory');
+        setBranchSelectorOpen(true);
+        return;
       }
     } catch (error) {
       if (!isCurrentHydration()) return;
@@ -4324,6 +4366,7 @@ export default function TerminalPage() {
         clearStoredSaleDraft();
       }
       resetSettingsAccessPinState();
+      branchDirectoryDismissedRef.current = false;
       setLoadingUser(false);
       setTerminalStartupReady(true);
       setLocked(true);
@@ -5057,6 +5100,7 @@ export default function TerminalPage() {
     selectedTerminalId,
     {
       operatingLocationIdOverride = null,
+      shiftIdOverride = null,
       preserveShiftContext = null,
       suppressStockAlerts = false
     } = {}
@@ -5133,6 +5177,7 @@ export default function TerminalPage() {
         refreshOperationalContext({
           terminalIdOverride: selectedTerminalId,
           operatingLocationIdOverride,
+          shiftIdOverride,
           suppressGlobalErrors: true
         })
       ]);
@@ -5350,7 +5395,8 @@ export default function TerminalPage() {
       try {
         const currentShiftResult = await fetchCurrentTerminalShift({
           terminal_id: normalizedTerminalId,
-          location_id: normalizedLocationId
+          location_id: normalizedLocationId,
+          shift_id: normalizedShiftId
         }, SUPPRESS_GLOBAL_ERROR_TOAST);
         const currentShift = currentShiftResult?.shift || null;
         const currentShiftDecision = resolveActiveShiftResumeDecision({
@@ -5376,12 +5422,14 @@ export default function TerminalPage() {
         }
         let operationalContext = await completeUnlock(normalizedTerminalId, {
           operatingLocationIdOverride: normalizedLocationId,
+          shiftIdOverride: normalizedShiftId,
           suppressStockAlerts: true
         });
         if (!operationalContext?.shift) {
           operationalContext = await refreshOperationalContext({
             terminalIdOverride: normalizedTerminalId,
             operatingLocationIdOverride: normalizedLocationId,
+            shiftIdOverride: normalizedShiftId,
             suppressGlobalErrors: true,
             allowWhileLocked: true
           });
@@ -5438,6 +5486,7 @@ export default function TerminalPage() {
       const operationalContext = await refreshOperationalContext({
         terminalIdOverride: normalizedTerminalId,
         operatingLocationIdOverride: normalizedLocationId,
+        shiftIdOverride: normalizedShiftId,
         suppressGlobalErrors: true,
         allowWhileLocked: true
       });
@@ -5449,6 +5498,9 @@ export default function TerminalPage() {
         throw new Error('The selected shift changed before it could be resumed. Refresh the branch directory and try again.');
       }
 
+      if (typeof window !== 'undefined') {
+        safeLocalStorageSet(TERMINAL_ID_STORAGE_KEY, normalizedTerminalId);
+      }
       setStoredTerminalLock(false);
       setStoredTerminalLockReason('');
       setLocked(false);
@@ -6778,12 +6830,14 @@ export default function TerminalPage() {
       const completeConfirmedShiftResume = async ({ terminalId, locationId, activeShift }) => {
         let operationalContext = await completeTerminalUnlock(terminalId, {
           operatingLocationIdOverride: locationId,
+          shiftIdOverride: activeShift?.pos_terminal_shift_id || null,
           suppressStockAlerts: cashierSessionActive
         });
         if (!operationalContext?.shift) {
           operationalContext = await refreshOperationalContext({
             terminalIdOverride: terminalId,
             operatingLocationIdOverride: locationId,
+            shiftIdOverride: activeShift?.pos_terminal_shift_id || null,
             suppressGlobalErrors: true,
             allowWhileLocked: true
           });
@@ -8462,14 +8516,39 @@ export default function TerminalPage() {
           getOnlineOrderCashIdempotencyPrefix(cashCollectionOrder)
         )
       });
+      let cashDrawerOpened = false;
+      try {
+        const drawerOutcome = await posHardware.openDrawer({
+          shiftId: activeShiftId,
+          transactionId: orderId,
+          terminalId,
+          reason: 'checkout_auto_online_order_cash_collection',
+          idempotencyKey: createIdempotencyKey('pos-online-order-cash-drawer')
+        });
+        cashDrawerOpened = drawerOutcome?.success === true;
+        if (!cashDrawerOpened) {
+          const drawerMessage = drawerOutcome?.message || 'The cash drawer did not open.';
+          if (drawerOutcome?.reasonCode === 'NO_PRINTER_CONFIGURED') {
+            toast.message(`Cash collected, but no cash drawer is configured for this terminal. ${drawerMessage}`);
+          } else {
+            toast.error(`Cash collected, but the cash drawer did not open. ${drawerMessage}`);
+          }
+        }
+      } catch (drawerError) {
+        toast.error(`Cash collected, but the cash drawer did not open. ${drawerError?.message || 'Retry the drawer action before handing over cash.'}`);
+      }
       try {
         await printOnlineOrderReceiptById(orderId, { automatic: true });
       } catch (printError) {
         toast.message(printError?.response?.data?.message || 'Cash collected, but the online order receipt still needs printing.');
       }
       toast.success(isDeliveryOrder
-          ? 'Delivery cash payment collected. You can now complete the order after delivery.'
-          : 'Cash payment collected. You can now mark the order as picked up.');
+          ? cashDrawerOpened
+            ? 'Delivery cash payment collected and cash drawer opened. You can now complete the order after delivery.'
+            : 'Delivery cash payment collected. You can now complete the order after delivery.'
+          : cashDrawerOpened
+            ? 'Cash payment collected and cash drawer opened. You can now mark the order as picked up.'
+            : 'Cash payment collected. You can now mark the order as picked up.');
       setCashCollectionOrder(null);
       await refreshIncomingOrders({ silent: true });
     } catch (error) {
@@ -9624,6 +9703,9 @@ function PosRestorationLoadingScreen() {
           onSwitchCompany={handleCompanySwitch}
           posViewMode={posViewMode}
           workflowMode={workflowMode}
+          workflowUnresolved={workflowSource === 'unresolved'}
+          workflowLoading={workflowLoading}
+          onRetryWorkflow={retryWorkflowMode}
           effectiveCapabilities={profile?.modules}
           isMsmeMode={isMsmeMode}
           shiftState={shiftState}

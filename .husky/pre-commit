@@ -60,7 +60,7 @@ if [ -n "$COMPAT_SEAM_SURFACE_FILES" ] || [ -n "$COMPAT_SEAM_MARKER_DIFF" ]; the
   echo "[pre-commit] Compatibility-seam manifest gate passed."
 fi
 
-AGENT_SURFACE_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -E "^(\.agents/skills/|\.claude/skills/|\.claude/agents/|AGENTS\.md$)" || true)"
+AGENT_SURFACE_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -E "^(\.agents/skills/|\.claude/skills/|\.claude/agents/|\.claude/rules/|AGENTS\.md$|CLAUDE\.md$)" || true)"
 if [ -n "$AGENT_SURFACE_FILES" ]; then
   echo "[pre-commit] Agent-surface files changed. Running agent-surfaces anti-drift gate..."
   echo "$AGENT_SURFACE_FILES"

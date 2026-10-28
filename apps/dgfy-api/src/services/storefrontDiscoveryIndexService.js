@@ -451,7 +451,7 @@ const buildTenantSnapshot = async (tenant, { openConnection } = {}) => {
     const ephemeral = Boolean(openConnection);
     const tenantConnection = ephemeral
         ? await openConnection()
-        : await tenantConnector.getConnection(tenant);
+        : await tenantConnector.getConnection(tenant, 'service.storefront-discovery-index');
 
     try {
         return await buildTenantSnapshotWithConnection(tenant, tenantConnection);

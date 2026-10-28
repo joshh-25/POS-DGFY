@@ -29,8 +29,38 @@ export function PosCheckoutDetailsSlot({
   buttonLayout = false,
   isTabletViewport = false,
   disabled = false,
-  cartItemCount = 0
+  cartItemCount = 0,
+  workflowUnresolved = false,
+  workflowLoading = false,
+  onRetryWorkflow = () => {}
 }) {
+  if (workflowUnresolved) {
+    return (
+      <div
+        className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900"
+        data-testid="pos-workflow-unresolved-notice"
+        role={workflowLoading ? 'status' : 'alert'}
+        aria-live="polite"
+      >
+        {workflowLoading ? (
+          <p>Loading store settings…</p>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p>Reconnect to load store settings</p>
+            <button
+              type="button"
+              onClick={onRetryWorkflow}
+              className="rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-amber-900 hover:bg-amber-100"
+              data-testid="pos-workflow-retry-button"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   const checkoutDetailsOwner = presentationBundle?.slots?.checkoutDetails;
   const heading = presentationBundle?.labels?.checkoutDetailsHeading || 'Order details';
   const showHeading = !buttonLayout && presentationBundle?.labels?.showCheckoutDetailsHeading === true;

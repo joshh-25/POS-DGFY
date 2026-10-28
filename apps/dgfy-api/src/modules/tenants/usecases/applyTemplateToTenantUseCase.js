@@ -190,7 +190,7 @@ export const buildApplyTemplateToTenantUseCase = ({
                 { templateId: template.template_id, templateVersion: template.version }
             );
 
-            const tenantSequelize = await tenantConnector.getConnection(tenant);
+            const tenantSequelize = await tenantConnector.getConnection(tenant, 'usecase.apply-template-to-tenant');
             const tenantModels = getTenantModels(tenantSequelize);
 
             const transactionResult = await dbStore.run({

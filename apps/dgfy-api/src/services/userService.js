@@ -814,8 +814,14 @@ export const getAllUsers = async (options = {}) => {
 
   const workflowMode = await readCurrentWorkflowMode();
   const tenantId = dbStore.getStore()?.tenantId;
+  const invitationMetadata = await landlordService.listInvitationRegistryMetadataByTenantUsers({
+    tenantId,
+    tenantUserIds: users.map((user) => user.user_id)
+  });
+  const invitationMetadataByUserId = new Map(invitationMetadata.map((invitation) => [Number(invitation.tenant_user_id), invitation]));
   return Promise.all(users.map(async (user) => {
     const dgfyLinkStatus = await buildLegacyDgfyLinkStatus({ tenantId, user });
+    const registryMetadata = invitationMetadataByUserId.get(Number(user.user_id));
     return buildUserPayload(user, workflowMode, {
       is_active: user.is_active,
       last_login: user.last_login,
@@ -832,6 +838,8 @@ export const getAllUsers = async (options = {}) => {
       invitation_delivery_error: user.invitation_delivery_error || null,
       invitation_last_sent_at: user.invitation_last_sent_at || null,
       invited_by: user.invited_by || null,
+      staff_role_name: user.staffRole?.name || registryMetadata?.staff_role_name || null,
+      invitation_cancellation_reason: registryMetadata?.cancellation_reason || null,
       ...dgfyLinkStatus
     });
   }));
@@ -1063,6 +1071,20 @@ export const removeUserFromCompany = async (adminUserId, targetUserId) => {
 
   await assertNoOpenOperatingState(targetUser.user_id);
 
+  const store = dbStore.getStore();
+  const tenantId = String(store?.tenantId || '').trim();
+
+  // Keep the landlord membership lifecycle in sync with the tenant-local
+  // soft-delete. Otherwise the DGFY account remains `accepted` and the
+  // invitation search/API correctly treats it as still connected.
+  if (tenantId && tenantId !== 'default') {
+    const { dgfyAccountRepository } = await import('../modules/dgfy/index.js');
+    await dgfyAccountRepository.removeMembershipForTenantUser({
+      tenantId,
+      tenantUserId: targetUser.user_id
+    });
+  }
+
   // Perform soft delete
   await targetUser.update({
     deleted_at: new Date(),
@@ -1085,8 +1107,6 @@ export const removeUserFromCompany = async (adminUserId, targetUserId) => {
   }
 
   // Remove email-tenant mapping
-  const store = dbStore.getStore();
-  const tenantId = store?.tenantId;
   if (tenantId) {
     try {
       await landlordService.removeEmailTenantMapping(targetUser.email, tenantId);
@@ -2249,7 +2269,7 @@ export const createUserInvitation = async (adminUserId, invitationData) => {
 
   // Get tenant name for email
   const store = dbStore.getStore();
-  const tenantName = store?.tenantName || 'SKUpervisor';
+  const tenantName = store?.tenantName || 'DGFY';
   const tenantId = String(store?.tenantId || '').trim() || null;
 
   try {
@@ -2442,7 +2462,7 @@ export const acceptInvitation = async (token, userData) => {
       email: user.email,
       username: user.username,
       role: user.role,
-      tenantName: dbStore.getStore()?.tenantName || 'SKUpervisor'
+      tenantName: dbStore.getStore()?.tenantName || 'DGFY'
     }).catch((error) => logger.warn('[UserService] Failed to send welcome email', {
       user_id: user.user_id,
       error: error.message
@@ -2546,7 +2566,7 @@ export const resendUserInvitation = async (adminUserId, targetUserId) => {
 
   const invitationToken = generateInvitationToken();
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  const tenantName = dbStore.getStore()?.tenantName || 'SKUpervisor';
+  const tenantName = dbStore.getStore()?.tenantName || 'DGFY';
   const tenantId = dbStore.getStore()?.tenantId;
   const previousInvitationState = {
     invitation_token: inviteUser.invitation_token,

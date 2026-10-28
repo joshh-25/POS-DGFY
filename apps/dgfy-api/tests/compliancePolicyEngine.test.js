@@ -43,6 +43,7 @@ const buildTenantProfile = () => ({
 
 const buildSettings = () => ({
     pos_business_name: { value: 'Demo Store' },
+    pos_taxpayer_type: { value: 'VAT_REGISTERED' },
     pos_tin_branch: { value: '123-456-789-000' },
     pos_address: { value: 'Iloilo City' },
     pos_ptu_number: { value: 'PTU-123' },
@@ -93,6 +94,24 @@ const buildRmoEvidence = () => ({
 });
 
 describe('compliancePolicyEngine', () => {
+    it('requires a recognized taxpayer type for fiscal readiness', () => {
+        const unknownTypeChecklist = evaluateComplianceChecklist({
+            settings: {
+                ...buildSettings(),
+                pos_taxpayer_type: { value: 'legacy_unknown' }
+            }
+        });
+        const legacyAliasChecklist = evaluateComplianceChecklist({
+            settings: {
+                ...buildSettings(),
+                pos_taxpayer_type: { value: 'VAT' }
+            }
+        });
+
+        expect(unknownTypeChecklist.missing_setting_keys).toContain('pos_taxpayer_type');
+        expect(legacyAliasChecklist.missing_setting_keys).not.toContain('pos_taxpayer_type');
+    });
+
     it('denies fiscal receipt render in non-compliant mode', () => {
         const decision = evaluateComplianceDecision({
             tenant: {

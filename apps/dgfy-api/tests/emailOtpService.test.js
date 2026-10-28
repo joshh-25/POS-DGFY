@@ -86,6 +86,42 @@ describe('email OTP service', () => {
     }));
   });
 
+  it('preserves the configured label for every active OTP purpose', async () => {
+    const sender = {
+      isEmailConfigured: jest.fn().mockReturnValue(true),
+      sendEmailOtpCode: jest.fn().mockResolvedValue({})
+    };
+    const purposes = Object.values(EMAIL_OTP_PURPOSES);
+    const otpRows = purposes.map((purpose, index) => ({
+      otp_id: `otp-purpose-${index}`,
+      purpose,
+      email: 'user@example.com',
+      expires_at: new Date('2026-05-17T04:20:00.000Z'),
+      delivery_status: 'sent',
+      update: jest.fn().mockResolvedValue({})
+    }));
+    mockEmailOtp.update.mockResolvedValue([1]);
+    mockEmailOtp.create.mockImplementation(async () => otpRows.shift());
+
+    for (const purpose of purposes) {
+      await requestEmailOtp({ purpose, email: 'user@example.com', emailSender: sender });
+    }
+
+    expect(sender.sendEmailOtpCode).toHaveBeenCalledTimes(purposes.length);
+    expect(sender.sendEmailOtpCode.mock.calls.map(([message]) => message.purposeLabel)).toEqual([
+      'company registration',
+      'tenant user registration',
+      'invitation acceptance',
+      'email change',
+      'DGFY account verification',
+      'DGFY password reset',
+      'DGFY business security check',
+      'DGFY legacy account linking',
+      'Storefront guest checkout',
+      'DGFY Storefront support email verification'
+    ]);
+  });
+
   it('links the OTP row to its email_delivery_logs row via email_delivery_id (issue #279)', async () => {
     const otpRow = {
       otp_id: 'otp-linked',

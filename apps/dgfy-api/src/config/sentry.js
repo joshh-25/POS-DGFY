@@ -98,18 +98,20 @@ export const makeTracesSampler = (baseRate) => (samplingContext = {}) => {
     : baseRate;
 };
 
-export const redactSensitiveData = (value) => {
+export const redactSensitiveData = (value, { redactAuthorizationCode = false } = {}) => {
   if (!value || typeof value !== 'object') return value;
-  const sensitiveKeyPattern = /(authorization|cookie|token|secret|password|pin|otp|email|phone|companytoken|company_token|auth|session)/i;
+  const sensitiveKeyPattern = /(authorization|cookie|token|secret|password|pin|otp|email|phone|companytoken|company_token|auth|session|request_uri|interaction|ticket|handoff|code_verifier)/i;
 
   if (Array.isArray(value)) {
-    return value.map((entry) => redactSensitiveData(entry));
+    return value.map((entry) => redactSensitiveData(entry, { redactAuthorizationCode }));
   }
 
   return Object.fromEntries(
     Object.entries(value).map(([key, entry]) => [
       key,
-      sensitiveKeyPattern.test(key) ? '[Filtered]' : redactSensitiveData(entry)
+      (sensitiveKeyPattern.test(key) || (redactAuthorizationCode && /^code$/i.test(key)))
+        ? '[Filtered]'
+        : redactSensitiveData(entry, { redactAuthorizationCode })
     ])
   );
 };
@@ -138,12 +140,34 @@ const SECRET_PATTERNS = [
   [
     /((?:api[_-]?key|apikey|access[_-]?token|client[_-]?secret|password|secret)\s*[=:]\s*)(["']?)[^\s"',;)]{8,}\2/gi,
     '$1[redacted]'
-  ]
+  ],
+  [/(\b(?:request_uri|oidc_interaction_id|interaction_id|ticket|handoff|code_verifier|authorization_code)\s*[=:]\s*)(["']?)[^\s"',;)]{8,}\2/gi, '$1[redacted]']
 ];
 
 // beforeSend runs synchronously on the request path, so a pathological
 // message must not turn this into a CPU stall.
 const MAX_SCRUBBED_TEXT_LENGTH = 50_000;
+
+const sanitizeSensitiveUrl = (value) => {
+  if (typeof value !== 'string' || !value) return value;
+  try {
+    const absolute = /^[a-z][a-z0-9+.-]*:\/\//i.test(value);
+    const url = new URL(value, 'https://sentry.invalid');
+    url.pathname = url.pathname.replace(/(\/oidc\/(?:interactions?|error)\/)[A-Za-z0-9_-]{20,128}(?=\/|$)/gi, '$1:id');
+    for (const key of [...url.searchParams.keys()]) {
+      if (/^(ticket|request_uri|oidc_interaction_id|interaction_id|authorization_code|code|state|code_verifier|handoff|oidc_handoff)$/i.test(key)) {
+        url.searchParams.set(key, '[Filtered]');
+      }
+    }
+    url.hash = '';
+    return absolute ? url.toString() : `${url.pathname}${url.search}`;
+  } catch {
+    return value
+      .replace(/(\/oidc\/(?:interactions?|error)\/)[A-Za-z0-9_-]{20,128}(?=\/|[?#]|$)/gi, '$1:id')
+      .replace(/([?#])(?:ticket|request_uri|oidc_interaction_id|interaction_id|authorization_code|code|state|code_verifier|handoff|oidc_handoff)=[^&#]*/gi, '$1[Filtered]')
+      .replace(/#.*/, '');
+  }
+};
 
 export const redactSecretsInText = (value) => {
   if (typeof value !== 'string' || !value) return value;
@@ -212,8 +236,15 @@ export const sanitizeSentryEvent = (rawEvent) => {
       ? {
         ...event.request,
         cookies: undefined,
-        data: event.request.data ? redactSensitiveData(event.request.data) : undefined,
-        headers: event.request.headers ? redactSensitiveData(event.request.headers) : undefined
+        data: event.request.data ? redactSensitiveData(event.request.data, {
+          redactAuthorizationCode: /\/oidc\/token(?:[/?#]|$)/i.test(String(event.request.url || ''))
+            || String(event.request.data?.grant_type || '').toLowerCase() === 'authorization_code'
+        }) : undefined,
+        headers: event.request.headers ? redactSensitiveData(event.request.headers) : undefined,
+        url: sanitizeSensitiveUrl(event.request.url),
+        query_string: typeof event.request.query_string === 'string'
+          ? sanitizeSensitiveUrl(`/?${event.request.query_string}`).replace(/^\//, '')
+          : event.request.query_string
       }
       : event.request,
     extra: event.extra ? redactSensitiveData(event.extra) : event.extra,

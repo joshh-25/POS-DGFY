@@ -1687,8 +1687,12 @@ describe('dgfyAuthUseCases', () => {
         expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
             to: account.email,
             subject: 'Invitation to join Ada Foods on DGFY',
-            text: expect.stringContaining('open My Account > Business')
+            text: expect.stringContaining('open My Account > Business'),
+            html: expect.stringContaining('Sign in to your DGFY account')
         }));
+        const [invitationEmail] = sendEmail.mock.calls[0];
+        expect(invitationEmail.html).not.toMatch(/\b(?:style|bgcolor)=/i);
+        expect(invitationEmail.html).not.toMatch(/linear-gradient|#0d9488|#0891b2/i);
         expect(result.data.payload.data.email_sent).toBe(true);
         expect(result.data.payload.data.delivery_error).toBeNull();
         expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({

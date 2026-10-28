@@ -140,6 +140,8 @@ describe('ComplianceProgramPanel integration', () => {
     expect(await screen.findByText('Lifecycle')).toBeTruthy();
     expect(await screen.findByText('1 unresolved requirement')).toBeTruthy();
     expect(await screen.findByText(/Next blocking step:/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Fix now' }).className).toContain('whitespace-nowrap');
+    expect(screen.getByRole('button', { name: 'Go to step' }).className).toContain('whitespace-nowrap');
   });
 
   it('shows inline profile errors and focuses the first invalid field on empty profile save', async () => {

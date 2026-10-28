@@ -800,7 +800,8 @@ const governedResetSchema = Joi.object({
 
 const terminalCurrentShiftQuerySchema = Joi.object({
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
-    location_id: Joi.number().integer().positive().optional()
+    location_id: Joi.number().integer().positive().optional(),
+    shift_id: Joi.number().integer().positive().optional()
 });
 
 const terminalShiftHistoryQuerySchema = Joi.object({

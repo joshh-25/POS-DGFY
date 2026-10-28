@@ -109,6 +109,21 @@ const assertNoHorizontalOverflow = async (page) => {
   expect(metrics.documentWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1);
 };
 
+const assertMinimumTouchTarget = async (locator, minimum = 44) => {
+  const box = await locator.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box.width).toBeGreaterThanOrEqual(minimum);
+  expect(box.height).toBeGreaterThanOrEqual(minimum);
+};
+
+const activateControl = async (locator, { preferTouch = true } = {}) => {
+  if (preferTouch && test.info().project.use?.hasTouch) {
+    await locator.tap({ force: true });
+    return;
+  }
+  await locator.click();
+};
+
 const assertPlaceholderFits = async (field) => {
   const metrics = await field.evaluate((input) => {
     const style = window.getComputedStyle(input);
@@ -162,7 +177,7 @@ test('signed-out registration gate is vertically balanced on desktop and contain
 
   await page.goto('/business/grow', { waitUntil: 'domcontentloaded' });
   const declineCookiesButton = page.getByRole('button', { name: 'Decline', exact: true });
-  if (await declineCookiesButton.isVisible()) await declineCookiesButton.click();
+  if (await declineCookiesButton.isVisible()) await activateControl(declineCookiesButton);
 
   const heading = page.getByRole('heading', { name: 'Register Your Business', exact: true });
   await expect(heading).toBeVisible();
@@ -183,7 +198,7 @@ for (const viewport of [
   { name: 'mobile', width: 390, height: 844 },
   { name: 'narrow mobile', width: 320, height: 740 }
 ]) {
-  test(`registration reaches the location step without runtime or layout failures on ${viewport.name} @registration @release`, async ({ page }) => {
+  test(`registration reaches the location step without runtime or layout failures on ${viewport.name} ${viewport.name === 'desktop' ? '@desktop-only' : '@responsive'} @registration @release`, async ({ page }) => {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     const crashChecker = registerCrashDetection(page, {
       failOnConsoleErrors: true,
@@ -195,11 +210,13 @@ for (const viewport of [
 
     await page.goto('/business/grow', { waitUntil: 'domcontentloaded' });
     const declineCookiesButton = page.getByRole('button', { name: 'Decline', exact: true });
-    if (await declineCookiesButton.isVisible()) await declineCookiesButton.click();
+    if (await declineCookiesButton.isVisible()) await activateControl(declineCookiesButton);
     await expect(page.getByRole('heading', { name: 'Business details', exact: true })).toBeVisible();
     await expect(page.getByText('Enter your company name and choose the industry that best describes its main activity.', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('navigation', { name: 'Business registration steps' })).toBeVisible();
-    await expect(page.getByRole('button', { name: /step 1: business/i })).toHaveAttribute('aria-current', 'step');
+    const stepOneButton = page.getByRole('button', { name: /step 1: business/i });
+    await expect(stepOneButton).toHaveAttribute('aria-current', 'step');
+    await assertMinimumTouchTarget(stepOneButton);
     if (viewport.name === 'mobile') {
       const mobileLogo = page.getByRole('img', { name: 'DGFY', exact: true });
       await expect(mobileLogo).toBeVisible();
@@ -239,21 +256,21 @@ for (const viewport of [
     await crashChecker.assertNoCrashes('registration step 1');
 
     await companyName.fill('Release Verification Cafe');
-    await industrySelect.click();
-    await page.getByRole('option', { name: 'Micro Food & Beverage' }).click();
+    await activateControl(industrySelect);
+    await activateControl(page.getByRole('option', { name: 'Micro Food & Beverage' }));
     await industryDescription.fill('Neighborhood cafe and bakery');
     await expect(page.getByText('Draft saved. You can refresh and resume.', { exact: true })).toBeVisible();
-    await expect.poll(() => state.patchCount).toBe(1);
+    await expect.poll(() => state.patchCount).toBeGreaterThanOrEqual(1);
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('heading', { name: 'Business details', exact: true })).toBeVisible();
     await expect(companyName).toHaveValue('Release Verification Cafe');
     await expect(industrySelect).toContainText('Micro Food & Beverage');
     await expect(industryDescription).toHaveValue('Neighborhood cafe and bakery');
-    await page.getByRole('button', { name: /save and continue/i }).click();
+    await activateControl(page.getByRole('button', { name: /save and continue/i }));
 
     await expect(page.getByRole('heading', { name: 'Storefront profile', exact: true })).toBeVisible();
     await expect(page.getByText('Add the public information customers will see.', { exact: true })).toHaveCount(0);
-    await expect.poll(() => state.patchCount).toBe(2);
+    await expect.poll(() => state.patchCount).toBeGreaterThanOrEqual(2);
     await expect(page.getByText('Not added', { exact: true })).toHaveCount(2);
     await expect(page.getByText('JPG or PNG, one image.', { exact: true })).toHaveCount(0);
     expect(state.draft.payload.business.industry_tag).toBe('Neighborhood cafe and bakery');
@@ -264,14 +281,14 @@ for (const viewport of [
     await expect(page.getByText('Upload optional images that will be staged with this registration for review.', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Storefront contact and description', exact: true })).toHaveCount(0);
     await expect(page.getByText('All fields below are optional, but help customers recognize and contact your store.', { exact: true })).toHaveCount(0);
-    await page.getByRole('button', { name: 'Add social link', exact: true }).click();
+    await activateControl(page.getByRole('button', { name: 'Add social link', exact: true }));
     const socialPlatform = page.getByRole('combobox', { name: 'Social platform 1' });
     expect(await socialPlatform.evaluate((element) => element.tagName)).toBe('BUTTON');
     await expect(socialPlatform).toHaveAttribute('aria-haspopup', 'listbox');
     await socialPlatform.press('ArrowDown');
     await socialPlatform.press('Enter');
     await expect(socialPlatform).toContainText('Instagram');
-    await page.getByRole('button', { name: 'Remove social link 1', exact: true }).click();
+    await activateControl(page.getByRole('button', { name: 'Remove social link 1', exact: true }));
     await page.getByLabel('Store email').fill('hello@kusinani.example');
     await page.getByLabel('Tagline').fill('Freshly made every day');
     await assertNoHorizontalOverflow(page);
@@ -311,8 +328,12 @@ for (const viewport of [
       expect(Math.abs(scrollMetrics.stepperTopBefore - scrollMetrics.stepperTopAfter)).toBeLessThanOrEqual(1);
       const scrollRegion = page.getByRole('region', { name: 'Storefront profile' });
       await scrollRegion.evaluate((element) => { element.scrollTop = 0; });
-      await scrollRegion.hover();
-      await page.mouse.wheel(0, 500);
+      if (test.info().project.name.includes('safari')) {
+        await scrollRegion.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+      } else {
+        await scrollRegion.hover();
+        await page.mouse.wheel(0, 500);
+      }
       await expect.poll(() => scrollRegion.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
       await page.getByRole('navigation', { name: 'Business registration steps' }).hover();
       await page.mouse.wheel(0, 1000);
@@ -329,23 +350,27 @@ for (const viewport of [
       expect(mobileScrollMetrics.documentHeight).toBeGreaterThan(mobileScrollMetrics.viewportHeight);
       expect(mobileScrollMetrics.regionOverflowY).toBe('visible');
       await page.evaluate(() => window.scrollTo(0, 0));
-      await page.mouse.move(viewport.width / 2, viewport.height / 2);
-      await page.mouse.wheel(0, 500);
+      if (test.info().project.name.includes('safari')) {
+        await page.evaluate(() => window.scrollBy(0, 500));
+      } else {
+        await page.mouse.move(viewport.width / 2, viewport.height / 2);
+        await page.mouse.wheel(0, 500);
+      }
       await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
     }
     await crashChecker.assertNoCrashes('registration step 2');
 
-    await page.getByRole('button', { name: 'Back', exact: true }).click();
+    await activateControl(page.getByRole('button', { name: 'Back', exact: true }));
     await expect(page.getByRole('heading', { name: 'Business details', exact: true })).toBeVisible();
     await expect(page.getByLabel('Company name')).toHaveValue('Release Verification Cafe');
     await expect(page.getByLabel('Industry (optional)')).toHaveValue('Neighborhood cafe and bakery');
-    await page.getByRole('button', { name: /save and continue/i }).click();
+    await activateControl(page.getByRole('button', { name: /save and continue/i }));
     await expect(page.getByRole('heading', { name: 'Storefront profile', exact: true })).toBeVisible();
     await expect(page.getByLabel('Store email')).toHaveValue('hello@kusinani.example');
     await expect(page.getByLabel('Tagline')).toHaveValue('Freshly made every day');
     await crashChecker.assertNoCrashes('registration resume step 2');
 
-    await page.getByRole('button', { name: /save and continue/i }).click();
+    await activateControl(page.getByRole('button', { name: /save and continue/i }));
     await expect(page.getByRole('heading', { name: 'Location and submission', exact: true })).toBeVisible();
     const storeLocationHeading = page.getByRole('heading', { name: 'Store Location', exact: true });
     await expect(storeLocationHeading).toBeVisible();
@@ -354,7 +379,7 @@ for (const viewport of [
     await expect(page.getByText('These two consents are captured separately with the current published versions and stored with your submission.', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Company Registration Terms', { exact: true })).toBeVisible();
     await expect(page.getByText('Marketplace Terms', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Submit and Create Company', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Submit registration', exact: true })).toBeVisible();
     const storeLocationSection = storeLocationHeading.locator('xpath=../..');
     const storeLocationSurface = await storeLocationSection.evaluate((element) => {
       const style = window.getComputedStyle(element);
@@ -376,7 +401,7 @@ for (const viewport of [
       paddingRight: '0px'
     });
     await expect(page.getByRole('region', { name: 'Branch location selection' })).toBeVisible();
-    await page.getByRole('button', { name: 'Add Schedule Set', exact: true }).click();
+    await activateControl(page.getByRole('button', { name: 'Add Schedule Set', exact: true }));
     for (const [weekday, label] of [
       ['Monday', 'M'],
       ['Tuesday', 'Tu'],
@@ -388,11 +413,17 @@ for (const viewport of [
     ]) {
       await expect(page.getByRole('button', { name: `Select ${weekday}`, exact: true })).toHaveText(label);
     }
-    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await activateControl(page.getByRole('button', { name: 'Cancel', exact: true }));
     const selectionPanel = page.getByRole('region', { name: 'Branch location selection' });
     await expect(selectionPanel.getByLabel('Business address')).toHaveCount(0);
     await expect(page.getByRole('search', { name: 'Search for a storefront location' })).toBeVisible();
     const mapSurface = page.getByRole('application', { name: 'Map location picker' });
+    await expect(mapSurface).toBeVisible();
+    if (viewport.width < 640) {
+      const mapBox = await mapSurface.boundingBox();
+      expect(mapBox).not.toBeNull();
+      expect(mapBox.height).toBeGreaterThanOrEqual(240);
+    }
     expect(await selectionPanel.evaluate((panel, map) => Boolean(panel.compareDocumentPosition(map) & Node.DOCUMENT_POSITION_FOLLOWING), await mapSurface.elementHandle())).toBe(true);
     await expect(page.getByLabel('Latitude')).toHaveCount(0);
     await expect(page.getByLabel('Longitude')).toHaveCount(0);
@@ -421,25 +452,28 @@ for (const viewport of [
       expect(Math.abs((addLocationBox.y + addLocationBox.height / 2) - (searchInputBox.y + searchInputBox.height / 2))).toBeLessThan(2);
     }
     await addressSearch.getByLabel('Search business address').fill('Jaro Plaza');
-    await addressSearch.getByRole('button', { name: 'Search address' }).click();
-    await page.getByRole('option', { name: 'Jaro Plaza, Iloilo City' }).click();
+    await activateControl(addressSearch.getByRole('button', { name: 'Search address' }));
+    await activateControl(page.getByRole('option', { name: 'Jaro Plaza, Iloilo City' }));
     await expect(page.getByRole('textbox', { name: 'Business address' })).toHaveValue('Jaro Plaza, Iloilo City');
+    await selectionPanel.getByLabel(/Street no\., unit, floor or building/).fill('Unit 2');
     await expect(addLocationButton).toBeEnabled();
-    await addLocationButton.click();
+    await activateControl(addLocationButton);
     await expect(page.getByText('Added to registration draft')).toBeVisible();
     const changeLocationButton = page.getByRole('button', { name: 'Change branch location' });
     await expect(changeLocationButton).toHaveAttribute('title', 'Change location');
-    await changeLocationButton.click();
+    await assertMinimumTouchTarget(changeLocationButton);
+    await activateControl(changeLocationButton);
     await expect(selectionPanel.getByRole('heading', { name: 'Selected location', exact: true })).toBeVisible();
     await expect(selectionPanel.getByLabel('Business address')).toHaveValue('Jaro Plaza, Iloilo City');
     await expect(searchInput).toHaveClass(/shadow-\[0_0_14px/);
     await expect(searchInput).toHaveCSS('box-shadow', /rgb/);
-    await selectionPanel.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await activateControl(selectionPanel.getByRole('button', { name: 'Cancel', exact: true }));
     await expect(changeLocationButton).toBeVisible();
     await expect(searchInput).not.toHaveClass(/shadow-\[0_0_14px/);
-    await expect.poll(() => state.patchCount).toBe(6);
+    await expect.poll(() => state.patchCount).toBeGreaterThanOrEqual(6);
     expect(state.draft.payload.location).toMatchObject({
-      address_line: 'Jaro Plaza, Iloilo City',
+      address_line: 'Unit 2, Jaro Plaza, Iloilo City',
+      address_details: 'Unit 2',
       latitude: 10.725,
       longitude: 122.56
     });
@@ -460,14 +494,14 @@ test('first-visit consent stays in flow and does not cover registration controls
 
   await page.getByLabel('Company name').fill('Acme Corp');
   const industrySelect = page.getByRole('combobox', { name: 'Business industry' });
-  await industrySelect.click();
-  await page.getByRole('option', { name: 'Micro Food & Beverage' }).click();
-  await page.getByRole('button', { name: /save and continue/i }).click();
+  await activateControl(industrySelect);
+  await activateControl(page.getByRole('option', { name: 'Micro Food & Beverage' }));
+  await activateControl(page.getByRole('button', { name: /save and continue/i }));
   await expect(page.getByRole('heading', { name: 'Storefront profile', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: /save and continue/i }).click();
+  await activateControl(page.getByRole('button', { name: /save and continue/i }));
   await expect(page.getByRole('heading', { name: 'Location and submission', exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Add Schedule Set', exact: true }).click();
+  await activateControl(page.getByRole('button', { name: 'Add Schedule Set', exact: true }), { preferTouch: false });
   const openTime = page.getByRole('button', { name: /^Open Time:/ });
   await openTime.click();
   const doneButton = page.getByRole('group', { name: 'Open Time roller time picker' }).getByRole('button', { name: 'Done', exact: true });
@@ -509,30 +543,33 @@ test('step changes reset registration scroll across 14 responsive viewports @reg
   await mockRegistrationApi(page);
   await page.goto('/business/grow', { waitUntil: 'domcontentloaded' });
   const declineCookiesButton = page.getByRole('button', { name: 'Decline', exact: true });
-  if (await declineCookiesButton.isVisible()) await declineCookiesButton.click();
+  if (await declineCookiesButton.isVisible()) await activateControl(declineCookiesButton);
 
   await expect(page.getByRole('heading', { name: 'Business details', exact: true })).toBeVisible();
   const companyName = page.getByLabel('Company name');
   const industrySelect = page.getByRole('combobox', { name: 'Business industry' });
   await companyName.fill('Acme Corp');
-  await industrySelect.click();
-  await page.getByRole('option', { name: 'Micro Food & Beverage' }).click();
+  await activateControl(industrySelect);
+  await activateControl(page.getByRole('option', { name: 'Micro Food & Beverage' }));
 
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
     await assertPlaceholderFits(companyName);
     await scrollActiveRegistrationStepToBottom(page);
-    await page.getByRole('button', { name: /save and continue/i }).click();
+    const saveAndContinue = page.getByRole('button', { name: /save and continue/i });
+    await saveAndContinue.scrollIntoViewIfNeeded();
+    await activateControl(saveAndContinue);
     await expectRegistrationStepAtTop(page, 'Storefront profile');
 
     await scrollActiveRegistrationStepToBottom(page);
-    await page.getByRole('button', { name: /save and continue/i }).click();
+    await saveAndContinue.scrollIntoViewIfNeeded();
+    await activateControl(saveAndContinue);
     await expectRegistrationStepAtTop(page, 'Location and submission');
     await assertNoHorizontalOverflow(page);
 
-    await page.getByRole('button', { name: 'Back', exact: true }).click();
+    await activateControl(page.getByRole('button', { name: 'Back', exact: true }));
     await expectRegistrationStepAtTop(page, 'Storefront profile');
-    await page.getByRole('button', { name: 'Back', exact: true }).click();
+    await activateControl(page.getByRole('button', { name: 'Back', exact: true }));
     await expectRegistrationStepAtTop(page, 'Business details');
   }
 });

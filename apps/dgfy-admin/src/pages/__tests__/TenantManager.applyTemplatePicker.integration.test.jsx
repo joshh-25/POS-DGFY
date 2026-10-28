@@ -1,19 +1,16 @@
 /** @vitest-environment jsdom */
-// issue #178 final-touch hardening: pins the fix for a real bug found while
-// auditing the curation surface - TenantManager.jsx read `response.data`
-// instead of `response.data?.templates` from listStoreTemplates(), which
-// returns `{ success, data: { templates } }`. That made `templates.length`
-// evaluate `undefined > 0` (always false), so the Phase 17 apply-template
-// picker never rendered for any tenant. This test fails against the
-// pre-fix code and passes after the one-line fix in TenantManager.jsx.
+// The published catalog remains Platform Master only after applying templates
+// moved to the tenant's Store setup section.
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
-import TenantManager from '../../../Pages/TenantManager.jsx';
+import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom';
+import TenantDetailLayout from '../../../Pages/TenantDetailLayout.jsx';
+import TenantStoreSetup from '../../../Pages/TenantStoreSetup.jsx';
 
 const mocks = vi.hoisted(() => ({
   adminService: {
+    getTenant: vi.fn(),
     getTenants: vi.fn(),
     listStoreTemplates: vi.fn(),
     applyTenantTemplate: vi.fn(),
@@ -42,7 +39,6 @@ const mocks = vi.hoisted(() => ({
     listTenantPosMetadataAuditLogs: vi.fn(),
     updateTenantPosMetadata: vi.fn(),
     retryTenantProvisioning: vi.fn(),
-    setupPayPalRecurring: vi.fn(),
     getTenantRevenueDashboard: vi.fn()
   },
   toast: { success: vi.fn(), error: vi.fn() }
@@ -51,14 +47,19 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/services/adminService', () => mocks.adminService);
 vi.mock('sonner', () => ({ toast: mocks.toast }));
 
-const renderTenantManager = () => render(<MemoryRouter><TenantManager /></MemoryRouter>);
+const renderStoreSetup = () => render(<MemoryRouter initialEntries={['/admin/tenants/tenant-lean-retail/store-setup']}><Routes>
+  <Route path="/admin" element={<Outlet context={{ adminProfile: { is_master: true, permissions: ['admin.tenants'] } }} />}>
+    <Route path="tenants/:id" element={<TenantDetailLayout />}>
+      <Route path="store-setup" element={<TenantStoreSetup />} />
+    </Route>
+  </Route>
+</Routes></MemoryRouter>);
 
-describe('TenantManager apply-template picker (issue #178 final-touch hardening)', () => {
+describe('Tenant Store setup template application', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.adminService.getTenants.mockResolvedValue({
-      data: [
-        {
+    mocks.adminService.getTenant.mockResolvedValue({
+      data: {
           id: 'tenant-lean-retail',
           name: 'Lean Retail Co',
           admin_email: 'owner@example.test',
@@ -72,7 +73,6 @@ describe('TenantManager apply-template picker (issue #178 final-touch hardening)
             customer_access_mode: 'catalog'
           }
         }
-      ]
     });
     // The real API response shape: { success, data: { templates } }.
     mocks.adminService.listStoreTemplates.mockResolvedValue({
@@ -84,7 +84,8 @@ describe('TenantManager apply-template picker (issue #178 final-touch hardening)
       },
       message: null
     });
-    mocks.adminService.getTenantRevenueDashboard.mockResolvedValue({ data: null });
+    mocks.adminService.getTenantPosMetadata.mockResolvedValue({ data: { current: {} } });
+    mocks.adminService.listTenantPosMetadataAuditLogs.mockResolvedValue({ data: { logs: [] } });
   });
 
   afterEach(() => {
@@ -92,11 +93,11 @@ describe('TenantManager apply-template picker (issue #178 final-touch hardening)
   });
 
   it('renders the apply-template picker with the published templates for an active tenant', async () => {
-    renderTenantManager();
+    renderStoreSetup();
 
     await screen.findByRole('heading', { name: 'Lean Retail Co' });
 
-    const picker = await screen.findByLabelText('Apply Store Template to Lean Retail Co');
+    const picker = await screen.findByLabelText('Published Store Template');
     // The base mode is shown as its human label (Retail), not the raw
     // base_mode key (retail) - issue #178 final-touch pass.
     expect(within(picker).getByText('Retail Store (Retail)')).toBeTruthy();

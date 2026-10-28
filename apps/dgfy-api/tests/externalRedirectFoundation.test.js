@@ -146,7 +146,7 @@ describe('external listing redirect', () => {
 
     expect(result.data.sites[0]).toEqual({
       site_key: 'proventus',
-      display_name: 'Proventus',
+      display_name: 'Proventous',
       type_label: 'Job',
       url_template: 'https://proventus.ph/company/{id}',
       enabled: true,

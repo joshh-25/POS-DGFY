@@ -1811,6 +1811,7 @@ describe('Services Mode use cases', () => {
 
     it('sends due service reminders through configured email service', async () => {
         const updateReminderById = jest.fn(async (reminderId, payload) => ({ reminder_id: reminderId, ...payload }));
+        const sendEmail = jest.fn(async () => ({ messageId: 'smtp-123' }));
         const useCase = buildSendDueServiceRemindersUseCase({
             serviceRepository: {
                 listReminderOutbox: jest.fn(async () => ([
@@ -1834,7 +1835,7 @@ describe('Services Mode use cases', () => {
             },
             emailService: {
                 isEmailConfigured: jest.fn(() => true),
-                sendEmail: jest.fn(async () => ({ messageId: 'smtp-123' }))
+                sendEmail
             }
         });
 
@@ -1846,6 +1847,14 @@ describe('Services Mode use cases', () => {
             status: 'sent',
             provider_message_id: 'smtp-123'
         }));
+        expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+            subject: expect.stringMatching(/^Reminder: Consultation on /),
+            html: expect.stringContaining('Booking reference: <strong>SV-DUE</strong>')
+        }));
+        const [reminder] = sendEmail.mock.calls[0];
+        expect(`${reminder.subject}\n${reminder.html}`).not.toMatch(/SKUpervisor|SKU Inventory Manager/i);
+        expect(reminder.html).not.toMatch(/\b(?:style|bgcolor)=/i);
+        expect(reminder.html).not.toMatch(/linear-gradient|#0d9488|#0891b2/i);
     });
 
     // Phase 100 of #482 (ADR 0064). The API contract: booking payload carries handoff legs,

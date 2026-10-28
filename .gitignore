@@ -20,6 +20,9 @@ node_modules/
 /apps/dgfy-pos/test-results/
 /apps/dgfy-pos/playwright/.auth/
 /apps/dgfy-pos/.env.e2e
+/apps/dgfy-api/CREDENTIALS.local.md
+/apps/dgfy-api/private-uploads/*
+!/apps/dgfy-api/private-uploads/.gitkeep
 /tests/frontend-cross-app/playwright-report/
 /tests/frontend-cross-app/test-results/
 /tests/frontend-cross-app/playwright/.auth/
@@ -161,6 +164,10 @@ bun.lock
 
 # Migration runner report output (apps/dgfy-migration-runner local invocations)
 /tmp/dgfy-migration-reports/
+
+# Generated local compliance evidence and rendered walkthrough output.
+/BIR_ANNEX_B_LOCAL_EVIDENCE/
+/output/pdf/OPIS_POS_Cashier_Parked_Sale_Void_Approval_Walkthrough.pdf
 
 # Verification and test reports (generated locally, environment-specific)
 /reports/

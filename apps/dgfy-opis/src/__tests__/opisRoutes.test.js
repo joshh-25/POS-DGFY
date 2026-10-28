@@ -11,8 +11,15 @@ import {
 import { parseBusinessAdminPath } from '../features/businessAdmin/businessAdminSettingsModel.js';
 import {
   BUSINESS_ADMIN_UI_VISIBILITY,
+    isBusinessAdminDestinationAccessible,
   isBusinessAdminNavigationVisible
 } from '../features/businessAdmin/businessAdminUiVisibility.js';
+import {
+    BUSINESS_ADMIN_CLEAN_SIDEBAR_GROUPS,
+    BUSINESS_ADMIN_WORKSPACE_TABS,
+    getBusinessAdminSidebarActiveKey,
+    getBusinessAdminWorkspaceTabs
+} from '../features/businessAdmin/businessAdminNavigation.js';
 import { createPageUrl, getPageNameFromPath } from '../utils.js';
 import { canonicalizeOpisPath } from '../opisRoutes.js';
 
@@ -144,7 +151,7 @@ describe('OPIS shell visibility', () => {
     expect(isBusinessAdminNavigationVisible({ key: 'new-unknown', metadata: { accessSelector: { type: 'unknown' } } })).toBe(false);
     expect(isBusinessAdminNavigationVisible({ key: 'catalog' }, { catalogOnlyAccess: true })).toBe(true);
     expect(isBusinessAdminNavigationVisible({ key: 'orders' }, { catalogOnlyAccess: true })).toBe(false);
-    expect(businessAdminPageSource).toContain('isBusinessAdminNavigationVisible(item, {');
+    expect(businessAdminPageSource).toContain('isBusinessAdminNavigationVisible(definition, {');
     expect(businessAdminPageSource).toContain('capabilities: bootstrap.access?.capabilities || {}');
     expect(businessAdminPageSource).toContain('settingsCapabilities');
     expect(businessAdminPageSource).toContain("activeSection === 'settings' && settingsSection === 'team'");
@@ -155,6 +162,51 @@ describe('OPIS shell visibility', () => {
     expect(businessAdminPageSource).not.toContain('Switch location');
     expect(businessAdminPageSource).not.toContain('>POS terminal</');
   });
+
+    it('keeps direct-route access separate from sidebar presentation visibility', () => {
+        expect(isBusinessAdminNavigationVisible(BACKOFFICE_MANIFEST.company)).toBe(false);
+        expect(isBusinessAdminDestinationAccessible(BACKOFFICE_MANIFEST.company)).toBe(true);
+        expect(isBusinessAdminDestinationAccessible(BACKOFFICE_MANIFEST.team, {
+            settingsCapabilities: { team: { user_view: false } }
+        })).toBe(false);
+    });
+});
+
+describe('OPIS clean sidebar navigation', () => {
+    it('exposes the approved 16-item primary destination set without changing manifest routes', () => {
+        const primaryItems = BUSINESS_ADMIN_CLEAN_SIDEBAR_GROUPS.flatMap((group) => group.items);
+        expect(primaryItems).toHaveLength(16);
+        expect(primaryItems.map((item) => item.key)).toEqual([
+            'overview',
+            'orders', 'payments', 'customers',
+            'catalog', 'inventory', 'purchasing', 'recipes',
+            'locations', 'shifts', 'expenses', 'fnb',
+            'users-roles', 'reports', 'qr-codes', 'settings'
+        ]);
+        expect(primaryItems.find((item) => item.key === 'purchasing')).toMatchObject({
+            routeKey: 'purchase-orders',
+            accessKey: 'purchase-orders'
+        });
+        expect(BACKOFFICE_MANIFEST.notifications.route).toBe('/notifications');
+    });
+
+    it('highlights the canonical parent for legacy and nested destinations', () => {
+        expect(getBusinessAdminSidebarActiveKey({ activeSection: 'sales' })).toBe('orders');
+        expect(getBusinessAdminSidebarActiveKey({ activeSection: 'stock-movements' })).toBe('inventory');
+        expect(getBusinessAdminSidebarActiveKey({ activeSection: 'suppliers' })).toBe('purchasing');
+        expect(getBusinessAdminSidebarActiveKey({ activeSection: 'pos-activity' })).toBe('reports');
+        expect(getBusinessAdminSidebarActiveKey({ activeSection: 'settings', settingsSection: 'team' })).toBe('users-roles');
+    });
+
+    it('keeps internal workspace tabs URL-backed by existing destinations', () => {
+        expect(BUSINESS_ADMIN_WORKSPACE_TABS.orders.map((tab) => tab.routeKey)).toEqual(['orders', 'sales']);
+        expect(BUSINESS_ADMIN_WORKSPACE_TABS.inventory.map((tab) => tab.routeKey)).toEqual(['inventory', 'stock-movements']);
+        expect(BUSINESS_ADMIN_WORKSPACE_TABS.purchasing.map((tab) => tab.routeKey)).toEqual(['purchase-orders', 'suppliers']);
+        expect(getBusinessAdminWorkspaceTabs({ activeSection: 'settings', settingsSection: 'team' }).map((tab) => tab.routeKey)).toEqual(['users-roles', 'team']);
+        expect(getBusinessAdminWorkspaceTabs({ activeSection: 'reports' }).map((tab) => tab.routeKey)).toEqual(['reports', 'pos-activity']);
+        expect(businessAdminPageSource).toContain('BUSINESS_ADMIN_SIDEBAR_GROUPS.map');
+        expect(businessAdminPageSource).toContain('data-testid="business-admin-notifications-trigger"');
+    });
 });
 
 describe('OPIS "Open POS terminal" links (issue #2052 follow-up)', () => {

@@ -110,7 +110,8 @@ export function useStorefrontDiscoveryRuntime({
   const {
     handleDiscoverySearch,
     handleNearMe,
-    handlePopularDiscoveryCategory
+    handlePopularDiscoveryCategory,
+    resetLastSubmittedSearch
   } = useDiscoverySearchActions({
     loadStores,
     search,
@@ -120,6 +121,7 @@ export function useStorefrontDiscoveryRuntime({
     setDiscoveryPinScope: discoveryState.setDiscoveryPinScope,
     setHasDiscoveryExplorationStarted: discoveryState.setHasDiscoveryExplorationStarted,
     setIsMobileResultsCollapsed: discoveryState.setIsMobileResultsCollapsed,
+    setPreserveDiscoveryCamera: discoveryState.setPreserveDiscoveryCamera,
     setIsStoreListVisible: discoveryState.setIsStoreListVisible,
     setSearch,
     setSelectedMapPin: discoveryState.setSelectedMapPin
@@ -150,6 +152,7 @@ export function useStorefrontDiscoveryRuntime({
     handleDiscoverySearch,
     handleNearMe,
     handlePopularDiscoveryCategory,
+    resetLastSubmittedSearch,
     retryLoadStores,
     search,
     setCatalogSearch,

@@ -3,7 +3,7 @@ status: amended
 authority_level: architecture
 owner: dgfy-platform
 date: 2026-08-30
-last_reviewed: 2026-10-10
+last_reviewed: 2026-10-27
 review_by: 2027-02-28
 applies_to: dgfy_dglaundry_integration
 topic: dglaundry_external_runtime_and_provider_contract
@@ -38,10 +38,11 @@ or signing private keys.
    fulfillment, and counter payments. DGFY materializes only sanitized public
    projections and remains authoritative for DGFY-origin online payment
    capture, refund, cancellation, and receipt events.
-5. The public staff origin for the Surebizcorp deployment is
+5. The separately hosted Surebizcorp staff origin is
    `https://laundry.surebizcorp.com`; the customer URL is
-   `https://dgfy.ph/tenant-store/<handle>`. DGFY Nginx and the DGLaundry
-   gateway share only the external `dgfy-dglaundry-edge` network.
+   `https://dgfy.ph/tenant-store/<handle>`. Surebiz and DGFY communicate over
+   public HTTPS. They do not share a private network, runtime, database, Redis,
+   or secret store.
 6. Provider events and requests are signed, idempotent, ordered, replay
    protected, traceable, and backed by durable inbox/outbox processing. A
    failed branch readiness or security/payment gate keeps the integration
@@ -72,6 +73,60 @@ for rollback. Local or mock evidence qualifies implementation for provider
 review but never proves hosted or production readiness.
 
 ## Amendments
+
+### 2026-10-27 — DGLaundry company registration approval and reconciliation
+
+- Clauses clarified: Decisions 1 and 2's untagged provider-ownership defaults. DGFY Platform
+  Admin's Tenant Management page reviews `dgfy_dglaundry_intents` in a queue separate from tenant
+  rows and Storefront registration drafts. Access requires the live `admin.tenants` grant.
+- Identity: the registration intent binds to the exact configured DGFY OIDC issuer and subject,
+  resolved to an active DGFY account. Email, name, slug, and request-supplied company IDs cannot
+  select the applicant or an existing company.
+- Approval: one landlord transaction creates the active external-runtime company row, a DGFY-owned
+  provider-location record, the applicant's accepted owner membership, the versioned decision, and
+  its admin audit record. The provider location is DGFY-generated and is not a DGLaundry branch ID.
+  DGLaundry remains the owner of its operational database and branch creation.
+- Rejection and correction update only the intent decision, reason, version, and audit record; they
+  create no company, location, or membership. A stale `expectedStatusVersion` returns a conflict;
+  exact retries of the same stored decision are idempotent.
+- Reconciliation: DGLaundry's existing status refresh verifies the saved intent, exact issuer and
+  subject, monotonic status version, accepted membership, active laundry company and connection,
+  and the authoritative DGFY company/location/membership IDs before creating its local workspace.
+  Pending registration reviews do not inherit the old 15-minute partner-intent expiry.
+- Environment boundary: Surebiz remains mock-backed. Connected qualification targets DGLaundry
+  Stage with DGFY Stage; this amendment does not imply a deployment or production authorization.
+- See the [DGLaundry provider contract](../../api/PARTNER_INTEGRATION_CONTRACT.md) and
+  [partner OpenAPI fragment](../../api/partner-dglaundry-openapi.yaml).
+
+### 2026-10-26 — Browser-bound DGFY Storefront interaction (#2837)
+
+- Clause amended: Decision 3's untagged/default browser authorization interaction, following ADR
+  0039's same-document amendment path. `last_reviewed` is refreshed to 2026-10-26.
+- Change: the OIDC issuer and protocol endpoints remain on the configured `api.*` origin. An
+  explicitly HTML-preferring `/oidc/authorize` navigation claims PAR once, then uses DGFY
+  Storefront (`STOREFRONT_PUBLIC_ORIGIN`) for shared sign-in, registration, password reset, and
+  company selection. The environment-specific Storefront origin is validated; request Host and
+  forwarded-host headers are never redirect sources.
+- Lifetime and binding: the consumed PAR becomes a Redis-backed, absolute 600-second interaction.
+  A one-use fragment handoff binds Storefront to a host-only HttpOnly cookie for that interaction;
+  a separate issuer-host-only HttpOnly browser-binding cookie protects the completion bridge.
+  The at-most-60-second single-use ticket cannot extend interaction expiry, and the authorization
+  code remains 120 seconds. Completion revalidates the session, active client, registered callback,
+  requested scopes, and current accepted company membership before atomically consuming the ticket
+  and interaction. An interaction ID alone is never browser authority.
+- Identity-only onboarding: no eligible accepted membership or explicit
+  `dglaundry_intent=create_company` may produce only the registered client's requested identity
+  scopes. The grant omits `dglaundry.company_context` and its ID-token claim. DGLaundry retains
+  company creation, membership, mapping, and operational authorization; the issuer does not
+  provision them.
+- Authority: browser session cookies remain HttpOnly, unsafe cookie requests retain CSRF and exact
+  Origin protections, and CORS / `SESSION_COOKIE_DOMAIN` policy is unchanged. Non-browser JSON
+  behavior, PKCE, nonce, state, and existing token lifetimes remain in force.
+- Scope: this is the DGFY source slice for #2837. DGLaundry's callback transaction lifetime and
+  `create_company` PAR intent are a separate companion implementation and remain a joint hosted
+  acceptance dependency; no deployment or production enablement is implied.
+- See: #2837, [partner integration contract](../../api/PARTNER_INTEGRATION_CONTRACT.md), and the
+  DGFY OIDC interaction implementation in `apps/dgfy-api/src/modules/partnerIdentity/`.
 
 ### 2026-10-08 — Runtime attestation and qualification probes (#2306)
 
@@ -151,3 +206,27 @@ a non-binding document.
 - Reason: answer the required generic polarity without rewriting the DGLaundry-specific runtime or
   authorizing another hard-coded workflow mode.
 - See: ADR 0035, ADR 0093, #803, and #2311.
+
+### 2026-10-26 — Connect the independent Surebiz deployment to DGFY DEV (#2387)
+
+- Clause amended: Decision 5 and the untagged provider environment contract (`default`), following
+  ADR 0039's amendment path.
+- Change: Surebiz remains hosted at `https://laundry.surebizcorp.com` and connects to DGFY DEV over
+  public HTTPS. DGFY does not move Surebiz's runtime or database onto its servers. The exact DEV
+  issuer is `https://api.dev.dgfy.ph/oidc`, the browser callback is
+  `https://laundry.surebizcorp.com/api/v1/session/dgfy/callback`, and the DGFY-to-DGLaundry service
+  token audience is `https://laundry.surebizcorp.com`.
+- Isolation: DEV uses independent browser, machine, and service registrations and independent
+  signing keys. Registration starts as proposed until verified. No Docker edge network, private
+  network, shared runtime, shared database, shared Redis, or private-key exchange is introduced.
+- Runtime and payments: hosted DEV still requires `NODE_ENV=production`, Redis-backed replay/state
+  protection, asymmetric signatures, and `PAYMONGO_MODE=test`; `DEPLOY_ENV_LABEL=dev` identifies its
+  deployment role. No development-mode fallback is added for enabled hosted integration.
+- Scope: this source/configuration change prepares DGFY's DEV side only. The DGLaundry owner must
+  update Surebiz's demo profile and configuration, retain its old demo backup, create a fresh
+  connected-DEV database, and provide separate deployment and qualification evidence. No hosted
+  activation, data migration, DNS change, staging/prod retargeting, or production authorization is
+  implied.
+- See: #2387's [DEV mapping](https://github.com/Sieitzz/dgfy-platform/issues/2387#issuecomment-6413023710),
+  [DGFY DEV access/runbook evidence](https://github.com/Sieitzz/dgfy-platform/issues/2387#issuecomment-6413091805),
+  and the [partner contract](../../api/PARTNER_INTEGRATION_CONTRACT.md).

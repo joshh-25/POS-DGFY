@@ -3266,7 +3266,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
 
 // Bumped past both parent versions because the merged manifest contains requirements
 // unique to each branch and is distinct from either parent alone.
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-10-22.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-10-22.2';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {
@@ -3427,6 +3427,8 @@ const TENANT_PERMISSION_MODE_SHIFT_GRANTS = new Set([
     'pos:employees:manage'
 ]);
 
+const TENANT_STAFF_ROLE_SHIFT_GRANTS = new Set(TENANT_PERMISSION_MODE_SHIFT_GRANTS);
+
 const normalizeTenantUserPermissions = (rawPermissions) => {
     let permissions = rawPermissions;
     if (typeof permissions === 'string') {
@@ -3443,6 +3445,17 @@ const normalizeTenantUserPermissions = (rawPermissions) => {
             .map((permission) => permission.trim())
             .filter(Boolean)
     ));
+};
+
+// Staff-role capabilities use the same dependency contract as user permission arrays.
+// Repair only the parent capabilities for roles that already carry shift/cash authority;
+// never grant a new operational child during schema drift repair.
+const normalizeTenantStaffRoleCapabilities = (rawCapabilities) => {
+    const capabilities = normalizeTenantUserPermissions(rawCapabilities);
+    const hasShiftGrant = capabilities.some((capability) => TENANT_STAFF_ROLE_SHIFT_GRANTS.has(capability));
+    if (hasShiftGrant && !capabilities.includes('pos:shift_access')) capabilities.push('pos:shift_access');
+    if (hasShiftGrant && !capabilities.includes('pos:view')) capabilities.push('pos:view');
+    return capabilities;
 };
 
 // The standalone migration runner owns the landlord database, while User is a tenant-local
@@ -3470,6 +3483,35 @@ export async function backfillTenantUserPermissionMode(connection, tenantDb) {
             [permissions.length > 0 ? 'custom' : 'inherit', JSON.stringify(permissions), user.user_id]
         );
     }
+}
+
+export async function backfillTenantStaffRoleCapabilities(connection, tenantDb) {
+    const [roles] = await queryWithReplacements(
+        connection,
+        `SELECT ${quoteIdentifier('staff_role_id')}, ${quoteIdentifier('capabilities')}
+           FROM ${quoteIdentifier(tenantDb)}.${quoteIdentifier('staff_roles')}`
+    );
+
+    let repairedRoles = 0;
+    for (const role of roles) {
+        const previousCapabilities = normalizeTenantUserPermissions(role.capabilities);
+        const capabilities = normalizeTenantStaffRoleCapabilities(previousCapabilities);
+        if (capabilities.length === previousCapabilities.length
+            && capabilities.every((capability, index) => capability === previousCapabilities[index])) {
+            continue;
+        }
+
+        await queryWithReplacements(
+            connection,
+            `UPDATE ${quoteIdentifier(tenantDb)}.${quoteIdentifier('staff_roles')}
+                SET ${quoteIdentifier('capabilities')} = ?
+              WHERE ${quoteIdentifier('staff_role_id')} = ?`,
+            [JSON.stringify(capabilities), role.staff_role_id]
+        );
+        repairedRoles += 1;
+    }
+
+    return repairedRoles;
 }
 
 export async function inspectRequiredTenantSchemaTables(connection, tenantDb) {
@@ -3695,6 +3737,10 @@ export async function reconcileTenantSchema(connection, tenantDb, mode) {
             await useTenantDb();
             await connection.query(repair.sql);
         }
+        // Staff-role capability JSON is data, not schema. Repair its dependency parents
+        // after the table pass so restored tenants cannot silently deny valid shift access.
+        await useTenantDb();
+        await backfillTenantStaffRoleCapabilities(connection, tenantDb);
     }
 
     const missingColumns = await inspectRequiredTenantSchemaColumns(connection, tenantDb);

@@ -20,6 +20,7 @@ const authStorageState = path.resolve(__dirname, 'playwright/.auth/user.json');
 // relying on process.argv is unsafe because Playwright workers do not retain
 // the original CLI arguments.
 const authenticatedRunRequested = process.env.E2E_AUTHENTICATED === 'true';
+const responsiveRunRequested = process.env.E2E_RESPONSIVE === 'true';
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -45,12 +46,42 @@ export default defineConfig({
   projects: [
     {
       name: 'google-chrome',
-      testIgnore: [/.*\.setup\.js/, /.*\.authenticated\.spec\.js/],
+      testIgnore: [
+        /.*\.setup\.js/,
+        /.*\.authenticated\.spec\.js/,
+        ...(responsiveRunRequested ? [/business-registration\.release\.spec\.js/] : [])
+      ],
       use: {
         ...devices['Desktop Chrome'],
         channel: 'chrome',
       },
     },
+    ...(responsiveRunRequested ? [
+      {
+        name: 'registration-mobile-safari',
+        testMatch: /business-registration\.release\.spec\.js/,
+        grepInvert: /@desktop-only/,
+        use: { ...devices['iPhone 14'] }
+      },
+      {
+        name: 'registration-mobile-chrome',
+        testMatch: /business-registration\.release\.spec\.js/,
+        grepInvert: /@desktop-only/,
+        use: { ...devices['Pixel 7'] }
+      },
+      {
+        name: 'registration-tablet-safari',
+        testMatch: /business-registration\.release\.spec\.js/,
+        grepInvert: /@desktop-only/,
+        use: { ...devices['iPad Pro 11'] }
+      },
+      {
+        name: 'registration-desktop-safari',
+        testMatch: /business-registration\.release\.spec\.js/,
+        grep: /@desktop-only/,
+        use: { ...devices['Desktop Safari'] }
+      }
+    ] : []),
     ...(authenticatedRunRequested ? [
       {
         name: 'setup',

@@ -133,7 +133,7 @@ const repairPositiveStockDriftForTenant = async (tenantSequelize, driftRows = []
 };
 
 const auditTenantFifoDrift = async (tenant) => {
-    const tenantSequelize = await tenantConnector.getConnection(tenant);
+    const tenantSequelize = await tenantConnector.getConnection(tenant, 'script.audit-fifo-drift');
     let repairedCount = 0;
 
     let driftRows = await tenantSequelize.query(DRIFT_SQL, {

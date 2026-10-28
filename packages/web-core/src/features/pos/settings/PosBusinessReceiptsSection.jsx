@@ -7,11 +7,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { resolveTaxpayerType } from '@sieitzz/pos-receipt';
 
 const POS_METADATA_FIELDS = [
   'registeredName', 'businessName', 'businessStyle', 'taxpayerType', 'tinBranch',
   'businessAddress', 'ptuNumber', 'minNumber', 'accreditationNumber', 'receiptFooterMessage',
   'fiscalBuyerDetailsRequired'
+];
+const TAXPAYER_TYPE_REVIEW_VALUE = '__needs_review__';
+const TAXPAYER_TYPE_OPTIONS = [
+  { value: 'vat_registered', label: 'VAT registered' },
+  { value: 'non_vat_registered', label: 'Non-VAT registered' }
 ];
 
 export default function PosBusinessReceiptsSection({
@@ -20,6 +26,15 @@ export default function PosBusinessReceiptsSection({
   const [isMetadataSetupOpen, setIsMetadataSetupOpen] = useState(false);
   const hasMetadata = POS_METADATA_FIELDS.some((field) => String(posForm?.[field] || '').trim());
   const showMetadataForm = loading || hasMetadata || isMetadataSetupOpen;
+  const storedTaxpayerType = String(posForm?.taxpayerType || '').trim();
+  const normalizedTaxpayerType = resolveTaxpayerType(storedTaxpayerType);
+  const taxpayerTypeSelectValue = normalizedTaxpayerType
+    || (storedTaxpayerType ? TAXPAYER_TYPE_REVIEW_VALUE : '');
+  const taxpayerTypeStatus = normalizedTaxpayerType
+    ? 'configured'
+    : storedTaxpayerType
+      ? 'needs_review'
+      : 'not_configured';
 
   return (
     <>
@@ -126,18 +141,64 @@ export default function PosBusinessReceiptsSection({
                 </div>
               </div>
               <div className="grid gap-1.5">
-                <Label className="text-[12px] font-bold text-slate-700">Taxpayer Type</Label>
+                <Label htmlFor="pos-taxpayer-type" className="text-[12px] font-bold text-slate-700">Taxpayer Type</Label>
                 <div className="relative flex items-center">
                   <Users className="absolute left-3 h-4 w-4 text-[#1A4E8D]" />
-                  <Input
-                    className="h-9 pl-10 pr-9 rounded-xl border-slate-200 text-[13px] font-semibold text-[#0F172A] focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/20"
-                    value={posForm.taxpayerType}
-                    placeholder="Select taxpayer type"
-                    onChange={(event) => setPosForm((current) => ({ ...current, taxpayerType: event.target.value }))}
+                  <select
+                    id="pos-taxpayer-type"
+                    aria-describedby="pos-taxpayer-type-help"
+                    className="h-9 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-10 pr-9 text-[13px] font-semibold text-[#0F172A] outline-none focus:ring-2 focus:ring-[#1A4E8D]/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                    value={taxpayerTypeSelectValue}
+                    onChange={(event) => {
+                      const nextTaxpayerType = event.target.value;
+                      setPosForm((current) => ({
+                        ...current,
+                        taxpayerType: nextTaxpayerType === TAXPAYER_TYPE_REVIEW_VALUE
+                          ? current.taxpayerType
+                          : nextTaxpayerType
+                      }));
+                    }}
                     disabled={locked || loading}
-                  />
-                  <ChevronDown className="absolute right-3 h-4 w-4 text-slate-400" />
+                  >
+                    <option value="">Select taxpayer type</option>
+                    {storedTaxpayerType && !normalizedTaxpayerType ? (
+                      <option value={TAXPAYER_TYPE_REVIEW_VALUE}>Stored value needs review</option>
+                    ) : null}
+                    {TAXPAYER_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 h-4 w-4 text-slate-400" aria-hidden="true" />
                 </div>
+                <p id="pos-taxpayer-type-help" className="text-[11px] leading-4 text-slate-500">
+                  Choose an explicit classification. Unknown legacy values must be reviewed before POS setup can be saved.
+                </p>
+              </div>
+
+              <div
+                data-testid="fiscal-setup-readiness"
+                data-readiness-state={taxpayerTypeStatus}
+                className={`rounded-xl border px-3 py-2.5 text-[11px] leading-4 md:col-span-2 ${taxpayerTypeStatus === 'configured' ? 'border-emerald-200 bg-emerald-50/60 text-emerald-900' : 'border-amber-200 bg-amber-50/70 text-amber-900'}`}
+                role="status"
+                aria-live="polite"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-extrabold">Fiscal Setup Readiness</span>
+                  <span className="rounded-full bg-white/70 px-2 py-0.5 font-bold">
+                    {taxpayerTypeStatus === 'configured'
+                      ? 'Taxpayer type configured'
+                      : taxpayerTypeStatus === 'needs_review'
+                        ? 'Needs review'
+                        : 'Not configured'}
+                  </span>
+                </div>
+                <p className="mt-1">
+                  {taxpayerTypeStatus === 'configured'
+                    ? 'POS and OPIS can resolve the VAT/non-VAT label without guessing. Fiscal identifiers and issuance controls remain separately governed.'
+                    : taxpayerTypeStatus === 'needs_review'
+                      ? 'The stored value is not recognized. Select VAT registered or Non-VAT registered before saving POS setup.'
+                      : 'Select VAT registered or Non-VAT registered when this business is ready to configure its fiscal classification.'}
+                </p>
               </div>
 
               {/* Row 3: TIN / Branch beside Accreditation Number */}

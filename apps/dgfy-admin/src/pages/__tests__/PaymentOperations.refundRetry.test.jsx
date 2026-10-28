@@ -55,10 +55,10 @@ const refundAttempt = (overrides = {}) => ({
   ...overrides
 });
 
-const renderPage = () => render(
-  <MemoryRouter initialEntries={['/admin/payments']}>
+const renderPage = (entry = '/admin/payments', adminProfile = { username: 'pat', permissions: ['admin.tenants'] }) => render(
+  <MemoryRouter initialEntries={[entry]}>
     <Routes>
-      <Route element={<Outlet context={{ adminProfile: { username: 'pat' } }} />}>
+      <Route element={<Outlet context={{ adminProfile }} />}>
         <Route path="/admin/payments" element={<PaymentOperations />} />
       </Route>
     </Routes>
@@ -81,6 +81,30 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('Payment Operations refund retries', () => {
+  it('validates tenant preselection against the authorized tenant list without submitting an action', async () => {
+    mocks.getTenants.mockResolvedValue({ data: [{ id: 'tenant-42', name: 'North Market', status: 'active' }] });
+    renderPage('/admin/payments?tenant_id=tenant-42');
+
+    expect(await screen.findByText(/filtered to North Market/)).toBeTruthy();
+    await waitFor(() => expect(mocks.listCommercePaymentSessions).toHaveBeenCalledWith({ tenant_id: 'tenant-42' }));
+    expect(mocks.listCommercePaymentSessions).not.toHaveBeenCalledWith(expect.objectContaining({ tenant_id: 'missing-tenant' }));
+    expect(mocks.retryCommercePaymentRefund).not.toHaveBeenCalled();
+  });
+
+  it('leaves invalid tenant context unset and does not fetch the tenant list without its grant', async () => {
+    mocks.getTenants.mockResolvedValue({ data: [] });
+    renderPage('/admin/payments?tenant_id=unavailable-tenant');
+    expect(await screen.findByText(/not present in your authorized tenant list/)).toBeTruthy();
+    expect(mocks.listCommercePaymentSessions).not.toHaveBeenCalledWith(expect.objectContaining({ tenant_id: 'unavailable-tenant' }));
+
+    cleanup();
+    mocks.getTenants.mockClear();
+    renderPage('/admin/payments?tenant_id=unavailable-tenant', { username: 'delegate', permissions: [] });
+    expect(await screen.findByText(/requires Tenant Management access/)).toBeTruthy();
+    expect(mocks.getTenants).not.toHaveBeenCalled();
+    expect(mocks.listCommercePaymentSessions).not.toHaveBeenCalledWith(expect.objectContaining({ tenant_id: 'unavailable-tenant' }));
+  });
+
   it('shows Retry only for server-eligible refund attempts', async () => {
     mocks.listCommerceRefunds.mockResolvedValue({
       data: {

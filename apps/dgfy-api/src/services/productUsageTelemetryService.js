@@ -1,5 +1,6 @@
 import logger from '../config/logger.js';
 import { trackEngagementEvent } from './engagementService.js';
+import { sanitizeSensitiveLogPath } from './observabilityUtils.js';
 
 const fallbackNow = () => new Date();
 
@@ -31,7 +32,11 @@ const resolveSessionId = (req) => (
 
 const resolveUserAgent = (req) => normalizeHeaderValue(req?.headers?.['user-agent']) || null;
 
-const resolveRoute = (req) => req?.originalUrl || req?.baseUrl || req?.route?.path || null;
+const resolveRoute = (req) => {
+    if (req?.route?.path) return sanitizeSensitiveLogPath(`${req.baseUrl || ''}${req.route.path}`);
+    const path = req?.path || req?.originalUrl || req?.baseUrl || '';
+    return path ? sanitizeSensitiveLogPath(path) : null;
+};
 
 const resolveTenantId = ({ req, user, tenantId }) => (
     tenantId

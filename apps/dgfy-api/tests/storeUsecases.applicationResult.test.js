@@ -214,7 +214,7 @@ describe('store use-cases application result contract', () => {
         });
     });
 
-    it('surfaces active hosted wallet and card methods from PayMongo capabilities', async () => {
+    it('surfaces active direct card and hosted wallet methods from PayMongo capabilities', async () => {
         const paymongoService = {
             getPaymentMethodCapabilities: jest.fn().mockResolvedValue([
                 'card',
@@ -239,6 +239,7 @@ describe('store use-cases application result contract', () => {
             requireCommerceQrphConfig: () => [],
             paymongoMode: 'live',
             revenueSharingEnabled: true,
+            directCardEnabled: true,
             resolveWorkflowCapabilitySettings: jest.fn().mockResolvedValue({ mode: 'retail', enabledCapabilities: [] })
         });
 
@@ -253,6 +254,50 @@ describe('store use-cases application result contract', () => {
       shopeepay: { enabled: true, environment: 'live', reason_code: null },
       qrph: { enabled: true, environment: 'live', reason_code: null }
     }));
+  });
+
+  it('does not advertise Hosted Checkout as a card fallback when direct card is disabled', async () => {
+    const useCase = buildListStoreCatalogUseCase({
+      storeRepository: { listStoreCatalog: jest.fn().mockResolvedValue([]) },
+      paymongoService: {
+        getPaymentMethodCapabilities: jest.fn().mockResolvedValue([
+          'card',
+          'gcash',
+          'paymaya',
+          'grab_pay',
+          'shopeepay',
+          'qrph'
+        ])
+      },
+      tenantRevenueRepository: {
+        findEffectiveFeePolicy: jest.fn().mockResolvedValue({
+          settlement_status: 'active',
+          payout_destination_masked: '****1234'
+        })
+      },
+      commercePaymentsEnabled: true,
+      commerceQrphEnabled: true,
+      requireCommerceQrphConfig: () => [],
+      paymongoMode: 'live',
+      revenueSharingEnabled: true,
+      directPaymentRequired: false,
+      directCardEnabled: false,
+      resolveWorkflowCapabilitySettings: jest.fn().mockResolvedValue({ mode: 'retail', enabledCapabilities: [] })
+    });
+
+    const result = await dbStore.run({ tenantId: 45 }, () => useCase({ query: {} }));
+
+    expect(result.success).toBe(true);
+    expect(result.data.payment_capabilities.card).toEqual({
+      enabled: false,
+      environment: 'live',
+      reason_code: 'DIRECT_CARD_CONFIGURATION_INCOMPLETE'
+    });
+    expect(result.data.payment_capabilities.gcash).toEqual({
+      enabled: true,
+      environment: 'live',
+      reason_code: null
+    });
   });
 
   it('hides direct methods instead of advertising Hosted Checkout when direct-only mode is required', async () => {

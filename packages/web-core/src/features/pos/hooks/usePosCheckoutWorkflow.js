@@ -59,6 +59,7 @@ import { isPosOperatorAuthorityInvalidError } from '../utils/terminalShiftEntryD
 import { POS_HARDWARE_CAPABILITIES } from '../hardware/posHardwareContract.js';
 import { isRequestCancelled, isRetryableBackendFailure } from '../../../services/backendReachability.js';
 import { isTerminalOffline } from '../../../services/api.js';
+import { WORKFLOW_SETTINGS_REQUIRED_MESSAGE } from '../utils/workflowReadiness.js';
 
 const parseTransactionPaymentBreakdown = (value) => {
     if (Array.isArray(value)) return value;
@@ -88,6 +89,7 @@ const transactionIncludesCashTender = (transaction) => {
 export const usePosCheckoutWorkflow = ({
     sessionLocked = false,
     checkoutBlockedReason = '',
+    workflowUnresolved = false,
     activeShiftId = null,
     selectedLocationId = null,
     normalizedTerminalId = '',
@@ -521,6 +523,10 @@ export const usePosCheckoutWorkflow = ({
     }, [activeParkedSale, activeShiftId, normalizedTerminalId, offlineSnapshotScope, parkedSaleReleaseLoading, resetCurrentSaleForNewSale, selectedLocationId, setActiveParkedSale, setParkedSaleReleaseLoading]);
 
     const openCheckoutConfirmModal = useCallback(async () => {
+        if (workflowUnresolved) {
+            toast.error(WORKFLOW_SETTINGS_REQUIRED_MESSAGE);
+            return;
+        }
         if (checkoutBlockedReason) {
             toast.error(checkoutBlockedReason);
             return;
@@ -577,9 +583,13 @@ export const usePosCheckoutWorkflow = ({
         setCheckoutOpenedFromCurrentSale(true);
         setCheckoutConfirmModalOpen(true);
         setMobileCheckoutPanelOpen(false);
-    }, [cartTotal, checkoutBlockedReason, checkoutWorkflowValidationMessage, deliveryProviderBreakdown, isCheckoutWorkflowValid, normalizedTerminalId, orderMethod, paymentType, safeCart, selectedLocationId, setCheckoutConfirmModalOpen, setCheckoutOpenedFromCurrentSale, setCustomerPaymentAmountAutoFilled, setCustomerPaymentAmountInput, setItemOptionsLineKey, setMobileCheckoutPanelOpen]);
+    }, [cartTotal, checkoutBlockedReason, checkoutWorkflowValidationMessage, deliveryProviderBreakdown, isCheckoutWorkflowValid, normalizedTerminalId, orderMethod, paymentType, safeCart, selectedLocationId, setCheckoutConfirmModalOpen, setCheckoutOpenedFromCurrentSale, setCustomerPaymentAmountAutoFilled, setCustomerPaymentAmountInput, setItemOptionsLineKey, setMobileCheckoutPanelOpen, workflowUnresolved]);
 
     const openSplitPaymentModal = useCallback(async () => {
+        if (workflowUnresolved) {
+            toast.error(WORKFLOW_SETTINGS_REQUIRED_MESSAGE);
+            return;
+        }
         if (checkoutBlockedReason) {
             toast.error(checkoutBlockedReason);
             return;
@@ -630,10 +640,13 @@ export const usePosCheckoutWorkflow = ({
         splitPaymentReturnToCheckoutRef.current = false;
         handleSplitPaymentOpenChange(true);
         setMobileCheckoutPanelOpen(false);
-    }, [cartTotal, checkoutBlockedReason, checkoutWorkflowValidationMessage, deliveryProviderBreakdown, handleSplitPaymentOpenChange, isCheckoutWorkflowValid, isEmployeeCreditPayment, normalizedTerminalId, orderMethod, posWorkflow.mode, safeCart, selectedLocationId, setCheckoutConfirmModalOpen, setItemOptionsLineKey, setMobileCheckoutPanelOpen]);
+    }, [cartTotal, checkoutBlockedReason, checkoutWorkflowValidationMessage, deliveryProviderBreakdown, handleSplitPaymentOpenChange, isCheckoutWorkflowValid, isEmployeeCreditPayment, normalizedTerminalId, orderMethod, posWorkflow.mode, safeCart, selectedLocationId, setCheckoutConfirmModalOpen, setItemOptionsLineKey, setMobileCheckoutPanelOpen, workflowUnresolved]);
 
     const validateParkedSaleForResume = useCallback(async (parkedSale, action = 'pay') => {
         const normalizedAction = action === 'resume' ? 'resume' : 'pay';
+        if (workflowUnresolved && normalizedAction === 'pay') {
+            return { ok: false, message: WORKFLOW_SETTINGS_REQUIRED_MESSAGE };
+        }
         if (activeParkedSale?.pos_parked_sale_id
             && Number(activeParkedSale.pos_parked_sale_id) !== Number(parkedSale?.pos_parked_sale_id)) {
             return {
@@ -718,10 +731,14 @@ export const usePosCheckoutWorkflow = ({
                 warnings: validation.warnings
             }
         };
-    }, [activeParkedSale?.pos_parked_sale_id, commercialPromoConfig, discountProfiles, discountRules, posWorkflow, safeCatalog, safeCart.length, selectedLocationId]);
+    }, [activeParkedSale?.pos_parked_sale_id, commercialPromoConfig, discountProfiles, discountRules, posWorkflow, safeCatalog, safeCart.length, selectedLocationId, workflowUnresolved]);
 
     const handleParkedSaleClaimed = useCallback(async (claimedSale, action = 'pay', resumeContext = null) => {
         const normalizedAction = action === 'resume' ? 'resume' : 'pay';
+        if (workflowUnresolved && normalizedAction === 'pay') {
+            toast.error(WORKFLOW_SETTINGS_REQUIRED_MESSAGE);
+            return false;
+        }
         const { buildResumedCartLines } = await import('../utils/posParkedSaleResume.js');
         const snapshot = claimedSale?.snapshot && typeof claimedSale.snapshot === 'object'
             ? claimedSale.snapshot
@@ -865,7 +882,8 @@ export const usePosCheckoutWorkflow = ({
         setServicesProvider,
         setServicesResource,
         setTableNumber,
-        setCurrentViewMode
+        setCurrentViewMode,
+        workflowUnresolved
     ]);
 
     const handleParkAndNewSale = useCallback(async (nameOverride = null) => {
@@ -1210,6 +1228,10 @@ export const usePosCheckoutWorkflow = ({
     }, [activeShiftId, clearSplitPaymentState, normalizedTerminalId, resetCheckoutModalState, selectedLocationId, setSplitPaymentCancelLoading, setSplitPaymentCancelModalOpen, splitPaymentSession, splitPaymentSuccessfulAllocations]);
 
     const handleCompletePreparedSplitPayment = useCallback(async (preparedSession = null) => {
+        if (workflowUnresolved) {
+            toast.error(WORKFLOW_SETTINGS_REQUIRED_MESSAGE);
+            return false;
+        }
         const sessionToComplete = preparedSession || splitPaymentSession;
         const sessionId = Number(sessionToComplete?.pos_payment_session_id || sessionToComplete?.id || 0);
         const isReady = round4(sessionToComplete?.remaining_amount) === 0;
@@ -1258,7 +1280,7 @@ export const usePosCheckoutWorkflow = ({
         } finally {
             setCheckoutLoading(false);
         }
-    }, [activeShiftId, clearSplitPaymentState, discountApprovalRef, historyPage, itemDiscountApprovalRef, loadCatalog, loadHistory, normalizedTerminalId, onCheckoutCompleted, resetCheckoutModalState, runCheckoutHardware, schedulePostCheckoutTask, selectedLocationId, setActiveParkedSale, setAffiliateCodeInput, setAppliedDiscount, setCart, setCheckoutConfirmModalOpen, setCustomerPaymentAmountAutoFilled, setCustomerPaymentAmountInput, setLastReceipt, setLastReceiptContract, setManualDiscountAmountInput, setManualDiscountRateInput, setReceiptPreviewModalOpen, setReceiptPreviewSource, setSelectedDiscountProfile, setCheckoutLoading, splitPaymentSession]);
+    }, [activeShiftId, clearSplitPaymentState, discountApprovalRef, historyPage, itemDiscountApprovalRef, loadCatalog, loadHistory, normalizedTerminalId, onCheckoutCompleted, resetCheckoutModalState, runCheckoutHardware, schedulePostCheckoutTask, selectedLocationId, setActiveParkedSale, setAffiliateCodeInput, setAppliedDiscount, setCart, setCheckoutConfirmModalOpen, setCustomerPaymentAmountAutoFilled, setCustomerPaymentAmountInput, setLastReceipt, setLastReceiptContract, setManualDiscountAmountInput, setManualDiscountRateInput, setReceiptPreviewModalOpen, setReceiptPreviewSource, setSelectedDiscountProfile, setCheckoutLoading, splitPaymentSession, workflowUnresolved]);
 
     const splitPaymentCheckoutContext = useMemo(() => ({
         orderMethod,
@@ -1306,6 +1328,10 @@ export const usePosCheckoutWorkflow = ({
     ]);
 
     const handleCheckout = useCallback(async (paymentSnapshot = null) => {
+        if (workflowUnresolved) {
+            toast.error(WORKFLOW_SETTINGS_REQUIRED_MESSAGE);
+            return;
+        }
         const hasPaymentSnapshot = paymentSnapshot && typeof paymentSnapshot === 'object'
             && paymentSnapshot.customerPaymentAmount !== undefined;
         const requestedCustomerPaymentAmount = hasPaymentSnapshot
@@ -1744,6 +1770,7 @@ export const usePosCheckoutWorkflow = ({
         setSelectedDiscountProfile,
         syncQueuedCheckoutsState,
         tableNumber,
+        workflowUnresolved,
         vatBreakdown
     ]);
 

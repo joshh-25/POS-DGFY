@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
+import productionEnvValidation from '../../../config/productionEnvValidation.cjs';
 import { getActiveSigningKey } from '../../dgfyLaundry/services/oidcSigningKeyRegistry.js';
 
 const operationScopes = new Map([
@@ -7,6 +8,8 @@ const operationScopes = new Map([
   ['/api/v1/integrations/dgfy/booking-groups/prepare', { method: 'POST', scope: 'dglaundry:bookings:prepare' }],
   ['/api/v1/integrations/dgfy/order-projections/resolve', { method: 'POST', scope: 'dglaundry:orders:read' }]
 ]);
+
+const environmentTargets = productionEnvValidation.DGLAUNDRY_ENVIRONMENT_TARGETS;
 
 const required = (value, code) => {
   const normalized = String(value || '').trim();
@@ -21,21 +24,18 @@ export const issueDglaundryPartnerAccessToken = async ({ method, target, payload
   if (String(method || '').toUpperCase() !== operation.method) throw new Error('DGLAUNDRY_PARTNER_OPERATION_METHOD_UNSUPPORTED');
 
   const integrationEnvironment = required(process.env.DGLAUNDRY_INTEGRATION_ENVIRONMENT, 'DGLAUNDRY_INTEGRATION_ENVIRONMENT_REQUIRED');
-  const expectedIssuer = integrationEnvironment === 'staging'
-    ? 'https://api.stage.dgfy.ph/oidc'
-    : integrationEnvironment === 'production'
-      ? 'https://api.dgfy.ph/oidc'
-      : '';
-  if (!expectedIssuer) throw new Error('DGLAUNDRY_INTEGRATION_ENVIRONMENT_INVALID');
+  const targetEnvironment = environmentTargets[integrationEnvironment];
+  if (!targetEnvironment) throw new Error('DGLAUNDRY_INTEGRATION_ENVIRONMENT_INVALID');
 
   const issuer = required(process.env.DGFY_OIDC_ISSUER, 'DGFY_OIDC_ISSUER_REQUIRED');
-  if (issuer !== expectedIssuer) throw new Error('DGFY_OIDC_ISSUER_ENVIRONMENT_MISMATCH');
+  if (issuer !== targetEnvironment.issuer) throw new Error('DGFY_OIDC_ISSUER_ENVIRONMENT_MISMATCH');
   const audience = required(process.env.DGLAUNDRY_PARTNER_AUDIENCE, 'DGLAUNDRY_PARTNER_AUDIENCE_REQUIRED');
   const configuredBaseUrl = required(process.env.DGLAUNDRY_PARTNER_BASE_URL, 'DGLAUNDRY_PARTNER_BASE_URL_REQUIRED');
   const baseUrl = new URL(configuredBaseUrl);
   if (baseUrl.protocol !== 'https:' || baseUrl.username || baseUrl.password || baseUrl.pathname !== '/' || baseUrl.search || baseUrl.hash || audience !== baseUrl.origin) {
     throw new Error('DGLAUNDRY_PARTNER_AUDIENCE_ORIGIN_MISMATCH');
   }
+  if (baseUrl.origin !== targetEnvironment.partnerOrigin) throw new Error('DGLAUNDRY_PARTNER_ORIGIN_ENVIRONMENT_MISMATCH');
   if (targetUrl.origin !== baseUrl.origin) throw new Error('DGLAUNDRY_PARTNER_TARGET_ORIGIN_MISMATCH');
 
   const clientId = required(process.env.DGFY_DGLAUNDRY_SERVICE_CLIENT_ID, 'DGFY_DGLAUNDRY_SERVICE_CLIENT_ID_REQUIRED');

@@ -127,7 +127,7 @@ export function useDiscoveryStoreLoader({
     const lastImmediate = lastImmediateDiscoveryRequestRef.current;
     const debouncedSearch = debouncedDiscoverySearch.trim();
     if (
-      debouncedSearch
+      Number(lastImmediate?.at || 0) > 0
       && lastImmediate?.search === debouncedSearch
       && Date.now() - Number(lastImmediate.at || 0) < 400
     ) {

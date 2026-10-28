@@ -15,7 +15,11 @@ const businessAdminService = readRepoFile('apps/dgfy-opis/src/features/businessA
 describe('Business Admin approval queue contract', () => {
     it('keeps approval review and decision actions on the OPIS Business Admin surface', () => {
         expect(businessAdminPage).toContain("activeSection === 'approvals'");
-        expect(businessAdminPage).toContain("businessAdminApi.approvals({ status: 'pending', limit: 100 })");
+        expect(businessAdminPage).toContain('data-testid="business-admin-administrative-tools"');
+        expect(businessAdminPage).toContain('business-admin-admin-tool-${item.key}');
+        expect(businessAdminPage).toContain("item.itemType === 'administrative-tool'");
+        expect(businessAdminPage).toContain('onOpenAdministrativeTool={handleAdministrativeToolNavigate}');
+        expect(businessAdminPage).toContain("businessAdminApi.approvals({ status: 'pending', limit: 100 }, requestConfig)");
         expect(businessAdminPage).toContain("businessAdminApi.decideApproval(id, decision, `${decision} requested from Back Office.`)");
         expect(businessAdminPage).toContain('Review the reason and target before deciding. POS and Inventory perform approved changes');
         expect(businessAdminPage).toContain("{ key: 'reason', label: 'Reason'");
@@ -33,9 +37,9 @@ describe('Business Admin approval queue contract', () => {
         expect(businessAdminPage).toContain("businessAdminApi.approvals({ status: 'approved', limit: 100 })");
         expect(businessAdminPage).toContain("businessAdminApi.orders({ receipt_type: 'voided', page: 1, limit: 100 })");
         expect(businessAdminPage).toContain("source: approval ? 'Approved workflow' : 'Direct/admin void'");
-        expect(businessAdminService).toContain("get('/business-admin/approvals', params)");
+        expect(businessAdminService).toContain("approvals: (params, config) => get('/business-admin/approvals', params, config)");
         expect(businessAdminService).toContain("api.post(`/business-admin/approvals/${encodeURIComponent(id)}/${decision}`, { note })");
-        expect(businessAdminService).toContain("orders: (params) => get('/business-admin/orders', params)");
+        expect(businessAdminService).toContain("orders: (params, config) => get('/business-admin/orders', params, config)");
     });
 
     it('keeps direct/admin void actor and reason fields in the shared order-list response', () => {

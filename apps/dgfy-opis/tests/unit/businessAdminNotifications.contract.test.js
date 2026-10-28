@@ -38,7 +38,7 @@ describe('Business Admin notifications presentation contract', () => {
     expect(businessAdminPage).toContain('Refreshing notifications...');
     expect(businessAdminCss).toContain('.business-admin-notifications-loading { position: absolute; inset: 0;');
     expect(businessAdminCss).toContain('.business-admin-notifications-list-panel.is-refreshing .business-admin-notifications-list-content');
-    expect(businessAdminPage.indexOf('if (notificationWorkspaceHasData)')).toBeLessThan(businessAdminPage.indexOf('if (sectionLoading) return <WorkspaceLoading label={`Refreshing ${meta.title}…`} />;'));
+    expect(businessAdminPage.indexOf('if (notificationWorkspaceHasData)')).toBeLessThan(businessAdminPage.indexOf('if (loadedSection !== activeSection) return <WorkspaceLoading label={`Loading ${meta.title}…`} />;'));
   });
 
   it('keeps notification cards readable and responsive', () => {
@@ -98,6 +98,6 @@ describe('Business Admin notifications presentation contract', () => {
     );
 
     expect(settingsModel).toContain("const legacyActivity = requestedSection === 'activity';");
-    expect(settingsModel).toContain("(legacyActivity ? 'audit' : requestedSection)");
+    expect(settingsModel).toContain("legacyActivity ? 'audit'");
   });
 });

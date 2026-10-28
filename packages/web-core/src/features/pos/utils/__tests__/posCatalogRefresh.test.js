@@ -34,6 +34,33 @@ describe('remote POS catalog stream recovery', () => {
         vi.unstubAllGlobals();
     });
 
+    it('does not treat the connected handshake as a catalog invalidation', async () => {
+        const reader = {
+            read: vi.fn()
+                .mockResolvedValueOnce({
+                    done: false,
+                    value: new TextEncoder().encode('event: connected\ndata: {"connected":true}\n\n')
+                })
+                .mockResolvedValueOnce({ done: true, value: undefined })
+        };
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            body: { getReader: () => reader }
+        }));
+        const catalogInvalidationListener = vi.fn();
+        const connectedListener = vi.fn();
+        window.addEventListener('pos:catalog-updated', catalogInvalidationListener);
+        const unsubscribe = subscribeToRemotePosCatalogUpdates({ onConnected: connectedListener });
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(connectedListener).toHaveBeenCalledTimes(1);
+        expect(catalogInvalidationListener).not.toHaveBeenCalled();
+
+        unsubscribe();
+        window.removeEventListener('pos:catalog-updated', catalogInvalidationListener);
+    });
+
     it('reconnects immediately when the browser returns online or becomes visible', () => {
         const fetchMock = vi.fn(() => new Promise(() => {}));
         vi.stubGlobal('fetch', fetchMock);

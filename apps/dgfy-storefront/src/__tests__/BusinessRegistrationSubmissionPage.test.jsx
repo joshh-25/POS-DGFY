@@ -18,6 +18,8 @@ describe('BusinessRegistrationSubmissionPage', () => {
 
     expect(screen.getByRole('heading', { name: 'Registration submitted!' })).toBeTruthy();
     expect(screen.getByText(/now under review/i)).toBeTruthy();
+    expect(screen.getByText("Thanks! We've received your business registration and it's now under review.")).toBeTruthy();
+    expect(screen.queryByText(/&apos;/i)).toBeNull();
     expect(screen.getByText(/email inbox \(or spam folder\)/i)).toBeTruthy();
     expect(screen.queryByText(/no-reply@dgfy\.com/i)).toBeNull();
     expect(screen.getByRole('link', { name: /view registration status/i }).getAttribute('href'))

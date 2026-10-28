@@ -232,6 +232,7 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
       }),
       businessSettings: {
         pos_business_name: 'Compliance Test Store',
+        pos_taxpayer_type: 'VAT_REGISTERED',
         pos_tin_branch: '123-456-789-000',
         pos_ptu_number: 'PTU-REF-999',
         pos_min_number: 'MIN-2026-001',
@@ -270,6 +271,7 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
       }),
       businessSettings: {
         pos_business_name: 'Compliance Test Store',
+        pos_taxpayer_type: 'vat_registered',
         pos_tin_branch: '123-456-789-000',
         pos_ptu_number: 'PTU-REF-999',
         pos_min_number: 'MIN-2026-001',
@@ -290,6 +292,67 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
     expect(text).toContain('MIN: MIN-2026-001');
     expect(text).toContain('ATP/OCN No.: BIR-TEST-2026-001');
     expect(text).toContain('Powered by DGFY POS');
+  });
+
+  it('fails closed when a fiscal receipt has an unknown taxpayer type', () => {
+    const fiscalTransaction = buildTransaction({
+      invoice_number: 'INV-UNREADY-001',
+      document_type: 'fiscal_invoice',
+      document_context: 'fiscal'
+    });
+    const businessSettings = {
+      pos_business_name: 'Compliance Test Store',
+      pos_taxpayer_type: 'not-a-real-taxpayer-type',
+      pos_tin_branch: '123-456-789-000',
+      pos_ptu_number: 'PTU-REF-999'
+    };
+
+    renderReceipt({ transaction: fiscalTransaction, businessSettings });
+
+    expect(screen.getByText('FISCAL SETUP INCOMPLETE')).toBeTruthy();
+    expect(screen.queryByText('VAT INVOICE')).toBeNull();
+    expect(screen.queryByText('VAT Amount (12%)')).toBeNull();
+
+    const hardwareText = formatIminReceiptText({
+      transaction: fiscalTransaction,
+      businessSettings
+    });
+    expect(hardwareText).toContain('FISCAL SETUP INCOMPLETE');
+    expect(hardwareText).not.toContain('VAT INVOICE');
+
+    const printCalls = [];
+    window.iMinBridge = {
+      isIminWrapper: () => true,
+      printReceipt: (...args) => {
+        printCalls.push(args);
+        return { success: true, message: 'Receipt printed.' };
+      }
+    };
+    const printResult = printReceiptWithIminBridge({ transaction: fiscalTransaction, businessSettings });
+
+    expect(printResult.handled).toBe(true);
+    expect(printResult.result.success).toBe(false);
+    expect(printResult.result.reasonCode).toBe('FISCAL_SETUP_INCOMPLETE');
+    expect(printCalls).toHaveLength(0);
+  });
+
+  it('renders an explicit non-VAT taxpayer type without a VAT fallback', () => {
+    renderReceipt({
+      transaction: buildTransaction({
+        invoice_number: 'INV-NONVAT-001',
+        document_type: 'fiscal_invoice',
+        document_context: 'fiscal'
+      }),
+      businessSettings: {
+        pos_business_name: 'Compliance Test Store',
+        pos_taxpayer_type: 'NON-VAT',
+        pos_tin_branch: '123-456-789-000'
+      }
+    });
+
+    expect(screen.getByText('NON-VAT INVOICE')).toBeTruthy();
+    expect(screen.getByText('NON-VAT REG TIN: 123-456-789-000')).toBeTruthy();
+    expect(screen.queryByText('VAT INVOICE')).toBeNull();
   });
 
   it('shows Senior/PWD receipt fields only for statutory discounts', () => {

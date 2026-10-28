@@ -16,6 +16,7 @@ import {
   TENANT_SCHEMA_CAPABILITY_VERSION,
   buildTenantSchemaEnumRepairSql,
   backfillTenantUserPermissionMode,
+  backfillTenantStaffRoleCapabilities,
   backfillItemFolderSortOrder,
   repairItemFolderCategoryLifecycleSchema,
   repairPosParkedSaleOriginOwnership,
@@ -129,6 +130,25 @@ describe('tenant schema sync script contracts', () => {
       'UPDATE `sku_tenant_test`.`users`\n                SET `permission_mode` = ?, `permissions` = ?\n              WHERE `user_id` = ?',
       ['inherit', '[]', 8]
     );
+  });
+
+  it('repairs only missing POS parent capabilities on assigned staff roles', async () => {
+    const connection = {
+      query: jest.fn()
+        .mockResolvedValueOnce([[
+          { staff_role_id: 4, capabilities: '["pos:shift_close"]' },
+          { staff_role_id: 5, capabilities: '["items:view"]' }
+        ], {}])
+        .mockResolvedValue([[], {}])
+    };
+
+    await expect(backfillTenantStaffRoleCapabilities(connection, 'sku_tenant_test')).resolves.toBe(1);
+    expect(connection.query).toHaveBeenNthCalledWith(
+      2,
+      'UPDATE `sku_tenant_test`.`staff_roles`\n                SET `capabilities` = ?\n              WHERE `staff_role_id` = ?',
+      ['["pos:shift_close","pos:shift_access","pos:view"]', 4]
+    );
+    expect(connection.query).toHaveBeenCalledTimes(2);
   });
 
   it('backfills existing category order deterministically', async () => {
@@ -280,7 +300,7 @@ describe('tenant schema sync script contracts', () => {
   it('repairs the tenant-local storefront QR table and records the schema capability version', () => {
     const table = REQUIRED_TENANT_SCHEMA_TABLES.storefront_qr_codes;
 
-    expect(TENANT_SCHEMA_CAPABILITY_VERSION).toBe('2026-10-22.1');
+    expect(TENANT_SCHEMA_CAPABILITY_VERSION).toBe('2026-10-22.2');
     expect(table.sql).toContain('CREATE TABLE `storefront_qr_codes`');
     expect(table.sql).toContain('`public_token` VARCHAR(64) NOT NULL');
     expect(table.sql).toContain('UNIQUE KEY `uq_storefront_qr_codes_public_token`');

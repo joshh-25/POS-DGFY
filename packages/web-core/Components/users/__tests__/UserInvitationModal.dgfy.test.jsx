@@ -7,7 +7,8 @@ import UserInvitationModal from '../UserInvitationModal.jsx';
 const mocks = vi.hoisted(() => ({
   userService: {
     searchDgfyBusinessAccounts: vi.fn(),
-    inviteDgfyAccountToCompany: vi.fn()
+    inviteDgfyAccountToCompany: vi.fn(),
+    listActiveStaffRoles: vi.fn()
   },
   locationService: {
     listTenantLocations: vi.fn()
@@ -50,6 +51,7 @@ describe('UserInvitationModal DGFY-only invitations', () => {
       ]
     });
     mocks.userService.inviteDgfyAccountToCompany.mockResolvedValue({ email_sent: true });
+    mocks.userService.listActiveStaffRoles.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -85,6 +87,7 @@ describe('UserInvitationModal DGFY-only invitations', () => {
         onOpenChange={vi.fn()}
         onSuccess={vi.fn()}
         fixedRole="cashier"
+        canManageCustomStaffRoles
         title="Invite DGFY Cashier"
         submitLabel="Send Cashier Invitation"
       />
@@ -92,6 +95,7 @@ describe('UserInvitationModal DGFY-only invitations', () => {
 
     expect(screen.getByText('Invite DGFY Cashier')).toBeTruthy();
     expect(screen.getByText(/cashier authorization profile/)).toBeTruthy();
+    expect(mocks.userService.listActiveStaffRoles).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByLabelText('Search registered DGFY account'), {
       target: { value: 'ada' }
@@ -107,6 +111,68 @@ describe('UserInvitationModal DGFY-only invitations', () => {
       rolePresetKey: null,
       locationIds: [1]
     }));
+  });
+
+  it('lists active custom staff roles and preserves account and locations while switching assigned roles', async () => {
+    mocks.userService.listActiveStaffRoles.mockResolvedValue([
+      { staff_role_id: 7, name: 'Warehouse', is_active: true },
+      { staff_role_id: 8, name: 'Delivery', is_active: true },
+      { staff_role_id: 9, name: 'Archived', is_active: false }
+    ]);
+    render(
+      <UserInvitationModal
+        open
+        onOpenChange={vi.fn()}
+        onSuccess={vi.fn()}
+        canManageCustomStaffRoles
+        locationOptions={[
+          { location_id: 1, name: 'Main Branch', is_active: true },
+          { location_id: 2, name: 'Pickup Counter', is_active: true }
+        ]}
+      />
+    );
+
+    await waitFor(() => expect(mocks.userService.listActiveStaffRoles).toHaveBeenCalledTimes(1));
+    fireEvent.change(screen.getByLabelText('Search registered DGFY account'), { target: { value: 'ada' } });
+    fireEvent.click(await screen.findByRole('button', { name: /Ada Lovelace/i }));
+    fireEvent.click(screen.getByLabelText('Role'));
+    fireEvent.click(await screen.findByRole('option', { name: 'Warehouse' }));
+    fireEvent.click(screen.getByLabelText('Main Branch'));
+    fireEvent.click(screen.getByLabelText('Role'));
+    fireEvent.click(await screen.findByRole('option', { name: 'Delivery' }));
+
+    expect(screen.getByText('Ada Lovelace')).toBeTruthy();
+    expect(screen.queryByRole('option', { name: 'Archived' })).toBeNull();
+    expect(screen.getByLabelText('Main Branch').checked).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Send DGFY Invitation' }));
+
+    await waitFor(() => expect(mocks.userService.inviteDgfyAccountToCompany).toHaveBeenCalledWith({
+      dgfyAccountId: 'dgfy-new',
+      role: 'staff',
+      rolePresetKey: null,
+      staffRoleId: 8,
+      locationIds: [1]
+    }));
+  });
+
+  it('shows custom-role loading errors with a retry action', async () => {
+    mocks.userService.listActiveStaffRoles
+      .mockRejectedValueOnce({ response: { data: { message: 'Staff roles unavailable.' } } })
+      .mockResolvedValueOnce([{ staff_role_id: 7, name: 'Warehouse', is_active: true }]);
+    render(
+      <UserInvitationModal
+        open
+        onOpenChange={vi.fn()}
+        onSuccess={vi.fn()}
+        canManageCustomStaffRoles
+      />
+    );
+
+    expect(await screen.findByText('Staff roles unavailable.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(screen.queryByText('Staff roles unavailable.')).toBeNull());
+    fireEvent.click(screen.getByLabelText('Role'));
+    expect(await screen.findByRole('option', { name: 'Warehouse' })).toBeTruthy();
   });
 
   it('uses provided company locations instead of refetching ambient tenant locations', async () => {

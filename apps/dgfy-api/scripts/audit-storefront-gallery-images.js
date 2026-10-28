@@ -148,7 +148,7 @@ const inspectTenant = async ({ tenant, applyRemoveInvalid = false, now = Date.no
     };
 
     try {
-        const tenantSequelize = await tenantConnector.getConnection(tenantPlain);
+        const tenantSequelize = await tenantConnector.getConnection(tenantPlain, 'script.audit-storefront-gallery-images');
         const { SystemSetting } = getTenantModels(tenantSequelize);
         const setting = await SystemSetting.findOne({ where: { setting_key: GALLERY_SETTING_KEY } });
         if (!setting) return result;

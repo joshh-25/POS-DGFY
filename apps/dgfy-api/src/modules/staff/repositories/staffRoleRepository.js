@@ -1,4 +1,9 @@
 import dbStore from '../../../utils/dbStore.js';
+import {
+  normalizePermissionArray,
+  normalizePermissionMode,
+  PERMISSION_MODES
+} from '../../../utils/userPermissions.js';
 import { Op } from 'sequelize';
 
 const options = (query = {}) => ({
@@ -26,6 +31,33 @@ export const staffRoleRepository = {
       attributes: ['user_id'],
       ...options(query)
     });
+  },
+  async cancelPendingInvitationsForRole(staffRoleId, { actorUserId, cancelledAt, transaction } = {}) {
+    const User = dbStore.get('User');
+    const pendingUsers = await User.findAll({
+      where: { staff_role_id: staffRoleId, invitation_status: 'pending' },
+      attributes: ['user_id'],
+      transaction,
+      lock: transaction ? transaction.LOCK.UPDATE : undefined
+    });
+    const userIds = pendingUsers.map((user) => user.user_id);
+    if (!userIds.length) return { count: 0, userIds: [] };
+
+    await User.update({
+      invitation_token: null,
+      invitation_status: 'cancelled',
+      invitation_cancelled_at: cancelledAt,
+      invitation_cancelled_by: actorUserId,
+      is_active: false
+    }, {
+      where: {
+        user_id: { [Op.in]: userIds },
+        staff_role_id: staffRoleId,
+        invitation_status: 'pending'
+      },
+      transaction
+    });
+    return { count: userIds.length, userIds };
   },
   listAssignedRuns(userId, query = {}) {
     const DeliveryPersonnel = dbStore.get('DeliveryPersonnel');
@@ -128,6 +160,63 @@ export const staffRoleRepository = {
     }).then((rows) => rows.map(plain));
   },
   createAuditLog(values, query = {}) { return dbStore.get('AuditLog').create(values, { transaction: query.transaction }); }
+};
+
+/**
+ * Apply the persisted part of a staff-role assignment inside a caller-owned tenant
+ * transaction. Manual assignment and DGFY invitation acceptance share this operation
+ * so both clear overrides and keep named roles in inherited permission mode.
+ */
+export const applyStaffRoleAssignmentInTransaction = async ({
+  repository,
+  target,
+  role,
+  actorUserId = null,
+  transaction,
+  auditChanges = {},
+  auditEntityType = 'staff_role'
+}) => {
+  const staffRoleId = role?.staff_role_id ?? null;
+  const previousPermissions = normalizePermissionArray(target.permissions);
+  const previousStaffRoleId = target.staff_role_id ?? null;
+  const previousPermissionMode = normalizePermissionMode(target.permission_mode);
+  const nextPermissionMode = staffRoleId !== null
+    ? PERMISSION_MODES.INHERIT
+    : PERMISSION_MODES.CUSTOM;
+  const updates = {
+    staff_role_id: staffRoleId,
+    permissions: [],
+    permission_mode: nextPermissionMode
+  };
+
+  await target.update(updates, { transaction });
+  await repository.createAuditLog({
+    user_id: actorUserId,
+    entity_type: auditEntityType,
+    entity_id: target.user_id,
+    action: 'UPDATE',
+    changes: {
+      staff_role_id: staffRoleId,
+      previous_staff_role_id: previousStaffRoleId,
+      permission_mode: nextPermissionMode,
+      previous_permission_mode: previousPermissionMode,
+      previous_permissions: previousPermissions,
+      permissions: [],
+      permission_overrides_cleared: previousPermissions.length > 0
+        || previousPermissionMode === PERMISSION_MODES.CUSTOM,
+      ...auditChanges
+    }
+  }, { transaction });
+
+  return {
+    user_id: target.user_id,
+    staff_role_id: staffRoleId,
+    staff_role: role?.get ? role.get({ plain: true }) : role,
+    permission_mode: nextPermissionMode,
+    effective_permissions: staffRoleId === null
+      ? []
+      : normalizePermissionArray(role?.capabilities)
+  };
 };
 
 export { plain };

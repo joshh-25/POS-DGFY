@@ -16,7 +16,11 @@ describe('Platform Admin protected-route classification', () => {
     ['/api/v1/admin/push-diagnostics/visibility/pos', ['admin.push_diagnostics']],
     ['/api/v1/admin/push-diagnostics/diagnostic-devices/id-1/test-send', ['admin.push_diagnostics']],
     ['/api/v1/admin/tenants', ['admin.tenants']],
+    ['/api/v1/admin/tenants/dglaundry-registration-intents', ['admin.tenants']],
+    ['/api/v1/admin/tenants/dglaundry-registration-intents/intent-1', ['admin.tenants']],
+    ['/api/v1/admin/tenants/dglaundry-registration-intents/intent-1/decision', ['admin.tenants']],
     ['/api/v1/admin/tenants/pricing', ['admin.pricing']],
+    ['/api/v1/admin/tenants/tenant-1', ['admin.tenants']],
     // Issue #178 Phase 17: applying a template to ONE already-provisioned
     // tenant is scoped like any other tenant-capability edit (delegable),
     // unlike template curation itself which is platform-wide and master-only.

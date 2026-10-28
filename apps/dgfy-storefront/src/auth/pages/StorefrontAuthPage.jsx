@@ -13,6 +13,7 @@ import {
   fetchAffiliateInvitePreview,
   fetchDgfyLegalTerms,
   fetchDgfyMe,
+  getStoredDgfyAccount,
   getStoredDgfyToken,
   hasDgfyExplicitSignOut,
   loginDgfyAccount,
@@ -39,7 +40,7 @@ import {
   resolveDgfyPostAuthTarget
 } from '../../../../../packages/web-core/src/features/dgfyRouteHelpers.js';
 
-import { writeDgfyAuthToken } from '../storefrontSessionStorage.js';
+import { clearDgfyAuthToken, writeDgfyAuthToken } from '../storefrontSessionStorage.js';
 import { sanitizeStorefrontReturnPath, toInternalReturnPath } from '../storefrontAuthReturnPath.js';
 import { resolveStorefrontInternalUrl } from '../storefrontInternalLink.js';
 
@@ -485,6 +486,8 @@ export default function StorefrontAuthPage({ initialMode }) {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const routeParams = useMemo(() => readDgfyRouteParams(searchParams), [searchParams]);
+  const oidcInteractionId = String(searchParams.get('oidc_interaction_id') || '').trim();
+  const oidcLoginHint = String(location.state?.oidcLoginHint || '').trim();
   const [mode, setMode] = useState(() => initialMode || normalizeDgfyMode(routeParams.mode));
   const [legalTerms, setLegalTerms] = useState(null);
   const [legalTermsError, setLegalTermsError] = useState('');
@@ -492,14 +495,14 @@ export default function StorefrontAuthPage({ initialMode }) {
     firstName: '',
     middleName: '',
     lastName: '',
-    email: routeParams.email || '',
+    email: routeParams.email || oidcLoginHint,
     phone: '',
     country: 'PH',
     password: '',
     confirmPassword: '',
     acceptedTerms: false
   });
-  const [loginForm, setLoginForm] = useState({ email: routeParams.email || '', password: '' });
+  const [loginForm, setLoginForm] = useState({ email: routeParams.email || oidcLoginHint, password: '' });
   const [error, setError] = useState(routeParams.reason === 'handoff-expired'
     ? 'Your DGFY handoff expired. Sign in again to register your business.'
     : '');
@@ -523,18 +526,23 @@ export default function StorefrontAuthPage({ initialMode }) {
   const affiliateInviteToken = String(searchParams.get('aff_invite') || '').trim();
   const [affiliateInvite, setAffiliateInvite] = useState(null);
 
+  useEffect(() => {
+    if (oidcInteractionId) clearDgfyAuthToken();
+  }, [oidcInteractionId]);
+
   // `/login` and `/register` are distinct routes here, so the hosting route
   // decides the view; `?mode=` is only a fallback for links that carry it.
   useEffect(() => { setMode(initialMode || normalizeDgfyMode(routeParams.mode)); }, [initialMode, routeParams.mode]);
 
   // Post-auth destination, resolved once against the storefront's own router
   // instead of the cross-origin handoff the skupervisor page needed.
-  const returnPath = useMemo(
-    () => sanitizeStorefrontReturnPath(
-      toInternalReturnPath(resolveDgfyPostAuthTarget({ intent: routeParams.intent, returnTo: routeParams.returnTo }))
-    ),
-    [routeParams.intent, routeParams.returnTo]
-  );
+  const returnPath = useMemo(() => (
+    oidcInteractionId
+      ? `/oidc/interaction/${encodeURIComponent(oidcInteractionId)}`
+      : sanitizeStorefrontReturnPath(
+        toInternalReturnPath(resolveDgfyPostAuthTarget({ intent: routeParams.intent, returnTo: routeParams.returnTo }))
+      )
+  ), [oidcInteractionId, routeParams.intent, routeParams.returnTo]);
 
   useEffect(() => {
     const routeEmail = String(routeParams.email || '').trim();
@@ -636,8 +644,9 @@ export default function StorefrontAuthPage({ initialMode }) {
   const resetPasswordPath = `${RESET_PASSWORD_ROUTE}${buildDgfyRouteSearch({
     intent: routeParams.intent,
     returnTo: routeParams.returnTo,
-    email: loginForm.email
-  })}`;
+    reason: oidcInteractionId ? 'signed-out' : routeParams.reason,
+    email: oidcInteractionId ? '' : loginForm.email
+  })}${oidcInteractionId ? `&oidc_interaction_id=${encodeURIComponent(oidcInteractionId)}` : ''}`;
 
   // On skupervisor the sign-in and create-account views were one route toggled by
   // local state. Here they are separate routes, so switching views is a navigation
@@ -655,28 +664,32 @@ export default function StorefrontAuthPage({ initialMode }) {
     setNotice('');
     setEmailError('');
     setPhoneError('');
-    navigate(buildAuthRoute('/login', { mode: 'sign-in', email }));
-  }, [buildAuthRoute, navigate]);
+    navigate(buildAuthRoute('/login', { mode: 'sign-in', email: oidcInteractionId ? '' : email }), {
+      state: oidcInteractionId ? { oidcLoginHint: email } : undefined
+    });
+  }, [buildAuthRoute, navigate, oidcInteractionId]);
 
   const goToCreateAccount = useCallback(() => {
     setError('');
     setNotice('');
     setEmailError('');
     setPhoneError('');
-    navigate(buildAuthRoute('/register', { mode: 'create-account' }));
-  }, [buildAuthRoute, navigate]);
+    navigate(buildAuthRoute('/register', { mode: 'create-account' }), {
+      state: oidcInteractionId ? { oidcLoginHint: loginForm.email || oidcLoginHint } : undefined
+    });
+  }, [buildAuthRoute, loginForm.email, navigate, oidcInteractionId, oidcLoginHint]);
 
   const handleAuthSuccess = useCallback(async (session) => {
     setNotice(routeParams.intent === 'register-business' ? 'DGFY account connected. Continuing to business registration...' : 'DGFY account connected. Returning to your account...');
     const token = session?.token || getStoredDgfyToken();
-    if (token) writeDgfyAuthToken(token);
+    if (token && !oidcInteractionId) writeDgfyAuthToken(token);
     markDgfySessionActive();
     try {
       const meData = await fetchDgfyMe(token).catch(() => null);
       showIncompleteVerificationToast(meData?.account || session?.account);
     }
     finally { navigate(returnPath, { replace: true }); }
-  }, [navigate, returnPath, routeParams.intent]);
+  }, [navigate, oidcInteractionId, returnPath, routeParams.intent]);
 
   const handleRegister = async (event) => {
     event.preventDefault();
@@ -748,7 +761,8 @@ export default function StorefrontAuthPage({ initialMode }) {
           accepted_terms: true,
           terms_version: accountLegalSnapshot.terms_version,
           privacy_version: accountLegalSnapshot.privacy_version,
-          marketplace_terms_version: accountLegalSnapshot.marketplace_terms_version
+          marketplace_terms_version: accountLegalSnapshot.marketplace_terms_version,
+          ...(oidcInteractionId ? { oidc_interaction_id: oidcInteractionId } : {})
         });
         const token = session?.token || getStoredDgfyToken();
         setLegacyVerificationToken(token);
@@ -784,21 +798,23 @@ export default function StorefrontAuthPage({ initialMode }) {
     setIsLoading(true);
     try {
       if (legacyVerificationToken && typeof verifyDgfyEmail === 'function') {
-        await verifyDgfyEmail(verifyCode.trim());
-        toast.success('Account created successfully. Please sign in to continue.');
-        clearDgfySession();
+        const verification = await verifyDgfyEmail(verifyCode.trim());
+        toast.success('Account created successfully. Opening your DGFY account...');
         setVerificationState({
           requestStatus: 'verified',
           guidance: '',
           errorCode: ''
         });
-        setLegacyVerificationToken('');
-        goToSignIn(authForm.email);
+        await handleAuthSuccess({
+          ...(verification || {}),
+          token: legacyVerificationToken,
+          account: verification?.account || getStoredDgfyAccount()
+        });
         return;
       }
       const normalizedPhoneDigits = normalizePhPhoneDigits(authForm.phone);
       const normalizedPhoneNumber = `${DGFY_PHONE_COUNTRIES[0].dialCode}${normalizedPhoneDigits}`;
-      await registerDgfyAccount({
+      const session = await registerDgfyAccount({
         first_name: authForm.firstName,
         middle_name: authForm.middleName,
         last_name: authForm.lastName,
@@ -810,16 +826,16 @@ export default function StorefrontAuthPage({ initialMode }) {
         accepted_terms: true,
         terms_version: accountLegalSnapshot.terms_version,
         privacy_version: accountLegalSnapshot.privacy_version,
-        marketplace_terms_version: accountLegalSnapshot.marketplace_terms_version
+        marketplace_terms_version: accountLegalSnapshot.marketplace_terms_version,
+        ...(oidcInteractionId ? { oidc_interaction_id: oidcInteractionId } : {})
       });
-      toast.success('Account created successfully. Please sign in to continue.');
-      clearDgfySession();
+      toast.success('Account created successfully. Opening your DGFY account...');
       setVerificationState({
         requestStatus: 'verified',
         guidance: '',
         errorCode: ''
       });
-      goToSignIn(authForm.email);
+      await handleAuthSuccess(session);
     } catch (requestError) {
       const { code, message } = extractRequestErrorDetails(requestError);
       setVerificationState({
@@ -878,7 +894,10 @@ export default function StorefrontAuthPage({ initialMode }) {
     setError(''); setNotice('');
     setIsLoading(true);
     try {
-      const session = await loginDgfyAccount(loginForm);
+      const session = await loginDgfyAccount({
+        ...loginForm,
+        ...(oidcInteractionId ? { oidc_interaction_id: oidcInteractionId } : {})
+      });
       toast.success('Signed in successfully');
       await handleAuthSuccess(session);
     }
@@ -1057,6 +1076,7 @@ export default function StorefrontAuthPage({ initialMode }) {
                     <label htmlFor="dgfyLoginPassword" className="text-sm font-semibold" style={{ color: '#0F172A' }}>Password</label>
                     <Link
                       to={resetPasswordPath}
+                      state={oidcInteractionId ? { resetEmail: loginForm.email } : undefined}
                       className="text-xs font-semibold hover:underline"
                       style={{ color: '#1A4E8D' }}
                     >

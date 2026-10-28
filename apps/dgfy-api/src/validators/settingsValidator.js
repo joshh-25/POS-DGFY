@@ -8,6 +8,7 @@ import { ORDER_METHOD_FEE_METHODS } from '../modules/shared/constants/orderMetho
 import { DELIVERY_FEE_MODES } from '../modules/deliveryPricing/index.js';
 import { MIN_DELIVERY_INCREMENT_KM } from '@sieitzz/shared-constants/deliveryFee';
 import { POS_TAX_POLICY_TYPES, POS_TAX_TREATMENTS } from '../modules/shared/constants/posTaxPolicy.js';
+import { resolvePosTaxpayerType } from '@sieitzz/shared-constants/posTaxpayerType';
 
 const ORDER_METHODS = ORDER_METHOD_FEE_METHODS;
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
@@ -26,6 +27,18 @@ const expectedUpdatedAtMapSchema = Joi.object().pattern(
   Joi.string().trim().min(1).max(100),
   expectedUpdatedAtSchema
 ).optional();
+
+const posTaxpayerTypeSchema = Joi.string()
+  .trim()
+  .max(40)
+  .allow('')
+  .custom((value, helpers) => {
+    if (value === '' || resolvePosTaxpayerType(value)) return value;
+    return helpers.error('any.only');
+  })
+  .messages({
+    'any.only': 'POS taxpayer type must be VAT, VAT registered, non-VAT, or non-VAT registered'
+  });
 
 const posDiscountProfileSchema = Joi.object({
   name: Joi.string().trim().min(1).max(80).required().messages({
@@ -598,7 +611,7 @@ export const updateSettingsSchema = Joi.object({
   pos_registered_name: Joi.string().trim().min(2).max(150).allow('').optional(),
   pos_business_name: Joi.string().trim().min(2).max(150).allow('').optional(),
   pos_business_style: Joi.string().trim().max(150).allow('').optional(),
-  pos_taxpayer_type: Joi.string().trim().max(40).allow('').optional(),
+  pos_taxpayer_type: posTaxpayerTypeSchema.optional(),
   pos_tin_branch: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).allow('').optional().messages({
     'string.pattern.base': 'POS TIN/Branch contains invalid characters'
   }),
@@ -818,7 +831,7 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     pos_registered_name: Joi.string().trim().min(2).max(150).allow(''),
     pos_business_name: Joi.string().trim().min(2).max(150).allow(''),
     pos_business_style: Joi.string().trim().max(150).allow(''),
-    pos_taxpayer_type: Joi.string().trim().max(40).allow(''),
+    pos_taxpayer_type: posTaxpayerTypeSchema,
     pos_tin_branch: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).allow('').messages({
       'string.pattern.base': 'POS TIN/Branch contains invalid characters'
     }),

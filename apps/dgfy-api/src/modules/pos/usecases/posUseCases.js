@@ -110,6 +110,8 @@ import {
     normalizeDeliveryProviderBreakdown,
     normalizeDeliveryProviderSummary
 } from '../utils/deliveryProviderBreakdown.js';
+import { assertPosTaxpayerTypeReadyForFiscalIssuance } from '../../settings/usecases/posTaxpayerTypePolicy.js';
+import { resolvePosTaxpayerType } from '@sieitzz/shared-constants/posTaxpayerType';
 
 const VAT_RATE = 0.12;
 const INVOICE_COUNTER_KEY = 'POS_OR';
@@ -3658,7 +3660,7 @@ const buildFiscalDocumentSnapshot = ({
         registered_name: settingString(settings, 'pos_registered_name'),
         business_name: settingString(settings, 'pos_business_name'),
         business_style: settingString(settings, 'pos_business_style'),
-        taxpayer_type: settingString(settings, 'pos_taxpayer_type'),
+        taxpayer_type: resolvePosTaxpayerType(settingString(settings, 'pos_taxpayer_type')),
         tin_branch: settingString(settings, 'pos_tin_branch'),
         address: settingString(settings, 'pos_address'),
         ptu_number: settingString(settings, 'pos_ptu_number') || String(terminalRegistration?.ptu_number || '').trim(),
@@ -4243,6 +4245,8 @@ export const buildCheckoutPosUseCase = ({
                     transaction: toSerializable(existing)
                 });
             }
+
+            if (isFiscalReceipt) assertPosTaxpayerTypeReadyForFiscalIssuance(settings);
 
             let lockedFnbCheckout = null;
             if (fnbCheckId) {
@@ -10954,14 +10958,21 @@ export const buildGetCurrentTerminalShiftUseCase = ({
             const requestedLocationId = query?.location_id == null
                 ? null
                 : parsePositiveInt(query.location_id);
-            const shift = await posRepository.findOpenTerminalShift({
+            const requestedShiftId = query?.shift_id == null
+                ? null
+                : parsePositiveInt(query.shift_id);
+            const shiftLookup = {
                 terminalId: requestedTerminalId,
                 // Terminal context never grants ownership of another cashier's
                 // drawer. Admin monitoring is exposed through a separate
                 // read-only endpoint below.
-                cashierId: parsePositiveInt(user?.register_shift_owner_user_id) || normalizedUserId,
+                cashierId: requestedShiftId
+                    ? normalizedUserId
+                    : (parsePositiveInt(user?.register_shift_owner_user_id) || normalizedUserId),
                 locationId: requestedLocationId
-            });
+            };
+            if (requestedShiftId) shiftLookup.shiftId = requestedShiftId;
+            const shift = await posRepository.findOpenTerminalShift(shiftLookup);
 
             let terminalOccupancy = null;
             if (requestedTerminalId && requestedLocationId) {

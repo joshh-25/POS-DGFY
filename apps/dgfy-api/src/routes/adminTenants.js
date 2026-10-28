@@ -2,6 +2,7 @@ import express from 'express';
 import {
     registerCompanyRequest,
     listTenants,
+    getTenant,
     approveTenant,
     retryTenantProvisioning,
     rejectTenant,
@@ -49,6 +50,11 @@ import { authenticateAdmin } from '../middleware/auth.js';
 import { authenticateDgfyAccount } from '../middleware/dgfyAuth.js';
 import { getAdminCompanyRegistration, downloadAdminCompanyRegistrationUpload, revokeAdminCompanyRegistrationUpload } from '../modules/tenants/controllers/companyRegistrationHandlers.js';
 import { tenantRegistrationLimiter } from '../middleware/rateLimiter.js';
+import {
+    listLaundryRegistrationIntentsForAdmin,
+    getLaundryRegistrationIntentForAdmin,
+    decideLaundryRegistrationIntentForAdmin
+} from '../modules/dgfyLaundry/controllers/dgfyLaundryProviderHandlers.js';
 import {
     validateComplianceArtifactIdParam,
     validateCompliancePeripheralIdParam,
@@ -101,6 +107,11 @@ router.get('/registration-drafts/:draftId/uploads/:uploadId/download', authentic
 router.post('/registration-drafts/:draftId/approve', authenticateAdmin, approveAdminCompanyRegistrationDraft);
 router.post('/registration-drafts/:draftId/retry-materialization', authenticateAdmin, retryAdminCompanyRegistrationDraftMaterialization);
 
+// ADMIN: Review DGLaundry provider registrations separately from tenant rows and Storefront drafts.
+router.get('/dglaundry-registration-intents', authenticateAdmin, listLaundryRegistrationIntentsForAdmin);
+router.get('/dglaundry-registration-intents/:intentId', authenticateAdmin, getLaundryRegistrationIntentForAdmin);
+router.post('/dglaundry-registration-intents/:intentId/decision', authenticateAdmin, decideLaundryRegistrationIntentForAdmin);
+
 // ADMIN: Review uploads after the draft has been materialized to a tenant.
 router.get('/:id/registration-uploads', authenticateAdmin, listCompanyRegistrationUploads);
 router.get('/:id/registration-uploads/download-all', authenticateAdmin, downloadCompanyRegistrationMenuArchive);
@@ -112,6 +123,8 @@ router.post('/admin-provision-with-account', authenticateAdmin, createAdminProvi
 
 // ADMIN: Pricing Settings
 router.get('/pricing', authenticateAdmin, getPricingSettings);
+// Keep the single-segment detail route below all static GET routes so it cannot consume names such as pricing.
+router.get('/:id', authenticateAdmin, getTenant);
 router.put('/pricing', authenticateAdmin, updatePricingSettings);
 
 // ADMIN: Approve a pending tenant (triggers provisioning)

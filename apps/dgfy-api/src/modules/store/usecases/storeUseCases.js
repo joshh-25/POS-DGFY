@@ -3081,8 +3081,16 @@ const resolveStorefrontPaymentCapabilities = async ({
         // #926: direct-only mode gate, applied last so it overrides whatever the provider-method
         // lookup above advertised -- matches the checkout use case's own directMethodUnavailable
         // check (same file, buildStoreCheckoutPaymentSessionUseCase) so advertise and enforce
-        // agree. Only card/gcash/maya have a direct-payment path today; grab_pay/shopeepay/qrph
-        // are untouched by this flag.
+        // agree. Card is intentionally direct-only: the card checkout path must never advertise
+        // or silently fall back to PayMongo Hosted Checkout. GCash and Maya remain controlled by
+        // the existing direct-only flag; grab_pay/shopeepay/qrph are untouched by this flag.
+        if (!directCardEnabled && capabilities.card?.enabled) {
+            capabilities.card = {
+                enabled: false,
+                environment: paymongoMode,
+                reason_code: 'DIRECT_CARD_CONFIGURATION_INCOMPLETE'
+            };
+        }
         if (directPaymentRequired) {
             if (!directGcashEnabled && capabilities.gcash) {
                 capabilities.gcash = {
@@ -5196,9 +5204,27 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'payload must be an object', { statusCode: 400 });
             }
 
+            // Card checkout is direct-only. A missing live direct-card configuration must never
+            // silently create a PayMongo Hosted Checkout session, because that contradicts the
+            // production card-payment contract and sends customers to a different payment UI.
+            if (requestedPaymentType === 'card' && !directCardEnabled) {
+                throw new DomainError(
+                    DomainErrorCode.SERVICE_UNAVAILABLE,
+                    'Card payments are temporarily unavailable because direct card authorization is not enabled.',
+                    {
+                        statusCode: 503,
+                        details: {
+                            code: 'DIRECT_CARD_CONFIGURATION_INCOMPLETE',
+                            payment_type: requestedPaymentType
+                        }
+                    }
+                );
+            }
+
             const directGcashConfigRequired = requestedPaymentType === 'gcash' && directGcashRequested;
             const directMayaConfigRequired = requestedPaymentType === 'maya' && directMayaRequested;
-            const directCardConfigRequired = requestedPaymentType === 'card' && directCardRequested;
+            const directCardConfigRequired = requestedPaymentType === 'card'
+                && (directCardEnabled || directCardRequested);
             const directMethodUnavailable = directPaymentRequired && (
                 (requestedPaymentType === 'gcash' && !directGcashEnabled)
                 || (requestedPaymentType === 'maya' && !directMayaEnabled)

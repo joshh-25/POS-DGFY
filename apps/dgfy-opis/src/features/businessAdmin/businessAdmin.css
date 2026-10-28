@@ -226,6 +226,38 @@
 .business-admin-heading { color: #0f172a; font-size: clamp(25px, 3vw, 34px); font-weight: 900; letter-spacing: -.03em; margin: 4px 0; }
 .business-admin-description { color: #64748b; font-size: 14px; max-width: 720px; }
 .business-admin-top-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.business-admin-header-action {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #cfe0e8;
+  border-radius: 9px;
+  padding: 7px 11px;
+  background: #fff;
+  color: #205b78;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color .16s ease, background-color .16s ease, color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+.business-admin-header-action:hover { border-color: #2563eb; background: #eff7ff; color: #1a4e8d; }
+.business-admin-header-action:active { transform: translateY(1px); }
+.business-admin-header-action:focus-visible { outline: 3px solid rgba(37, 99, 235, .24); outline-offset: 2px; }
+.business-admin-header-action-badge {
+  min-width: 18px;
+  min-height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 2px 5px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 10px;
+  line-height: 1;
+}
 .business-admin-location-switcher { min-width: 184px; align-self: stretch; justify-content: flex-end; }
 .business-admin-location-switcher label { display: block; }
 .business-admin-location-switcher select { min-height: 32px; padding-top: 5px; padding-bottom: 5px; }
@@ -260,6 +292,16 @@
   box-shadow: 0 7px 22px rgba(15, 23, 42, .05);
 }
 .business-admin-filter-card { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; padding: 14px; margin-bottom: 18px; }
+.business-admin-fiscal-filter-card { gap: 8px; padding: 10px; margin-bottom: 12px; }
+.business-admin-fiscal-filter-card .business-admin-field { flex: 0 1 128px; min-width: 128px; gap: 4px; }
+.business-admin-fiscal-filter-card .business-admin-field label { font-size: 9px; }
+.business-admin-fiscal-filter-card .business-admin-field input,
+.business-admin-fiscal-filter-card .business-admin-field select {
+  min-height: 34px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+.business-admin-fiscal-filter-card .business-admin-scope { font-size: 11px; }
 .business-admin-branches-filter-card { border-color: #d3e4ec; background: linear-gradient(135deg, #fff 0%, #f7fbfd 100%); }
 .business-admin-branches-filter-card .business-admin-scope { margin-left: auto; }
 .business-admin-field { display: flex; flex-direction: column; gap: 5px; min-width: 150px; }
@@ -285,6 +327,34 @@
   min-width: 0;
   animation: business-admin-workspace-enter .18s cubic-bezier(.2, .65, .3, 1) both;
 }
+.business-admin-workspace-tabs {
+  min-width: 0;
+  margin: -4px 0 18px;
+  border-bottom: 1px solid #dce7ef;
+}
+.business-admin-workspace-tabs-scroll {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.business-admin-workspace-tab {
+  min-height: 38px;
+  flex: 0 0 auto;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 8px 12px;
+  background: transparent;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color .16s ease, color .16s ease, background-color .16s ease;
+}
+.business-admin-workspace-tab:hover { color: #1a4e8d; background: #f5faff; }
+.business-admin-workspace-tab.active { border-bottom-color: #159891; color: #0b706c; }
+.business-admin-workspace-tab:focus-visible { outline: 3px solid rgba(21, 152, 145, .24); outline-offset: -2px; }
 .business-admin-workspace-loading {
   min-height: 220px;
   margin-bottom: 18px;
@@ -966,10 +1036,26 @@ ul.business-admin-pos-activity-definitions { list-style: disc; padding-left: 20p
 .business-admin-expense-form-actions > span { color: #7890a1; font-size: 11px; line-height: 1.4; }
 .business-admin-expenses-table-view { display: block; }
 .business-admin-expenses-mobile-view { display: none; }
-.business-admin-expense-void-button { border: 0; padding: 0; background: none; color: #a83d35; font-size: 11px; font-weight: 800; cursor: pointer; }
+.business-admin-expense-void-button,
+.business-admin-expense-void-link {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: none;
+  color: #a83d35;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.business-admin-expense-void-link { margin-top: 8px; }
 .business-admin-expense-void-button:hover,
-.business-admin-expense-void-link:hover { text-decoration: underline; }
-.business-admin-expense-void-link { display: block; margin-top: 12px; border: 0; padding: 0; background: none; color: #a83d35; font-size: 11px; font-weight: 800; cursor: pointer; }
+.business-admin-expense-void-link:hover { border-color: #e6b4ae; background: #fff5f3; text-decoration: underline; }
+.business-admin-expense-void-button:focus-visible,
+.business-admin-expense-void-link:focus-visible { outline: 3px solid rgba(168, 61, 53, 0.24); outline-offset: 2px; }
 .business-admin-expense-card-list { display: grid; gap: 10px; padding: 12px; }
 .business-admin-expense-card { min-width: 0; border: 1px solid #dce8ef; border-radius: 14px; padding: 14px; background: linear-gradient(145deg, #fff 0%, #f8fcfc 100%); }
 .business-admin-expense-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
@@ -1287,70 +1373,45 @@ ul.business-admin-pos-activity-definitions { list-style: disc; padding-left: 20p
 .business-admin-feature { border: 1px solid #dce7ef; border-radius: 11px; padding: 14px; background: #fff; }
 .business-admin-feature h3 { margin: 8px 0 4px; color: #1b4661; font-size: 13px; font-weight: 900; }
 .business-admin-feature p { margin: 0; color: #71879a; font-size: 12px; line-height: 1.5; }
-.business-admin-settings-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-bottom: 12px; align-items: start; }
-.business-admin-settings-nav { min-width: 0; }
-.business-admin-settings-nav-body { padding: 10px 12px; }
-.business-admin-settings-nav-strip { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; min-width: 0; }
-.business-admin-settings-section-list {
-  display: flex;
-  min-width: 0;
-  gap: 8px;
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-  padding: 2px;
-  scroll-behavior: smooth;
-  scrollbar-gutter: stable;
-  scrollbar-color: transparent transparent;
-  scrollbar-width: thin;
-}
-.business-admin-settings-section-list::-webkit-scrollbar { width: 8px; height: 8px; }
-.business-admin-settings-section-list::-webkit-scrollbar-track { background: transparent; }
-.business-admin-settings-section-list::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: transparent; background-clip: padding-box; }
-.business-admin-settings-section-list:hover,
-.business-admin-settings-section-list:focus-within,
-.business-admin-settings-section-list:active { scrollbar-color: #94a3b8 transparent; }
-.business-admin-settings-section-list:hover::-webkit-scrollbar-thumb,
-.business-admin-settings-section-list:focus-within::-webkit-scrollbar-thumb,
-.business-admin-settings-section-list:active::-webkit-scrollbar-thumb { background: #94a3b8; background-clip: padding-box; }
-.business-admin-settings-nav-control {
-  width: 34px;
-  height: 34px;
-  display: inline-grid;
-  place-items: center;
-  flex: 0 0 auto;
-  border: 1px solid #cbd5e1;
-  border-radius: 9px;
-  background: #fff;
-  color: #334155;
-  cursor: pointer;
-}
-.business-admin-settings-nav-control:hover { border-color: #2563eb; color: #1a4e8d; background: #eff7ff; }
-.business-admin-settings-nav-control:disabled { opacity: .45; cursor: not-allowed; }
-.business-admin-settings-section {
-  width: auto;
-  min-width: 168px;
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  border: 1px solid #e2e8f0;
-  border-radius: 9px;
-  padding: 10px 11px;
-  background: #fff;
-  color: #1e293b;
-  text-align: left;
-  cursor: pointer;
-}
-.business-admin-settings-section:hover { border-color: #2563eb; background: #eff7ff; }
-.business-admin-settings-section.active { border-color: #1a4e8d; background: #eff7ff; box-shadow: inset 3px 0 #1a4e8d; }
-.business-admin-settings-section strong { display: block; font-size: 12px; font-weight: 900; }
-.business-admin-settings-section .business-admin-status { flex: 0 0 auto; }
+.business-admin-settings-layout { display: grid; grid-template-columns: minmax(220px, 238px) minmax(0, 1fr); gap: 18px; margin-bottom: 12px; align-items: start; }
+.business-admin-settings-nav { min-width: 0; position: sticky; top: 16px; overflow: hidden; }
+.business-admin-settings-nav-header { padding: 16px 16px 12px; }
+.business-admin-settings-nav-body { display: grid; gap: 12px; padding: 12px; }
+.business-admin-settings-nav-search { min-height: 42px; display: flex; align-items: center; gap: 8px; border: 1px solid #d7e2ea; border-radius: 10px; padding: 0 11px; background: #f8fbfd; color: #6b8191; }
+.business-admin-settings-nav-search:focus-within { border-color: #2d73c7; outline: 3px solid rgba(45, 115, 199, .14); background: #fff; }
+.business-admin-settings-nav-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: #1b304d; font: inherit; font-size: 12px; }
+.business-admin-settings-nav-search input::placeholder { color: #8ca0ae; }
+.business-admin-settings-nav-groups { display: grid; gap: 5px; }
+.business-admin-settings-nav-group { min-width: 0; border-bottom: 1px solid #e5edf2; padding-bottom: 5px; }
+.business-admin-settings-nav-group:last-child { border-bottom: 0; padding-bottom: 0; }
+.business-admin-settings-nav-group-toggle { width: 100%; min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 0; border-radius: 9px; padding: 8px 9px; background: #fff; color: #183c59; font-size: 12px; font-weight: 900; text-align: left; cursor: pointer; transition: background-color .16s ease, color .16s ease; }
+.business-admin-settings-nav-group-toggle:hover { background: #f2f7fb; color: #1c5ca8; }
+.business-admin-settings-nav-group-toggle:focus-visible,
+.business-admin-settings-nav-item:focus-visible,
+.business-admin-settings-mobile-back:focus-visible { outline: 3px solid rgba(45, 115, 199, .24); outline-offset: 2px; }
+.business-admin-settings-nav-group-title { min-width: 0; display: inline-flex; align-items: center; gap: 8px; }
+.business-admin-settings-nav-group-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-settings-nav-chevron { flex: 0 0 auto; color: #7590a2; transition: transform .16s ease; }
+.business-admin-settings-nav-chevron.is-expanded { transform: rotate(180deg); }
+.business-admin-settings-nav-items { display: grid; gap: 3px; padding: 2px 0 4px 8px; }
+.business-admin-settings-nav-item { width: 100%; min-width: 0; min-height: 44px; display: flex; align-items: center; gap: 8px; border: 1px solid transparent; border-radius: 9px; padding: 7px 8px; background: transparent; color: #334f66; text-align: left; cursor: pointer; transition: background-color .16s ease, border-color .16s ease, color .16s ease, transform .16s ease; }
+.business-admin-settings-nav-item:hover { border-color: #d7e7f3; background: #f3f8fd; color: #1c5ca8; }
+.business-admin-settings-nav-item.active { border-color: #bdd7f1; background: #e8f1fc; color: #1c5ca8; box-shadow: inset 3px 0 #2d73c7; }
+.business-admin-settings-nav-item-icon { width: 27px; height: 27px; display: inline-grid; flex: 0 0 auto; place-items: center; border-radius: 8px; background: #eef5fb; color: #356b9d; }
+.business-admin-settings-nav-item.active .business-admin-settings-nav-item-icon { background: #d6e8fb; color: #1c5ca8; }
+.business-admin-settings-nav-item-copy { min-width: 0; display: grid; flex: 1 1 auto; gap: 2px; }
+.business-admin-settings-nav-item-copy strong { overflow: hidden; color: inherit; font-size: 11px; font-weight: 900; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-settings-nav-item-copy small { color: #7890a0; font-size: 9px; font-weight: 800; }
+.business-admin-settings-nav-badge { min-width: 20px; min-height: 20px; display: inline-grid; flex: 0 0 auto; place-items: center; border-radius: 999px; padding: 2px 6px; background: #fff0c2; color: #95610a; font-size: 10px; font-weight: 900; }
+.business-admin-settings-nav-empty { border: 1px dashed #cbdbe5; border-radius: 9px; padding: 12px; color: #6c8495; font-size: 11px; line-height: 1.5; }
+.business-admin-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.business-admin-settings-content { min-width: 0; overflow: hidden; }
+.business-admin-settings-mobile-back { display: none; border: 0; background: transparent; color: #1c5ca8; font-size: 12px; font-weight: 900; cursor: pointer; }
 .business-admin-settings-context-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .business-admin-settings-context-grid > div { border: 1px solid #e2edf1; border-radius: 10px; padding: 12px; background: #fbfefe; }
 .business-admin-settings-context-grid strong { display: block; color: #234b64; font-size: 13px; margin-top: 4px; }
 .business-admin-settings-workspace { display: grid; gap: 12px; }
-.business-admin-settings-workspace .business-admin-card-subtitle { display: none; }
+.business-admin-settings-workspace .business-admin-card-subtitle { display: block; }
 .business-admin-settings-terminal-link { display: flex; justify-content: flex-end; margin-top: 14px; }
 .business-admin-settings-editor { min-width: 0; }
 .business-admin-settings-compact-copy h3 + p,
@@ -1422,23 +1483,11 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
   .business-admin-overview-chart-grid { grid-template-columns: minmax(0, 1fr); }
   .business-admin-overview-sales-card { grid-column: auto; }
   .business-admin-settings-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .business-admin-settings-nav { position: static; }
   .business-admin-settings-nav .business-admin-card-body { padding: 10px 12px 12px; }
-  .business-admin-settings-section-list {
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-    overscroll-behavior-inline: contain;
-    padding: 2px 2px 6px;
-    scroll-snap-type: x proximity;
-    scrollbar-width: thin;
-  }
-  .business-admin-settings-section {
-    width: auto;
-    min-width: 190px;
-    flex: 0 0 min(190px, 72vw);
-    scroll-margin-inline: 12px;
-    scroll-snap-align: start;
-  }
+  .business-admin-settings-nav-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 12px; }
+  .business-admin-settings-nav-group { border: 1px solid #e3edf3; border-radius: 10px; padding: 3px; }
+  .business-admin-settings-nav-group:last-child { padding-bottom: 3px; }
   .business-admin-attendance-grid { grid-template-columns: minmax(0, 1fr); }
   .business-admin-shifts-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .business-admin-feature-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1467,11 +1516,15 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
   .business-admin-nav-group.is-standalone { display: block; margin-top: 8px; }
   .business-admin-nav-group.is-standalone .business-admin-nav-item { width: 100%; }
   .business-admin-main { padding: 18px 12px 30px; }
-  .business-admin-settings-nav-body { padding: 8px 10px; }
-  .business-admin-settings-nav-strip { gap: 5px; }
-  .business-admin-settings-nav-control { width: 31px; height: 32px; }
-  .business-admin-settings-section { min-width: 168px; flex-basis: min(168px, 72vw); padding: 9px 10px; }
-  .business-admin-settings-section strong { font-size: 11px; }
+  .business-admin-fiscal-filter-card { gap: 8px; padding: 10px; }
+  .business-admin-fiscal-filter-card .business-admin-field { flex: 1 1 128px; min-width: 128px; }
+  .business-admin-fiscal-filter-card .business-admin-field input,
+  .business-admin-fiscal-filter-card .business-admin-field select { min-height: 36px; }
+  .business-admin-fiscal-filter-card .business-admin-scope { width: 100%; margin-left: 0; }
+  .business-admin-settings-nav-body { padding: 10px; }
+  .business-admin-settings-nav-groups { grid-template-columns: minmax(0, 1fr); }
+  .business-admin-settings-nav-item { min-height: 46px; }
+  .business-admin-settings-mobile-back { display: inline-flex; align-items: center; gap: 5px; margin: 14px 16px 0; padding: 6px 0; }
   .business-admin-topbar { display: block; }
   .business-admin-topbar-leading { display: block; }
   .business-admin-sidebar-toggle { display: none; }
@@ -1661,6 +1714,7 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
   .business-admin-branches-filter-card .business-admin-scope { width: 100%; margin-left: 0; }
   .business-admin-filter-card { align-items: stretch; }
   .business-admin-field { flex: 1 1 140px; }
+  .business-admin-fiscal-filter-card .business-admin-field { flex: 0 1 128px; }
   .business-admin-expense-entry-card { padding: 14px; }
 }
 

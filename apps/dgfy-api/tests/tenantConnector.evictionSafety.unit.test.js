@@ -50,6 +50,10 @@
  * H  closeConnection() never leaves a stale pendingConnections entry behind,
  *    on either the idle-immediate or busy-deferred path
  * I  closeConnection() does not clear a pending slot it didn't itself claim
+ * J  LRU diagnostics attribute the pressure caller and contain no tenant data
+ * K  missing, invalid, overlong, and non-string labels normalize to `unknown`
+ * L  concurrent pressure callers each count only entries actually removed
+ * M  skipped, absent, cleanup, direct-close, and shutdown paths emit no LRU event
  */
 
 import { jest } from '@jest/globals';
@@ -125,7 +129,117 @@ const seedEntry = (tenantId, { sequelize, lastUsed = Date.now(), tenantName = `t
   tenantConnector.connections.set(tenantId, { sequelize, lastUsed, tenantName });
 };
 
+const seedFullCache = () => {
+  const entries = [];
+  for (let index = 0; index < tenantConnector.getPoolStats().capacity; index += 1) {
+    const entry = makeFakeSequelize();
+    entries.push(entry);
+    seedEntry(`cached-${index}`, {
+      sequelize: entry.sequelize,
+      lastUsed: index,
+      tenantName: `Sensitive Tenant ${index}`
+    });
+  }
+  return entries;
+};
+
+const getLruEvictionEvents = () => loggerMock.info.mock.calls.flatMap(([message]) => {
+  if (typeof message !== 'string') return [];
+  try {
+    const event = JSON.parse(message);
+    return event.event === 'tenant_connector.lru_eviction' ? [event] : [];
+  } catch {
+    return [];
+  }
+});
+
 describe('TenantConnector — eviction safety (issue #474 follow-up)', () => {
+  test('attributes an actual LRU removal to its caller without tenant data', async () => {
+    const entries = seedFullCache();
+    await tenantConnector.getConnection(
+      { id: 'new-tenant', name: 'New Tenant', db_name: 'sku_tenant_new' },
+      'scheduler.business-admin-alert'
+    );
+
+    const [event] = getLruEvictionEvents();
+    expect(getLruEvictionEvents()).toHaveLength(1);
+    expect(event).toEqual({
+      event: 'tenant_connector.lru_eviction',
+      timestamp: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T.*Z$/),
+      caller: 'scheduler.business-admin-alert'
+    });
+    expect(Object.keys(event).sort()).toEqual(['caller', 'event', 'timestamp']);
+    expect(JSON.stringify(event)).not.toMatch(/cached-0|Sensitive Tenant|sku_tenant|new-tenant/i);
+    expect(entries[0].sequelize.close).toHaveBeenCalledTimes(1);
+  });
+
+  test.each([
+    ['omitted', undefined],
+    ['invalid characters', 'tenant@example.com'],
+    ['overlong', 'x'.repeat(65)],
+    ['non-string', { tenantId: 'tenant-123' }]
+  ])('normalizes %s caller labels to unknown', async (_caseName, callerLabel) => {
+    seedFullCache();
+    await tenantConnector.getConnection(
+      { id: 'new-tenant', name: 'New Tenant', db_name: 'sku_tenant_new' },
+      callerLabel
+    );
+
+    expect(getLruEvictionEvents()).toEqual([
+      expect.objectContaining({
+        event: 'tenant_connector.lru_eviction',
+        caller: 'unknown'
+      })
+    ]);
+  });
+
+  test('counts concurrent LRU removals once each with each pressure caller', async () => {
+    const entries = seedFullCache();
+
+    await Promise.all([
+      tenantConnector.getConnection(
+        { id: 'new-tenant-a', name: 'New Tenant A', db_name: 'sku_tenant_new_a' },
+        'worker.image-a'
+      ),
+      tenantConnector.getConnection(
+        { id: 'new-tenant-b', name: 'New Tenant B', db_name: 'sku_tenant_new_b' },
+        'worker.image-b'
+      )
+    ]);
+
+    const events = getLruEvictionEvents();
+    expect(events).toHaveLength(2);
+    expect(events.map(({ caller }) => caller).sort()).toEqual(['worker.image-a', 'worker.image-b']);
+    expect(entries[0].sequelize.close).toHaveBeenCalledTimes(1);
+    expect(entries[1].sequelize.close).toHaveBeenCalledTimes(1);
+    expect(tenantConnector.getPoolStats().total).toBe(tenantConnector.getPoolStats().capacity);
+  });
+
+  test('does not emit for skipped, absent, cleanup, direct-close, or shutdown paths', async () => {
+    const busy = makeFakeSequelize({ using: 1 });
+    seedEntry('busy-tenant', { sequelize: busy.sequelize });
+    await tenantConnector.evictConnections(1, 'worker.image-a');
+    expect(busy.sequelize.close).not.toHaveBeenCalled();
+    await tenantConnector.closeConnection('missing-tenant', { lruCaller: 'worker.image-a' });
+
+    const direct = makeFakeSequelize();
+    seedEntry('direct-close-tenant', { sequelize: direct.sequelize });
+    await tenantConnector.closeConnection('direct-close-tenant');
+
+    const cleanup = makeFakeSequelize();
+    seedEntry('cleanup-tenant', { sequelize: cleanup.sequelize, lastUsed: 0 });
+    await tenantConnector.cleanupIdleConnections();
+
+    const shutdown = makeFakeSequelize();
+    seedEntry('shutdown-tenant', { sequelize: shutdown.sequelize });
+    await tenantConnector.closeAll();
+
+    expect(direct.sequelize.close).toHaveBeenCalledTimes(1);
+    expect(cleanup.sequelize.close).toHaveBeenCalledTimes(1);
+    expect(shutdown.sequelize.close).toHaveBeenCalledTimes(1);
+    expect(getLruEvictionEvents()).toHaveLength(0);
+  });
+
   test('getTenantPoolSnapshot maps sequelize-pool getters and returns null for an uncached tenant', () => {
     const sequelize = {
       connectionManager: {

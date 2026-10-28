@@ -29,6 +29,10 @@ export const createCompanyRegistrationDraft = async (token) => unwrap(
   await api.post('/registration/drafts', {}, requestConfig(token))
 );
 
+export const getCompanyRegistrationDraft = async (draftId, token) => unwrap(
+  await api.get(getDraftPath(draftId), requestConfig(token))
+);
+
 export const updateCompanyRegistrationDraft = async (draftId, payload, token) => unwrap(
   await api.patch(getDraftPath(draftId), payload, requestConfig(token))
 );

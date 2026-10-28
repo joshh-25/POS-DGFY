@@ -313,7 +313,23 @@ test('v4: release cut after an empty refresh stays bound to the new staging SHA'
   assert.throws(() => validatePromotionCandidate(staleObservation), /must match release_revision.source_staging_sha/);
 });
 
-test('v4: refresh accepts empty app/artifact arrays only together and preserves paired backend selection', () => {
+test('v4: production release map still requires paired API and migration-runner entries', () => {
+  const manifest = candidateV3({
+    schema: 'sku-release-candidate/v4', promotion_base_sha: SHA('e'),
+    status: 'qualified', staging_head_sha: SHA('c'),
+  });
+  for (const revision of manifest.revisions) {
+    revision.apps_touched = revision.apps_touched.filter((app) => !['dgfy-api', 'dgfy-migration-runner'].includes(app));
+  }
+  manifest.revisions[2].apps_touched = ['dgfy-ims'];
+  manifest.release_revision.apps['dgfy-api'].source_sha = SHA('a');
+  manifest.release_revision.apps['dgfy-ims'].source_sha = SHA('c');
+  delete manifest.release_revision.apps['dgfy-migration-runner'];
+
+  assert.throws(() => validatePromotionCandidate(manifest), /must include the API and migration runner as a pair/);
+});
+
+test('v4: refresh accepts empty arrays together and preserves apps_touched/artifacts symmetry', () => {
   const base = () => candidateV3({
     schema: 'sku-release-candidate/v4', promotion_base_sha: SHA('e'),
     status: 'staging_soak', release_revision: null,
@@ -332,9 +348,27 @@ test('v4: refresh accepts empty app/artifact arrays only together and preserves 
   missingArtifact.staging_refresh[0].apps_touched = ['dgfy-pos'];
   assert.throws(() => validatePromotionCandidate(missingArtifact), /missing artifact for touched app dgfy-pos/);
 
-  const oneSidedPair = base();
-  oneSidedPair.staging_refresh[0].apps_touched = ['dgfy-api'];
-  assert.throws(() => validatePromotionCandidate(oneSidedPair), /must list dgfy-api and dgfy-migration-runner together or not at all/);
+});
+
+test('v4: refresh resolves API and migration-runner source lineage independently', () => {
+  for (const app of ['dgfy-api', 'dgfy-migration-runner']) {
+    const manifest = candidateV3({
+      schema: 'sku-release-candidate/v4', promotion_base_sha: SHA('e'),
+      status: 'staging_soak', release_revision: null,
+      staging_refresh: [{
+        refresh_seq: 1, source_develop_sha: SHA('f'), sha: SHA('d'), parent_sha: SHA('c'), base_staging_sha: SHA('9'),
+        branch: 'to-staging/2026-09-04-01-refresh-1', pr: 2027, reason: 'content-equivalence selected one backend app',
+        apps_touched: [app],
+        artifacts: [{ app, revision: 2, source_sha: SHA('d'), digest: DIGEST('8'), origin: 'staging_refresh' }],
+      }],
+      current_staging_sha: SHA('d'),
+    });
+
+    validatePromotionCandidate(manifest);
+    const lineage = resolveCandidateSourceShaByApp(manifest);
+    assert.equal(lineage[app], SHA('d'));
+    assert.equal(lineage[app === 'dgfy-api' ? 'dgfy-migration-runner' : 'dgfy-api'], SHA('c'));
+  }
 });
 
 test('v4: initial promotion and staging repair still reject empty apps_touched', () => {
@@ -345,6 +379,19 @@ test('v4: initial promotion and staging repair still reject empty apps_touched',
   const repair = candidateV3({ schema: 'sku-release-candidate/v4', promotion_base_sha: SHA('e') });
   repair.revisions[1].apps_touched = [];
   assert.throws(() => validatePromotionCandidate(repair), /must declare a non-empty apps_touched array/);
+});
+
+test('v4: staging repair may record empty apps_touched only with a non-empty reason', () => {
+  const repair = candidateV3({
+    schema: 'sku-release-candidate/v4', promotion_base_sha: SHA('e'),
+    status: 'staging_soak', release_revision: null, current_staging_sha: SHA('b'), staging_head_sha: SHA('b'),
+    revisions: [
+      { ...candidateV3().revisions[0] },
+      { kind: 'staging_repair', repair_seq: 1, sha: SHA('b'), parent_sha: SHA('a'), branch: 'fix/staging/2026-09-04-01-1', pr: 2002, issue: 2936, apps_touched: [], reason: 'tooling-only validator fix (#2936); no app inputs changed' },
+    ],
+  });
+
+  assert.equal(validatePromotionCandidate(repair).current_staging_sha, SHA('b'));
 });
 
 test('v4: reports active and superseded staging selections and marks old observation stale', () => {

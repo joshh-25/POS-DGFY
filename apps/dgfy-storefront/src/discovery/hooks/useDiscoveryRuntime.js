@@ -21,6 +21,9 @@ export function useDiscoveryRuntime({
   isDiscoveryMobileViewport,
   isDiscoveryTabletViewport,
   search,
+  searchRef,
+  loadStores,
+  resetLastSubmittedSearch,
   setDiscoveryAvailabilityFilter,
   setDiscoveryCategoryFilter,
   setDiscoveryDistanceFilter,
@@ -28,6 +31,12 @@ export function useDiscoveryRuntime({
   setDiscoveryRatingFilter,
   setDiscoveryResultsPage,
   setDiscoverySortBy,
+  setSearch,
+  setDebouncedDiscoverySearch,
+  setDiscoveryPinScope,
+  setActiveDiscoveryFilterDropdown,
+  setIsDiscoveryNoMatchToastActive,
+  setPreserveDiscoveryCamera,
   setFeaturedBaseStores,
   setHasDiscoveryExplorationStarted,
   setHighlightedDiscoveryMarkerKey,
@@ -44,7 +53,8 @@ export function useDiscoveryRuntime({
 
   const clearDiscoveryClusterResults = useCallback(() => {
     setClusterResultStores([]);
-  }, []);
+    setSelectedMapPin?.(null);
+  }, [setSelectedMapPin]);
 
   const handleDiscoveryClusterSelect = useCallback((stores, meta = {}) => {
     const clusterStores = Array.isArray(stores) ? stores.filter(Boolean) : [];
@@ -102,6 +112,15 @@ export function useDiscoveryRuntime({
     page: discoveryResultsPage,
     perPage: discoveryResultsPerPage
   }), [filteredDiscoveryStores, discoveryResultsPage, discoveryResultsPerPage]);
+
+  const filteredStoreSlugs = useMemo(() => new Set(
+    filteredDiscoveryStores
+      .map((store) => String(store?.slug || store?.tenant_slug || '').trim())
+      .filter(Boolean)
+  ), [filteredDiscoveryStores]);
+  const visibleClusterResultStores = useMemo(() => clusterResultStores.filter((store) => (
+    filteredStoreSlugs.has(String(store?.slug || store?.tenant_slug || '').trim())
+  )), [clusterResultStores, filteredStoreSlugs]);
 
   const filterState = useMemo(() => getDiscoveryFilterState({
     discoverySortBy,
@@ -166,6 +185,19 @@ export function useDiscoveryRuntime({
 
   const resetDiscoveryResultsView = useCallback(() => {
     clearDiscoveryClusterResults();
+    searchRef.current = '';
+    setSearch('');
+    setDebouncedDiscoverySearch('');
+    setDiscoveryPinScope('tenant_primary');
+    setActiveDiscoveryFilterDropdown(null);
+    setIsDiscoveryNoMatchToastActive(false);
+    setHasDiscoveryExplorationStarted?.(false);
+    setIsStoreListVisible?.(false);
+    setIsMobileResultsCollapsed?.(false);
+    setHighlightedDiscoveryMarkerKey?.('');
+    setHighlightedStoreSlug?.('');
+    setPreserveDiscoveryCamera?.(true);
+    resetLastSubmittedSearch?.();
     setDiscoveryCategoryFilter('all');
     setDiscoveryDistanceFilter('all');
     setDiscoveryOpenFilter('all');
@@ -173,15 +205,30 @@ export function useDiscoveryRuntime({
     setDiscoveryAvailabilityFilter('all');
     setDiscoverySortBy('nearest');
     setDiscoveryResultsPage(1);
+    loadStores(undefined, { useImmediateSearch: true, pinScope: 'tenant_primary' });
   }, [
     clearDiscoveryClusterResults,
+    loadStores,
+    resetLastSubmittedSearch,
+    searchRef,
+    setActiveDiscoveryFilterDropdown,
     setDiscoveryAvailabilityFilter,
     setDiscoveryCategoryFilter,
     setDiscoveryDistanceFilter,
     setDiscoveryOpenFilter,
+    setDiscoveryPinScope,
     setDiscoveryRatingFilter,
     setDiscoveryResultsPage,
-    setDiscoverySortBy
+    setDiscoverySortBy,
+    setDebouncedDiscoverySearch,
+    setHasDiscoveryExplorationStarted,
+    setHighlightedDiscoveryMarkerKey,
+    setHighlightedStoreSlug,
+    setIsDiscoveryNoMatchToastActive,
+    setIsMobileResultsCollapsed,
+    setIsStoreListVisible,
+    setPreserveDiscoveryCamera,
+    setSearch
   ]);
 
   const discoveryPaginationItems = useMemo(() => getDiscoveryPaginationItems({
@@ -192,18 +239,18 @@ export function useDiscoveryRuntime({
   return {
     activeDiscoveryFilterCount: filterState.activeDiscoveryFilterCount,
     clearDiscoveryClusterResults,
-    clusterResultStores,
+    clusterResultStores: visibleClusterResultStores,
     discoveryPaginationItems,
     discoveryResultsPerPage,
     discoveryTotalPages,
     hasActiveDiscoveryFilters: filterState.hasActiveDiscoveryFilters,
     handleDiscoveryClusterSelect,
-    isClusterResultsActive: clusterResultStores.length > 0,
+    isClusterResultsActive: visibleClusterResultStores.length > 0,
     isCategoryFilterActive: filterState.isCategoryFilterActive,
     isDistanceFilterActive: filterState.isDistanceFilterActive,
     isOpenNowFilterActive: filterState.isOpenNowFilterActive,
     isSortFilterActive: filterState.isSortFilterActive,
     paginatedDiscoveryStores,
-    resetDiscoveryResultsView
+    resetDiscoverySearch: resetDiscoveryResultsView
   };
 }

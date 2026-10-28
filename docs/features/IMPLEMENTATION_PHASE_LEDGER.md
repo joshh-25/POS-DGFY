@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-10-24
+last_reviewed: 2026-10-27
 review_by: 2027-02-16
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
@@ -32367,3 +32367,1917 @@ Not complete. Record after merge and implementation validation.
 ### Next phase number
 
 Phase 554. No explicit dependency.
+
+## Phase 554 - Custom staff-role invitations for Warehouse and Delivery (#2812)
+
+### Initiative and release
+
+OPIS back-office team access and DGFY company membership. Feature branch: `feat/2812-custom-staff-role-invites`.
+
+### Objective and scope
+
+Allow an OPIS owner or legacy admin to invite an already registered DGFY account into an active
+tenant custom staff role. Persist the tenant role assignment and active location grants, accept the
+invitation only after revalidating the tenant user, role, membership, and locations, and immediately
+cancel pending invitations when a role is deactivated. Preserve the role name and cancellation
+reason in the landlord invitation registry for display and reconciliation. Show active custom roles
+in the shared invitation UI only through the OPIS surface, and report cancellation counts and
+registry-sync retries.
+
+Email-first account registration remains deferred to #2805. The shared modal preserves selected
+account and assigned-location choices across role changes; #2810 still owns the remaining compatible
+standard-role catalog behavior and must land before final integrated validation and merge.
+
+### Status
+
+`in_progress` — implementation and validation are underway; no commit or PR has been created.
+
+### Dependencies
+
+No dependency on Phase 553 is recorded. #2810 is required before final integrated validation/merge;
+its compatible standard-role changes remain separate. #2805's email-first flow is explicitly
+deferred and is not a dependency for existing-account invitations.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0015](../architecture/adr/0015-tenant-user-invitation-registry.md),
+[ADR 0020](../architecture/adr/0020-mode-aware-rbac-and-role-presets.md),
+[ADR 0028](../architecture/adr/0028-dgfy-account-company-switching.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[POS Manual Delivery Workflow](POS_MANUAL_DELIVERY_WORKFLOW.md),
+[Issue #2812](https://github.com/Sieitzz/dgfy-platform/issues/2812). Classification:
+within-existing-boundary; tenant roles and grants remain authoritative, landlord metadata is a
+non-authoritative lifecycle descriptor, and invitation behavior is exposed from OPIS.
+
+### Implementation targets
+
+[dgfyAuthUseCases.js](../../apps/dgfy-api/src/modules/dgfy/usecases/dgfyAuthUseCases.js),
+[dgfyAccountRepository.js](../../apps/dgfy-api/src/modules/dgfy/repositories/dgfyAccountRepository.js),
+[staffRoleUseCases.js](../../apps/dgfy-api/src/modules/staff/usecases/staffRoleUseCases.js),
+[staffRoleRepository.js](../../apps/dgfy-api/src/modules/staff/repositories/staffRoleRepository.js),
+[transaction-aware assignment helper](../../apps/dgfy-api/src/modules/staff/repositories/staffRoleRepository.js),
+[landlordService.js](../../apps/dgfy-api/src/services/landlordService.js),
+[userService.js](../../apps/dgfy-api/src/services/userService.js),
+[UserInvitation.js](../../apps/dgfy-api/src/models/Landlord/UserInvitation.js),
+[migration](../../apps/dgfy-migration-runner/migrations/20261026000001-add-custom-staff-role-invitation-metadata.cjs),
+[UserInvitationModal.jsx](../../packages/web-core/Components/users/UserInvitationModal.jsx),
+[UserManagementModal.jsx](../../packages/web-core/Components/users/UserManagementModal.jsx),
+[StaffRolesPanel.jsx](../../apps/dgfy-opis/src/features/businessAdmin/StaffRolesPanel.jsx),
+[DGFY invitation role tests](../../apps/dgfy-api/tests/dgfyInvitationCompanyRole.test.js),
+[staff-role tests](../../apps/dgfy-api/tests/staffRoleFoundation.usecase.test.js),
+[disposable database integration test](../../apps/dgfy-api/tests/staffRoleInvitationPersistence.phase554.db.integration.test.js),
+and [invitation modal tests](../../packages/web-core/Components/users/__tests__/UserInvitationModal.dgfy.test.jsx).
+
+### Acceptance and validation evidence
+
+- [ ] Owner/admin authorization, strict role ID validation, active role/location validation, and
+  conflicting preset/permission rejection pass before durable writes.
+- [ ] Custom invitations persist `role='staff'`, the selected tenant role, empty permissions,
+  inherited permission mode, inactive pending state, active location grants, and a landlord name
+  snapshot; accepted users receive only current role capabilities and invited active grants.
+- [ ] Acceptance rejects wrong account, expired/cancelled invitation, unavailable/mismatched role,
+  and inactive/missing grants; accepted replay does not reassign the user.
+- [ ] Deactivation cancels only pending invitations in the active tenant, syncs registry and invite
+  membership state, preserves accepted memberships, and retries partial landlord synchronization.
+- [ ] Reinvitation resets cancellation metadata, while role reactivation does not revive old
+  invitations. Reused tenant rows and landlord registry/membership writes are compensated on
+  creation failure.
+- [ ] The shared modal shows active custom roles to OPIS owners/admins, keeps account/location
+  choices across assigned-role switches, blocks missing locations, and retains fixed-cashier
+  behavior. Invitation lists show the role snapshot and cancellation reason.
+- [ ] Focused API and UI tests, migration idempotence/rollback evidence, architecture/schema/compliance
+  checks, affected OPIS/POS/IMS builds, and rendered OPIS desktop/mobile checks are recorded below
+  before the implementation checkpoint.
+
+### Validation evidence (2026-10-26)
+
+- Focused API Jest tests: 3 suites / 22 tests passed (`dgfyInvitationCompanyRole`,
+  `staffRoleFoundation.usecase`, `dgfyAccountRepository.invitationSchema`).
+- Disposable MySQL integration: 1 suite / 4 tests passed against a uniquely named migrated `test_*`
+  database, dropped during teardown. It verifies assignment/audit rollback and commit, pending-only
+  invitation cancellation with accepted users preserved, actual InnoDB role-row lock blocking,
+  and migration repeated-up/down behavior that leaves the pre-feature invitation columns intact
+  and removes the newly added index on rollback.
+  This does not prove cross-database landlord synchronization or full DGFY acceptance end to end.
+- OPIS invitation contract: 1 suite / 4 tests passed. Shared invitation modal: 1 suite / 9 tests
+  passed through the IMS runner. A local Playwright preview with isolated API fixtures rendered at
+  1440×900 and 390×844, submitted `staff_role_id=17` with role `staff` and location `[11]`, and
+  reported no browser console errors. Screenshots: [desktop](../../apps/dgfy-opis/.tmp/2812-opis-invitation-desktop.png),
+  [mobile](../../apps/dgfy-opis/.tmp/2812-opis-invitation-mobile.png).
+- OPIS, POS, and Skupervisor builds passed. OPIS lint passed with one existing max-lines warning in
+  `BusinessAdminPage.jsx`. `check:architecture`, `lint:docs`, `check:compliance`, `check:app-versions`,
+  `check:tenant-schema-coverage`, JavaScript syntax checks, and `git diff --check` passed. The tenant
+  schema coverage command reported that no tenant migration files changed; the landlord migration
+  was exercised by the disposable database integration test.
+- Compliance declaration is present as a draft with `NOT-EXECUTED` reference; no live compliance
+  preflight was run. #2810 remains an open prerequisite for final integrated validation/merge; #2805
+  email-first registration remains deferred. The phase remains `in_progress`, and no commit or PR
+  has been created pending human review of the migration and declaration.
+
+### Completion date
+
+Not complete. Record only after merge and implementation validation pass.
+
+### Post-merge verification
+
+- [ ] **migration** — apply the additive landlord migration on an existing tenant registry and a
+  fresh registry; verify nullable metadata and the role/status index, and confirm old invitations
+  remain readable. Owner: release operator; blocks deployed acceptance.
+- [ ] **deployment** — verify one new custom-role invitation and one immediate role-deactivation
+  cancellation in a deployed tenant; confirm registry name/reason and the pending DGFY membership
+  state. Owner: operator/release verifier; blocks deployed acceptance.
+- [ ] **end-to-end** — accept an active custom-role invitation and confirm current role capabilities
+  and location grants; confirm a cancelled/deactivated invitation cannot be accepted. Owner: verifier;
+  blocks deployed acceptance.
+
+### Next phase number
+
+Phase 555. No explicit dependency.
+
+## Phase 555 - Repair storefront-mode integration test email mock (#2767)
+
+### Initiative and release
+
+API integration-test reliability / STAGING Promotion Quality Gate triage.
+
+### Objective and scope
+
+Expose the existing `sendStorefrontOrderConfirmationEmail` production export from the
+`emailService.js` mock used by `adminTenantLifecycle.integration.test.js`, allowing the API server
+to load before the test assertions run. Preserve existing assertions, mocks, fixtures, setup, and
+cleanup. This phase does not change production email behavior, schema, migrations, quality-gate
+policy, or the independent POS, evidence-storage, fast-tier, and dependency findings tracked under
+#2767 and their existing owners.
+
+### Status
+
+`in_progress` — the mock and ledger entry are on a fresh `origin/develop` branch; implementation
+validation and merge remain pending.
+
+### Dependencies
+
+None. Phase 554's custom staff-role invitation work is independent. The production export already
+exists; this test-only repair makes the mock match its consumer.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0054](../architecture/adr/0054-outbound-email-delivery-log-and-bounce-capture.md),
+[Backend Test Matrix Gate](../testing/README.md#backend-test-matrix-gate),
+[Issue #2767](https://github.com/Sieitzz/dgfy-platform/issues/2767), and
+[Issue #2577](https://github.com/Sieitzz/dgfy-platform/issues/2577). Classification:
+`no-architecture-impact`; production email delivery and its existing test seam are unchanged.
+
+### Implementation targets
+
+[adminTenantLifecycle.integration.test.js](../../apps/dgfy-api/tests/adminTenantLifecycle.integration.test.js),
+[emailService.js](../../apps/dgfy-api/src/services/emailService.js), and
+[dgfyOrderConfirmationEmail.js](../../apps/dgfy-api/src/modules/dgfy/services/dgfyOrderConfirmationEmail.js).
+
+### Acceptance and validation evidence
+
+- [x] The ESM test mock exposes `sendStorefrontOrderConfirmationEmail` before the server's dynamic
+  import, without changing existing test assertions or setup/cleanup.
+- [ ] `tenant_storefront_modes` DB group passes, including `adminTenantLifecycle.integration.test.js`.
+  Not established: the matrix runner stops during its inventory preflight on the unrelated,
+  unlisted Phase 554 test `tests/staffRoleInvitationPersistence.phase554.db.integration.test.js`;
+  a direct Jest attempt then could not connect to the local test MySQL service.
+- [x] `npm run test:backend:matrix` outcome is recorded with unrelated failures kept separate; it
+  exits before running suites for the same Phase 554 manifest gap.
+- [x] Changed-file syntax, architecture, docs lint, app-version floor, and `git diff --check` pass.
+
+### Validation evidence (2026-10-26)
+
+- `node --check apps/dgfy-api/tests/adminTenantLifecycle.integration.test.js` passed.
+- `npm run check:architecture` passed (63 modules / 802 code files; 116 controller files).
+- `npm run lint:docs` passed (36 governed docs / 106 ADRs).
+- `node scripts/check-app-version-bump.js` reported no requirement because no app or fan-out
+  package changed. `git diff --check` passed.
+- `npm run test:backend:db -- --group tenant_storefront_modes` and
+  `npm run test:backend:matrix` both exited before test execution because
+  `tests/staffRoleInvitationPersistence.phase554.db.integration.test.js` is not listed in
+  `scripts/backend-db-dependent-tests.js`. The disposable testing-agent run on code commit
+  `59fd9fe9cc207ec1adf5f2f7f122bf6dc7797f67` reported a failed backend matrix gate (focused
+  advisory run: 1 failed / 16 skipped; MySQL 8 and Redis 7 test containers healthy). The direct
+  matrix invocation above reports the missing manifest entry.
+- A direct Jest run with `DB_HOST=127.0.0.1` and `DB_NAME_TEST=sku_test` passed the module/server
+  import stage, so the missing named-export error is gone, then failed in the shared `beforeAll`
+  hook and cleanup with `ECONNREFUSED 127.0.0.1:3306`; no test assertions ran. No local MySQL
+  service was available.
+
+### Risks and non-goals
+
+The DB group and full backend matrix require the repository's configured disposable MySQL test
+environment. Any environment limitation or unrelated matrix failure must be reported without
+weakening assertions or changing the test selection. No production email delivery or real mailbox
+is involved.
+
+### Completion date
+
+Not complete. Record only after merge and implementation validation pass.
+
+### Post-merge verification
+
+- [ ] **operational** — confirm the backend DB-matrix CI result for the merged `develop` SHA includes
+  and passes `tenant_storefront_modes`, including this integration suite. Owner: Worker / PR CI;
+  blocks closure of this scoped repair under #2767.
+
+### Next phase number
+
+Phase 556. No explicit dependency.
+
+## Phase 556 - Connect independently hosted Surebiz DGLaundry to DGFY DEV (#2387)
+
+### Initiative and release
+
+DGLaundry provider integration, DEV source/configuration slice for epic #2387. Branch:
+`feat/2387-surebiz-dev-connection`, targeting `develop`.
+
+### Objective and scope
+
+Enable DGFY's source and setup tooling to accept a DEV connection from the existing
+`https://laundry.surebizcorp.com` DGLaundry deployment at
+`https://api.dev.dgfy.ph`. Surebiz stays on its own host and communicates over HTTPS. Add an
+independent DEV registration tuple, exact callback and service-token audience, asymmetric key
+support, production-mode runtime validation, and sandbox-only payment checks. Keep STAGE and PROD
+bound to their own DGLaundry hosts and credentials. This phase does not migrate Surebiz runtime or
+data, configure the Surebiz server, deploy either side, change DNS, or activate PROD.
+
+### Status
+
+`in_progress` — DGFY source, tests, contract, and runbook have passed the available source checks;
+no host mutation or hosted qualification has been recorded.
+
+### Dependencies
+
+No dependency blocks the DGFY source PR. Hosted joint qualification depends on Albert's separate
+DGLaundry profile/installer/configuration update, a retained demo backup, fresh connected-DEV data
+and credentials, verified DGFY registrations/key installation, and approved synthetic mappings.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0060](../architecture/adr/0060-sops-age-encrypted-secrets-at-rest.md),
+[ADR 0079](../architecture/adr/0079-dglaundry-external-runtime-and-provider-contract.md),
+[DGFY Partner Integration Contract](../api/PARTNER_INTEGRATION_CONTRACT.md),
+[Connection Manifest](../integrations/dglaundry-connection-manifest.json),
+[Connection Setup Runbook](../integrations/DGLAUNDRY_CONNECTION_SETUP.md),
+[Issue #2387 latest access/runbook evidence](https://github.com/Sieitzz/dgfy-platform/issues/2387#issuecomment-6413091805).
+Classification: cross-boundary environment/profile contract amendment under ADR 0039's default
+clause path. No exception or allowlist is introduced.
+
+### Implementation targets
+
+[Setup utility](../../scripts/dglaundry-connection-setup.mjs),
+[setup tests](../../scripts/dglaundry-connection-setup.test.mjs),
+[connection manifest](../../docs/integrations/dglaundry-connection-manifest.json),
+[environment validation](../../apps/dgfy-api/src/config/productionEnvValidation.cjs),
+[startup guard](../../apps/dgfy-api/src/server.js),
+[partner service-token issuer](../../apps/dgfy-api/src/modules/dgfyLaundryOrders/services/dglaundryPartnerAccessToken.js),
+[validation tests](../../apps/dgfy-api/tests/productionEnvValidation.test.js),
+[startup-guard tests](../../apps/dgfy-api/tests/productionEnvGuard.test.js),
+[token tests](../../apps/dgfy-api/tests/dglaundryPartnerAccessToken.test.js),
+[DGFY contract](../../docs/api/PARTNER_INTEGRATION_CONTRACT.md),
+[key provisioning runbook](../../docs/ops/dglaundry-oidc-key-provisioning.md).
+
+### Acceptance and validation evidence
+
+- [ ] The v1.2 manifest binds Surebiz only to DGFY DEV, with independent proposed client/key IDs,
+  blank registration proof and fingerprints, exact callback/audience, and sandbox payment mode.
+- [ ] Setup inspect/prepare/apply/verify/rollback support DEV, bind state to the manifest digest,
+  preserve existing unmanaged settings, synchronize the existing host `.env`, and restore managed
+  Compose values safely on rollback; STAGE remains on its own DGLaundry host and PROD mutation
+  remains prohibited.
+- [ ] Enabled hosted DEV cannot start outside `NODE_ENV=production`; the exact DEV issuer,
+  callback, Surebiz audience, Redis-backed replay protections, asymmetric signatures, and test-mode
+  payment requirements are validated.
+- [ ] Focused setup, environment-validation, startup-guard, and service-token tests pass; relevant
+  architecture, compliance, docs, syntax, and diff checks are recorded below.
+- [ ] DGFY source readiness is reported separately from Albert's DGLaundry changes and hosted
+  authentication/tenant-isolation qualification.
+
+### Validation evidence (2026-10-26)
+
+- `npm run test:dglaundry-connection-setup` — PASS, 19/19.
+- `npm run check:production-env` — PASS (existing fixture warnings note empty `DEPLOY_ENV_LABEL`
+  in generic fixtures).
+- `npm run check:architecture` — PASS (63 modules, 802 code files, 116 controllers).
+- `npm run lint:docs` — PASS (36 governed docs, 106 ADRs).
+- `npm run check:compliance` — PASS; no compliance-sensitive declaration was required.
+- `npm run check:app-versions` — PASS; no version bump applies on this `develop`-targeted branch.
+- `node --check` on changed API/setup JavaScript and the manifest-to-contract SHA-256 check — PASS.
+- `git diff --check` and the pre-commit marker scan — PASS.
+- Focused API Jest tests were attempted but could not run: this checkout has no
+  `apps/dgfy-api/node_modules/jest`; no assertions ran.
+
+Hosted DEV discovery/JWKS, Surebiz configuration, secret installation, and authenticated joint
+qualification have not been performed by this phase.
+
+### Risks and non-goals
+
+Changing DEV `NODE_ENV` to `production` affects the whole DGFY DEV API and activates full hosting
+preflight requirements; the host operator must validate the complete effective configuration
+before applying. The setup tool keeps registration proposed until independent evidence and actual
+public-key fingerprints are recorded. No credentials, private keys, DNS changes, host migration,
+staging/prod retargeting, or production activation belong in this phase.
+
+### Completion date
+
+Not complete. Record only after the scoped source implementation is merged and implementation
+validation passes.
+
+### Post-merge verification
+
+- [ ] **deployment** — through the approved DGFY DEV release process, record the exact source SHA,
+  image digest, config revision, production-mode runtime label, sandbox payment setting, and rollback
+  reference. Owner: DGFY release operator.
+- [ ] **provider** — verify DEV discovery advertises only `https://api.dev.dgfy.ph/oidc`, JWKS is
+  HTTP 200 with the registered DEV key ID, and the login/browser session, machine/service
+  authorization, and signed traffic work. Owner: DGFY release operator and DGLaundry owner.
+- [ ] **Surebiz** — Albert supplies the reviewed connected-DEV profile/configuration on Surebiz's
+  existing host, fresh database/credentials, retained demo backup, exact DGLaundry SHA/image and
+  config revision. Owner: Albert / DGLaundry.
+- [ ] **qualification** — with synthetic mappings and sandbox payments, prove replay and
+  wrong-company/location denial, then record both SHAs, key fingerprints, evidence URLs, and rollback
+  target. Owner: DGFY + DGLaundry; blocks connected-DEV acceptance and epic closure.
+
+### Next phase number
+
+Phase 557. No explicit dependency.
+
+## Phase 557 - DGFY outbound email branding (#2830)
+
+### Initiative and release
+
+Outbound email slice of legacy-name retirement issue #2830 under epic #352. Ordinary implementation
+branch targeting `develop`.
+
+### Objective and scope
+
+Use plain `DGFY` in active platform-authored outbound email branding and the generic sender fallback.
+Preserve tenant and store names, configured sender overrides and addresses, legal issuer data,
+destinations, attachments, layouts, and SMTP delivery behavior. Add a complete active-send inventory,
+regression coverage for every active template and email-specific wrapper plus direct send owners,
+and current sender guidance. Keep disabled PayPal template code and historical records unchanged.
+Do not mutate STAGING/PROD configuration, deploy, or send real email in this phase.
+
+### Status
+
+`in_progress` — source, regression coverage, inventory, and this ledger entry are being implemented
+from fresh `origin/develop`. Phase 556 (#2387) had already landed on that base, so this work takes
+the next free number, 557; the following number is 558.
+
+### Dependencies
+
+None. The STAGING/PROD sender-name checks and any required persistent configuration updates are
+post-merge operator verification, not implementation dependencies.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0012](../architecture/adr/0012-dgfy-global-convenience-fee-and-ui-brand-separation.md),
+[ADR 0021](../architecture/adr/0021-email-otp-verification-for-account-email-ownership.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0054](../architecture/adr/0054-outbound-email-delivery-log-and-bounce-capture.md),
+[ADR 0060](../architecture/adr/0060-sops-age-encrypted-secrets-at-rest.md),
+[ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md),
+[Backend Test Matrix Gate](../testing/README.md#backend-test-matrix-gate),
+[Email Inventory](OUTBOUND_EMAIL_INVENTORY.md),
+[Issue #2830](https://github.com/Sieitzz/dgfy-platform/issues/2830). Classification:
+`no-architecture-impact`; existing email transport, ownership, and OTP semantics are unchanged, so no
+ADR amendment, new seam, migration, or allowlist is required.
+
+### Implementation targets
+
+[Email templates](../../apps/dgfy-api/src/templates/emailTemplates.js),
+[email service](../../apps/dgfy-api/src/services/emailService.js),
+[user email fallbacks](../../apps/dgfy-api/src/services/userService.js),
+[delivery verification script](../../apps/dgfy-api/scripts/verify-email-delivery.js),
+[branding contract test](../../apps/dgfy-api/tests/emailBranding.contract.test.js),
+[delivery provider tests](../../apps/dgfy-api/tests/emailService.deliveryProvider.test.js),
+[inline invitation tests](../../apps/dgfy-api/tests/dgfyAuthUseCases.test.js),
+[tracking recovery tests](../../apps/dgfy-api/tests/dgfyCustomerUseCases.test.js),
+[service reminder tests](../../apps/dgfy-api/tests/servicesMode.usecases.test.js),
+[invoice delivery tests](../../apps/dgfy-api/tests/platformInvoiceUseCases.test.js),
+[API environment examples](../../apps/dgfy-api/.env.example),
+[API specification](../api/specification.md),
+[collaborator environment guide](../setup/COLLABORATOR_LOCAL_ENV.md),
+[tenant email guidance](TENANT_MANAGEMENT.md), and this ledger.
+
+### Acceptance and validation evidence
+
+- [x] All active authored legacy platform labels in subjects, headers, footers, HTML/plain-text
+  bodies, and the generic sender fallback now use plain DGFY or neutral copy; explicitly branded
+  OTP, affiliate, and storefront sends stay DGFY.
+- [x] Every active template export and email-specific wrapper is covered by the branding guard; inline
+  business invitations, tracking recovery, service reminders, invoice payloads, and operator
+  verification copy are checked through existing seams or a non-sending diagnostic assertion.
+- [x] Tenant/store values, sender overrides and addresses, links, tokens, invoice attachment/legal
+  issuer/QA notice, and layouts remain intact; affiliate account branches and all OTP purposes are
+  inventoried.
+- [x] Rendered staff invitation, welcome, company approval/rejection, and changed billing samples are
+  reviewed at desktop and narrow widths using synthetic data; no real email is sent.
+- [x] Focused email/template/inline-owner tests pass; the required `npm run test:backend:matrix`
+  outcome is recorded without weakening or reclassifying existing suites.
+- [x] `npm run check:compliance` passes with the human-approved declaration for the changed
+  `userService.js` path.
+- [x] `npm run check:architecture`, `npm run lint:docs`, PR-context
+  `node scripts/check-app-version-bump.js`, changed-file `node --check`, and `git diff --check` pass.
+- [x] Current environment examples and guidance show `EMAIL_FROM_NAME=DGFY`, while STAGING/PROD
+  verification remains an explicit human follow-up.
+
+### Validation evidence (Worker run, 2026-10-26)
+
+- The focused email/template/inline-owner Jest command passed 11 suites and 234 tests. After adding
+  explicit welcome, onboarding, subscription, PayMongo, and plan-change destination assertions, the
+  branding contract suite passed again (6 tests).
+- Rendered all 15 active legacy-branded invitation, welcome, company, billing, plan-change,
+  reactivation, and resubmission templates at 1200px and 390px widths with synthetic fixtures.
+  Reviewed the local screenshots under `.tmp/email-branding-previews/`; all 30 renders had no
+  horizontal overflow, and supplied destinations remained present. No email was sent.
+- `node --check` passed for every changed API JavaScript file; architecture checks passed (63 modules,
+  802 code files, and 116 controller files); `npm run lint:docs` passed (36 governed docs and 106
+  ADRs); the app-version gate passed in PR context with no package-version change required; and
+  `git diff --check` passed.
+- After Pat approved the required major declaration, `npm run check:compliance` passed and checked
+  the `userService.js` surface plus 10 compliance-sensitive documentation/API-contract rules. The
+  declaration records that no live preflight was run and uses the accepted PR-open placeholder.
+- `npm run test:backend:matrix` stopped before execution because the existing
+  `tests/staffRoleInvitationPersistence.phase554.db.integration.test.js` suite is missing from
+  `scripts/backend-db-dependent-tests.js`. No unrelated manifest change was made.
+- `npm run check:compliance` initially reported `apps/dgfy-api/src/services/userService.js` as a
+  sensitive change; after the approved major declaration was added, it passed. No live preflight was
+  performed; the declaration records the PR-open placeholder for the continuous sweep.
+
+### Risks and non-goals
+
+A configured `EMAIL_FROM_NAME` overrides the code fallback, so runtime settings may continue to show
+old branding until an operator corrects the persistent configuration and applies it through normal
+release controls. The read-only PROD evidence recorded for planning found the name wrapped in
+literal quotation marks and `EMAIL_FROM=noreply@dgfy.ph`; STAGING values remain unverified. Preserve
+the public sender address and all historical/environment-specific data outside this issue. This
+phase does not change delivery, retry, logging, OTP/security, billing, checkout, app/UI, provider,
+or fiscal identity behavior. Already delivered messages cannot be recalled.
+
+### Completion date
+
+Not complete. Record only after the scoped implementation is merged to `develop` and implementation
+validation passes.
+
+### Post-merge verification
+
+- [ ] **STAGING configuration** — read the filtered effective `EMAIL_FROM_NAME` and `EMAIL_FROM`
+  values; set the persistent display name to exactly `DGFY` if needed, preserve the current sender
+  address, and record the applied configuration revision. Owner: release operator.
+- [ ] **PROD configuration** — normalize the persistent `EMAIL_FROM_NAME` value to exactly `DGFY`
+  (remove embedded quotation marks if still present), preserve `EMAIL_FROM=noreply@dgfy.ph`, apply
+  through normal release controls, and record the configuration revision. Owner: release operator.
+- [ ] **deployed verification** — after the normal deployment, verify the exact source/image and
+  effective sender configuration in STAGING and PROD; record controlled rendered/send evidence only
+  through the approved operator procedure. Owner: release operator / verifier.
+
+### Next phase number
+
+Phase 558. No explicit dependency.
+## Phase 558 - DGFY Storefront OIDC browser interaction (#2837)
+
+### Initiative and release
+
+DGLaundry partner authentication, DGFY source slice for issue #2837; ordinary `develop` delivery.
+
+### Objective and scope
+
+Keep the OIDC issuer on the configured `api.*` origin while moving interactive DGFY authentication,
+registration, password reset, and company choice to Storefront. Add a one-use issuer-to-Storefront
+handoff and per-interaction host-only browser cookie, an issuer browser binding, an absolute
+600-second Redis interaction, a 60-second-or-shorter single-use issuer completion ticket, exact
+environmental Storefront destination validation, forced-login proof, accepted-membership
+revalidation, identity-only onboarding grants, readable failures, and telemetry redaction. Preserve
+JSON authorize behavior, existing code/token lifetimes, CSRF/CORS policy, and DGLaundry ownership
+of company onboarding and operational authority. No schema migration, host mutation, deployment,
+or production activation is in scope.
+
+### Status
+
+`in_progress` — the DGFY source slice and available validation are recorded; PR #2842 is open. Merge and joint hosted acceptance remain outstanding.
+
+### Dependencies
+
+- No earlier ledger phase blocks this DGFY source implementation.
+- The separate DGLaundry companion in #2837 must raise its callback transaction expiry to 900,000 ms
+  and pass `dglaundry_intent=create_company` through PAR. That companion, matching hosted issuer /
+  client / Redis values, and real cross-host cookie behavior block joint hosted acceptance, not this
+  source PR.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0079](../architecture/adr/0079-dglaundry-external-runtime-and-provider-contract.md),
+[DGFY Partner Integration Contract](../api/PARTNER_INTEGRATION_CONTRACT.md),
+[Partner OpenAPI](../api/partner-dglaundry-openapi.yaml), [Testing Rules](../testing/README.md),
+and [Apps Layout Migration](../architecture/apps-layout-migration.md). Classification: cross-boundary;
+ADR 0079's untagged/default browser interaction is amended in this PR. ADR 0026 cookie and CSRF
+authority and ADR 0071 app-source boundaries remain in force. No exception or allowlist is added.
+
+### Implementation targets
+
+API OIDC negotiation, Redis interaction repository/use cases/controllers/routes, DGFY login proof,
+CSRF binding-cookie coverage, strict hosted environment validation, and Sentry redaction; Storefront
+interaction/error routes and continuation through existing account flows; company selector
+hardening; partner contract/OpenAPI, ADR amendment, this ledger entry, and focused regression and
+rendered browser evidence. Changes to `packages/web-core` require builds of every consuming app.
+
+### Acceptance and validation evidence
+
+- [ ] HTML negotiation is explicit and quality-aware; JSON callers retain unauthenticated 401 and
+  existing authenticated protocol outcomes.
+- [ ] PAR claims once, interaction expiry is absolute at ten minutes, binding is host-only, ticket
+  expiry is at most one minute, and code TTL remains 120 seconds.
+- [ ] Account, company, forced login, switch-account, signup, OTP/legal, reset-password, and
+  new-company continuation are bound to the server interaction; fixed and lost memberships fail
+  closed.
+- [ ] Issuer completion enforces Origin, CSRF, host binding, current account/client/company state,
+  atomic ticket/interaction consumption, registered callback, and one code at most.
+- [ ] Identity-only no-company/new-company grants omit company-context scope and claim and do not
+  provision authority.
+- [ ] Error routes, telemetry, and logs do not expose interaction IDs, request URIs, tickets,
+  authorization codes, or session tokens.
+- [ ] Required backend/frontend regression suites, backend matrix, frontend contracts, Storefront
+  and any shared-code consumer builds, app-version/architecture/compliance/docs/environment gates,
+  and `git diff --check` are run and exact outcomes recorded before PR.
+- [ ] Local-only Playwright proof follows `web-performance-qa`: one worker, distinct local hostnames,
+  real cookie behavior, cold login, chooser/onboarding navigation, desktop/mobile, page identity,
+  and console/framework-overlay health.
+- [ ] DGLaundry companion prompt and all joint hosted verification dependencies remain explicit;
+  local DGFY proof is not described as joint or deployed acceptance.
+
+### Validation evidence (2026-10-26)
+
+- Focused API OIDC/provider/cookie/CSRF/environment/telemetry suites — PASS, 10 suites / 156 tests.
+- Storefront suite — PASS, 255 files / 1,435 tests. Storefront OIDC interaction tests — PASS,
+  2 files / 5 tests.
+- Shared analytics and Sentry observability suites — PASS, 2 files / 81 tests; changed-file web-core
+  lint and Storefront lint — PASS. API changed-source lint and `node --check` — PASS.
+- Storefront, IMS, POS, OPIS, and Admin production builds — PASS.
+- Storefront frontend contracts — PASS, 39 files / 220 tests; broader frontend contracts — PASS,
+  132 files / 837 tests.
+- `npm run check:architecture` — PASS (63 modules / 807 code files / 117 controllers);
+  `npm run check:compliance` — PASS; `npm run check:production-env` — PASS with the existing
+  generic-fixture `DEPLOY_ENV_LABEL` warnings; `npm run lint:docs` — PASS (36 governed docs / 106
+  ADRs); `git diff --check` — PASS.
+- `npm run test:backend:matrix` — BLOCKED before test execution by the existing unlisted
+  `tests/staffRoleInvitationPersistence.phase554.db.integration.test.js` inventory entry.
+- `npm run test:frontend` — INCOMPLETE: the IMS portion reported failures in untouched IMS test
+  areas and did not finish after more than five minutes; it was interrupted. The changed shared
+  observability suites were rerun separately and pass as recorded above.
+- Cross-host Playwright proof — DEFERRED: local Redis/MySQL are unavailable and this checkout has
+  no API or Storefront `.env` test configuration. No cold-login, staging, or DGLaundry-hosted flow
+  is claimed as proven. The separate DGLaundry companion and joint staging evidence remain required.
+
+### Risks and non-goals
+
+Completion bridges are security-sensitive; host-only browser binding, server-side proof, fresh
+authority checks, durable state, and atomic redemption are required evidence. The DGLaundry
+companion and hosted configuration are external dependencies. No production mutation, DGLaundry
+repository edit, cross-origin credentialed CORS change, global cookie-domain change, general
+registration redesign, or migration is included.
+
+### Completion date
+
+Not complete. Record only after the source implementation is merged and its scoped implementation
+validation passes; retain hosted verification in the checklist below.
+
+### Post-merge verification
+
+- [ ] **provider** — separate DGLaundry owner implements 15-minute callback transaction persistence
+  and `create_company` PAR intent, then jointly proves cold login, forced account choice, company
+  selection, and new-company continuation on staging. Owner: DGLaundry companion owner / #2837;
+  blocks joint hosted acceptance.
+- [ ] **deployment** — deploy matching API and Storefront source/configuration through the approved
+  release workflow; record both source SHAs, image/config revisions, and rollback references. Owner:
+  release operator; blocks deployed proof.
+- [ ] **operational** — verify browser error recovery and secret-free telemetry on deployed hosts,
+  then record joint evidence under #2837/#2304. Owner: verifier; blocks authentication-hardening
+  closure. Production activation remains separately gated by #2834.
+
+### Next phase number
+
+Phase 559. No explicit dependency.
+
+## Phase 559 - Make external partner listings opt-in in Storefront discovery (#2833)
+
+### Initiative and release
+
+Storefront external discovery defaults, issue #2833. Planner handoff: [`.tmp/plan-2833.md`](../../.tmp/plan-2833.md).
+Branch: `feat/2833-discovery-native-only-defaults`, targeting `develop`.
+
+### Objective and scope
+
+Keep customer discovery focused on DGFY native listings by default while preserving explicit
+category-based access to supported partner listings. **All** and native categories include only
+`entity_type = dgfy_native`; Hotel maps exclusively to Synqcore, Real Estate to MapViu, Taxi to
+Eytitu, and Job to Proventous (`external_provider = proventus`). Provider identity and entity type
+determine eligibility; category text, workflow mode, free-text searches, missing entity type, and
+unknown providers do not opt a listing in. Apply the eligibility rule to result cards, map pins,
+hero/fallback pins, remembered pins, cluster counts, and selected cluster content. Correct the
+customer-facing Proventous label while preserving the stable `proventus` identifier and public
+links.
+
+No schema, migration, dependency, or API-shape change is in scope. No deployment or merge is part
+of this phase.
+
+### Status
+
+`completed` — the scoped implementation merged to `develop` in PR [#2843](https://github.com/Sieitzz/dgfy-platform/pull/2843)
+on 2026-10-26 at merge commit `16a2a85a359835bcb7ef0715d5e6dbb9dbbd886d`. The original local
+validation evidence below is retained unchanged. App versions stayed unchanged on this develop PR
+per Pat's explicit direction in #2048; the conflicting ADR wording is recorded below.
+
+### Dependencies
+
+No blocking dependencies. This phase uses the existing external listing entity/provider fields and
+the existing Storefront discovery filter and map surfaces.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0010](../architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md),
+[ADR 0071](../architecture/adr/0071-independently-deployable-frontend-apps.md),
+[ADR 0089](../architecture/adr/0089-dedicated-back-office-application.md),
+[External Discovery Redirect Foundation](EXTERNAL_DISCOVERY_REDIRECT_FOUNDATION.md),
+[API specification](../api/specification.md), and [testing guide](../testing/README.md).
+Classification: snapshot implementation within the existing discovery and external-listing
+contracts; no cross-boundary architecture change or exception/allowlist is introduced.
+
+### Implementation targets
+
+Storefront discovery eligibility, category options, result/pin/cluster state, and focused tests under
+`apps/dgfy-storefront/src/discovery/` and `apps/dgfy-storefront/src/__tests__/`; Proventous display
+labels and focused tests in `apps/dgfy-api/`, `apps/dgfy-admin/`, and Storefront; current feature/API
+prose and this phase ledger.
+
+### Acceptance and validation evidence
+
+- [x] All and native categories show only native listings. Free-text search does not expose partner
+  listings. Selecting each partner category shows only rows whose entity type and provider match
+  its explicit mapping; unknown or unclassified rows stay hidden.
+- [x] Map pins, result cards, hero/fallback and remembered pins, cluster counts/cards, and selected
+  content follow the same eligibility rule when filters change.
+- [x] Proventous is the customer-facing name across Storefront, API-backed Admin responses, and
+  current feature/API prose; stable `proventus` keys and links are unchanged.
+- [x] No schema, migration, dependency, or public API-shape change is introduced.
+- [x] Focused Storefront, Admin, and API tests; Storefront/Admin builds; API syntax; architecture,
+  docs, compliance, version-policy, and diff checks are recorded below.
+- [x] Local rendered desktop and mobile discovery QA is recorded; no cloud or deployment action is
+  performed.
+
+### Validation evidence (2026-10-26)
+
+- Storefront: `npm --prefix apps/dgfy-storefront test -- src/__tests__/discoveryStoreResultsModel.test.js src/__tests__/discoveryFlow.integration.test.jsx src/__tests__/discoveryCategoryStage.test.jsx src/__tests__/externalDiscoveryPresentation.test.js src/__tests__/discoveryMapLayers.test.js src/__tests__/discoveryFilterState.test.js` — **PASS, 85/85 across 6 files**.
+- Admin: `npm --prefix apps/dgfy-admin test -- src/pages/__tests__/ExternalDiscoveryManager.visibility.integration.test.jsx` — **PASS, 3/3**.
+- API: `npm --prefix apps/dgfy-api test -- --runTestsByPath tests/externalRedirectFoundation.test.js tests/externalEventSeedMapping.test.js` — **PASS, 27/27**. `node --check` passed for both modified API domain files.
+- Builds: `npm run build:store` and `npm run build:admin` — **PASS**. Storefront emitted the existing large-chunk advisory.
+- Changed-source lint — **PASS, 0 errors**. Storefront full lint exits 0 with 140 warnings; Admin full lint exits 0 with 2 warnings. API full lint has 3 errors in untouched `dgfyAccountRepository.js` and `staffRoleUseCases.js`; the changed API source files lint cleanly.
+- Governance: `npm run check:architecture` **PASS** (63 modules / 802 code files; 116 controller files); `npm run lint:docs` **PASS** (36 governed docs / 106 ADRs); `npm run check:compliance` **PASS** (no compliance-sensitive changes); `git diff --check` **PASS**.
+- Version policy: no app package or lockfile versions change in this PR. Pat's 2026-09-27 direction in [#2048](https://github.com/Sieitzz/dgfy-platform/issues/2048#issuecomment-5855120969) says develop work does not bump versions and promotion handles the bump. After restoring the original app floors, `GITHUB_BASE_REF=develop GITHUB_HEAD_REF=feat/2833-discovery-native-only-defaults npm run check:app-versions` **PASSes** for API `1.51.0`, Storefront `1.44.0`, and Admin `1.15.1` under the checker's `unchanged` mode. ADR 0081 Decision 6 still says ordinary `develop` PRs require any increase, so the ADR conflicts with the explicit operator direction, current checker, and implement skill. The related open [#1568](https://github.com/Sieitzz/dgfy-platform/issues/1568) tracks the Worker version-bump obligation and needs reconciliation; no global policy or tooling change is part of #2833.
+- Local rendered QA: desktop `/map-dgfy` synthetic-fixture captures show two native pins/cards by default, only the mapped Proventous row after explicit Job selection, and native-only results after free-text search. Mobile `/map-dgfy` at 390×844 shows populated content and native-only pins/cards; partner, unknown-provider, and unclassified rows are absent, with no page errors. Screenshots are local-only under `.tmp/qa-2833/`; requests to non-local origins were blocked. No cloud or deployment action was performed.
+
+### Risks and non-goals
+
+Eligibility is intentionally fail-closed: a partner row lacking an exact supported provider or
+`external_listing` entity type is not shown. Partner category selection is explicit opt-in; free-text
+query and legacy category/workflow values cannot grant it. API response shape, migrations, external
+provider configuration, and deployed-environment verification are outside this phase.
+
+### Completion date
+
+2026-10-26 — PR #2843 merged to `develop`, merge commit
+`16a2a85a359835bcb7ef0715d5e6dbb9dbbd886d`.
+
+### Post-merge verification
+
+- [ ] **release** — through the approved Storefront release process, verify the merged SHA is the
+  deployed source and record the deployment evidence. Owner: DGFY release operator.
+- [ ] **discovery behavior** — on the deployed Storefront, confirm All and free-text searches show
+  native listings only, each partner category shows only its mapped provider, and changing filters
+  clears stale partner pins/cards/selections. Owner: Storefront verifier.
+- [ ] **partner labels** — confirm Admin/API-backed listing labels render as Proventous while
+  provider identity remains `proventus`. Owner: Storefront verifier.
+
+### Next phase number
+
+Phase 560. No explicit dependency.
+
+---
+
+**Dated note, 2026-10-26 — Phase-number collision between the #2696 tenant-management epic branch and `develop`, resolved per the Phase Sequencing and Lifecycle Rules (the `develop` reservation wins; unmerged collisions move to the next free number):**
+
+The shared base ended at Phase 551. `develop` now reserves Phases 552–554 for storefront order-confirmation presentation parity (#532), its customer-facing refinements (#532), and custom staff-role invitations (#2812). The epic branch's unmerged tenant-console integration cleanup and URL-privacy entry (#2757/#2748/#2750) moves from Phase 552 to **Phase 555**; its efficient tenant directory and Billing workspace entry (#2776) moves from Phase 553 to **Phase 556**. Existing epic phases 542–544 remain unchanged. This is a documentation renumber only; implementation and PR history retain their authored numbers.
+
+| Phase | Owner | Disposition |
+|---:|---|---|
+| 552 | Storefront order-confirmation presentation parity (#532) | unchanged — reserved on `develop` |
+| 553 | Storefront order-confirmation refinements (#532) | unchanged — reserved on `develop` |
+| 554 | Custom staff-role invitations (#2812) | unchanged — reserved on `develop` |
+| 555 | Tenant-console integration cleanup and URL privacy (#2757, #2748, #2750) | **moved from 552** |
+| 556 | Efficient tenant directory and Billing workspace (#2776) | **moved from 553** |
+
+---
+
+**Dated note, 2026-10-26 (second develop sync) — the #2696 epic phase reservations collided again with new entries on `develop`:**
+
+The preceding note records the first sync, which moved the epic's unmerged phases to 555 and 556 after develop had reserved 552–554. Before the epic entries landed on `develop`, develop added Phase 555 for the POS branch-entry integration-test mock (#2767) and Phase 556 for connecting independently hosted Surebiz DGLaundry to DGFY DEV (#2387). Per the ledger rule, those develop entries keep their numbers. The epic's tenant-console integration cleanup moves from Phase 555 to **Phase 557**; its efficient tenant directory and Billing workspace moves from Phase 556 to **Phase 558**. Epic phases 542–544 remain unchanged.
+
+| Phase | Owner | Disposition |
+|---:|---|---|
+| 555 | POS branch entry and shared contracts (#2767) | unchanged — reserved on `develop` |
+| 556 | Connect independently hosted Surebiz DGLaundry to DGFY DEV (#2387) | unchanged — reserved on `develop` |
+| 557 | Tenant-console integration cleanup and URL privacy (#2757, #2748, #2750) | **moved from 555**; originally assigned 552 in the first sync |
+| 558 | Efficient tenant directory and Billing workspace (#2776) | **moved from 556**; originally assigned 553 in the first sync |
+
+---
+
+**Dated note, 2026-10-27 (third develop sync) — the #2696 phase reservations collided with three newer entries on `develop`:**
+
+Since the prior sync, `develop` assigned Phase 557 to DGFY outbound email branding (#2830), Phase 558 to Storefront OIDC browser interaction (#2837), and Phase 559 to making external partner listings opt-in (#2833). Per the ledger rules, those develop assignments keep their numbers. The epic's still-unmerged tenant-console cleanup moves from Phase 557 to **Phase 560**; its efficient tenant directory and Billing workspace moves from Phase 558 to **Phase 561**. Epic phases 542–544 remain unchanged. The preceding dated notes record the earlier allocations at the time of those syncs.
+
+| Phase | Owner | Disposition |
+|---:|---|---|
+| 557 | DGFY outbound email branding (#2830) | unchanged — reserved on `develop` |
+| 558 | DGFY Storefront OIDC browser interaction (#2837) | unchanged — reserved on `develop` |
+| 559 | Make external partner listings opt-in in Storefront discovery (#2833) | unchanged — reserved on `develop` |
+| 560 | Tenant-console integration cleanup and URL privacy (#2757, #2748, #2750) | moved from Phase 557 |
+| 561 | Efficient tenant directory and Billing workspace (#2776) | moved from Phase 558 |
+
+---
+
+## Phase 560 - Tenant-console integration cleanup and URL privacy (#2757, #2748, #2750)
+
+### Initiative and release
+
+DGFY Admin tenant management UX / Wave 4 of epic #2696.
+
+### Objective and scope
+
+Reconcile the tenant-console action inventory to the integrated Wave 1–3 routes; remove unused
+Admin-only service wrappers for legacy plan-change and PayPal setup actions while retaining their
+backend APIs; repair the ambiguous Retail row selectors tracked by #2750; render an explicit empty
+state when the existing registration-review API reports no application; and remove query strings
+from Admin PostHog URL/referrer properties and Sentry `request.url` without changing browser URLs,
+event identity, unrelated telemetry properties, or non-Admin behavior. No API, permission, schema,
+migration, provider, or app-version change is in scope. The combined Activity page and payload
+decoupling remain deferred. Classification: `regulatory`.
+
+### Status
+
+`in_progress` — scoped implementation merged into the registered epic branch through PR #2771 on
+2026-10-25 at merge commit `e6ee1b315053f9f54704dadef315b7c70dd19dce`. Validation remains incomplete:
+the focused Testing Agent gate reported 27 failing suites in the 872-file fast tier, and the failure
+origin was not baseline-compared. The issues remain open and In Progress while this validation gap is
+resolved; deployment and operational verification remain tracked below.
+
+### Dependencies
+
+- Phase 543 / PR #2760 and Phase 544 / PR #2764 provide the integrated detail routes, directory
+  context restoration, Add tenant flow, and Access controls that this phase reconciles and verifies.
+- #2748 is included in this Wave 4 PR by the dated 2026-10-25 scope updates on #2757 and #2748; no
+  separate privacy implementation is to be duplicated.
+- #2750 bounds the StoreTemplateManager change to test selectors. Product behavior, row assertions,
+  and existing mutation checks remain unchanged.
+- No earlier unfinished phase blocks this work. Deployment-specific #1923, #2633, and #2639
+  verification remains separate release work.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0047](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md),
+[ADR 0089](../architecture/adr/0089-platform-admin-fifth-frontend-app-cross-host-admin-routing.md),
+[Platform Admin route permission matrix](../testing/platform-admin-route-permission-matrix.md),
+[Platform Admin Tenant Console](PLATFORM_ADMIN_TENANT_CONSOLE.md), [Tenant Management](TENANT_MANAGEMENT.md),
+[PR conventions](../ai/PR.md), and issues #2757, #2748, and #2750. Classification: `regulatory`; the
+reconciled preflight is recorded in
+[`2026-10-25-admin-tenant-console-integration-cleanup.md`](../compliance/impact-declarations/2026-10-25-admin-tenant-console-integration-cleanup.md).
+
+### Implementation targets
+
+`packages/web-core/src/observability/analyticsClient.js`, `sentryClient.js`, and the shared URL
+scrubber and tests; Admin `TenantRegistration.jsx`, unused legacy service wrappers, #2750's
+registration-industry integration test, relevant Admin integration tests; the 27-action inventory,
+Tenant Management reference, phase ledger, and compliance declaration. No backend production files,
+permission-matrix rules, endpoint contracts, or app-version files are changed.
+
+### Acceptance and validation evidence
+
+- [x] Current epic head, registered route, and issue scope were revalidated before editing. The
+  active board card remains In Progress.
+- [x] All 27 inventory rows were checked against the integrated section and global-tool placement.
+  Rows 24–25 remain API-only; row 26 documents the frontend wrapper removal and unchanged backend
+  routes; Activity and payload decoupling remain deferred.
+- [x] A repository-wide caller search found no production use of `setupPayPalRecurring` or
+  `adminChangePlan` in the Admin app; backend route/use-case code remains untouched. No relocated
+  tenant-console import or source-text assertion was found in tracked IMS tests.
+- [x] Admin selector and registration empty/error/retry coverage passes in the 29-file/212-test
+  Admin suite; the focused selector/registration files pass 25 tests. Shared PostHog/Sentry tests
+  pass 86 tests, including direct `before_send` checks for `$pageview` and `$pageleave`, nested
+  URL/referrer and person properties, Sentry composition, and unchanged non-Admin behavior.
+- [x] Admin lint passes with one existing warning in unchanged `src/main.jsx`; the changed
+  `Pages/TenantRegistration.jsx` and shared observability files lint cleanly. Admin, OPIS, POS,
+  Storefront, and IMS builds pass. Architecture (63 modules/799 code files, 115 controllers),
+  docs/strict ADR (37 governed docs/105 ADRs), compliance, and app-version checks against the epic
+  base pass. The pre-commit compliance and whitespace checks also pass.
+- [x] Synthetic-fixture browser journey passes at 1440×1000 and 390×844: directory filters remain
+  intact through all five detail sections, return navigation, Back/Forward, direct registration
+  route, and reload; both viewports have no horizontal overflow, console errors, or page errors.
+  Evidence: `.tmp/tenant-console-journey-report.json` and `.tmp/tenant-console-*-registration.png`.
+  Payload redaction is verified through the shared SDK hook unit tests; the browser experiment only
+  observed PostHog feature-flag traffic and did not observe a network event payload. No deployed
+  DEV evidence is claimed; this Worker does not deploy.
+- [x] The disposable Testing Agent DB tier passed all 34 test files across eight groups, including
+  `adminTenantLifecycle.integration.test.js` and registration-upload coverage. The earlier direct
+  host run passed four suites/27 tests but could not connect to host MySQL for the lifecycle suite;
+  the DB-tier rerun used the repository's isolated runner with MySQL 8 and Redis 7 and passed.
+- [ ] The focused Testing Agent gate is not fully green: the 872-file fast tier has 27 failing
+  backend suites across POS, delivery, migrations, compliance, billing, and other areas. No backend
+  production file changed in this phase, and these failures have not been baseline-compared, so
+  their origin is left unclassified. SHA-bound evidence: `.tmp/release-gates/cc125a40a/`.
+- [x] `npm run check:merge-hygiene -- --base origin/epic/2696-admin-tenant-management-ux --head HEAD`
+  passes. `git diff --check` passes and the final changed-file debug-marker scan found no matches.
+- [x] No merge, deployment, shared tenant write, billing/provider operation, or STAGING/PROD change
+  is performed in this phase's Worker session.
+
+### Risks and decisions
+
+- PostHog's installed SDK types expose `before_send` as a capture-result transformation. The Admin
+  surface is selected from resolved app initialization, not an event property; nested URL/referrer
+  values and `$set`/`$set_once` person properties are included. Sentry's existing PII and secret
+  sanitizer remains composed with Admin request-URL redaction.
+- The registration endpoint returns its existing `RESOURCE_NOT_FOUND` 404 when no review
+  application exists. Only that response becomes the empty state; 401/403, network, and 5xx errors
+  retain their messages and Retry action.
+- The prior full Admin run's six #2750 failures are historical evidence only; this phase must run
+  the repaired standalone suite and full Admin suite on its own SHA.
+- #1923 STAGING persistence/publication checks, #2633/#2639 deployed evidence, and PROD
+  capability-read recovery remain explicit release-verification follow-ups. No release readiness
+  or deployed acceptance is claimed by this child PR.
+
+### Evidence
+
+The required local request-time compliance preflight passed before implementation against
+disposable API/MySQL/Redis fixtures: `no_breach`, reason `ALLOWED`, at
+`2026-10-24T16:34:12.472Z`, reference
+`PREFLIGHT-LOCAL-1792859561527-2026-10-25-ADMIN-TENANT-CONSOLE-INTEGRATION-CLEANUP`. Implementation
+commits are `cdb5c0a0f` (shared telemetry URL redaction) and `cc125a40a` (Admin registration
+journey and reconciled compliance declaration). The Admin suite passed 29 files/212 tests; the
+focused selector/registration files passed 25 tests; shared observability passed 2 files/86 tests.
+Five affected builds, lint, architecture, docs/strict ADR, compliance, and unchanged-version checks
+passed. The synthetic browser journey passed on desktop/mobile with query/history preservation and
+no page/console errors or horizontal overflow; its report and screenshots are under `.tmp/`.
+PostHog URL redaction was verified at `before_send` in the shared-client tests; live network event
+delivery was not observed in the browser run. The Testing Agent focused gate targeted at
+`cc125a40a` completed with `FAIL`: all 34 DB-tier test files passed, including
+`adminTenantLifecycle.integration.test.js`, while 27 suites failed in the 872-file fast tier.
+Failure origin was not baseline-compared. Full logs and `local_readiness.json` are under
+`.tmp/release-gates/cc125a40a/`. Child merge-hygiene passes against the registered epic base;
+`git diff --check` passes and the final changed-file debug-marker scan found no matches.
+
+### Post-merge verification
+
+- [ ] `deployment` — an authorized deployment role verifies the tested child SHA in DEV and records
+  the successful workflow URL and running Admin image/build identity; owner: deployment role; this
+  does not substitute for the aggregate soak.
+- [ ] `deployment` — after Wave 4 merges into the epic, obtain a qualifying DEV soak from the final
+  epic SHA under the release policy; verify the tenant journey on desktop and mobile and bind the
+  evidence to that SHA; owner: deployment role; blocks the aggregate PR readiness.
+- [ ] `operational` — retain #1923 STAGING persistence/publication, #2633/#2639 deployed evidence,
+  and PROD capability-read recovery as outstanding release verification; owner: existing issue
+  owners; blocks release qualification.
+- [ ] `compliance` — confirm the aggregate commit retains this declaration's reconciled preflight
+  reference and the compliance gate passes; owner: compliance sweep.
+
+### Next phase number
+
+Phase 561. Phase 560 depends on integrated Phases 543 and 544; no other explicit dependency blocks
+implementation.
+
+---
+
+## Phase 561 - Efficient tenant directory and Billing workspace (#2776)
+
+### Initiative and release
+
+DGFY Admin tenant management UX / Wave 5 of epic #2696.
+
+### Objective and scope
+
+Make `/admin/tenants` a lightweight, reusable directory view and move Revenue & Settlement into a
+master-only global Billing page and tenant-scoped detail section. Preserve current financial
+actions, reasons, audit behavior, and backend authority. Add validated browser sorting and paging,
+collapsible filters, a single keyboard-accessible tenant card link, and authenticated in-memory
+directory reuse. Archived tenant Billing is read-only. Classification: within existing Admin/API
+boundaries; no ADR change, tenant schema change, migration, or new financial action.
+
+### Status
+
+`completed` — scoped implementation validation passed, and child PR #2783 merged into the
+registered epic branch on 2026-10-25 at merge commit
+`6f3dcd31d5143b9e54b06ac07cce68bec1897548`. The outstanding DEV, performance, and operational checks
+remain tracked below and do not change implementation completion.
+
+### Dependencies
+
+- Phases 543–544 and 557 / Waves 2–4 are present on the registered epic base; the route foundation,
+  sections, and integration cleanup are available to this wave.
+- This entry moved from Phase 553 to Phase 561 across the dated 2026-10-26 collision notes above;
+  `develop` already reserves Phases 552–556.
+- Phase 546 (#2769) is already recorded on `origin/develop`; it is unrelated and does not block this
+  issue. No explicit dependency on #2769 exists. #1923 STAGING persistence/publication checks,
+  #2633/#2639 deployed capability evidence, and PROD capability-read recovery remain
+  release-verification work.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR Index](../architecture/adr/INDEX.md), [ADR 0047](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md),
+[ADR 0052](../architecture/adr/0052-tenant-revenue-ledger-and-settlement.md),
+[ADR 0089](../architecture/adr/0089-platform-admin-fifth-frontend-app-cross-host-admin-routing.md),
+[Platform Admin route permission matrix](../testing/platform-admin-route-permission-matrix.md),
+[Platform Admin Tenant Console](PLATFORM_ADMIN_TENANT_CONSOLE.md), and live issue #2776. The live
+tenant-revenue API fallback remains Platform Master-only; frontend route checks are usability
+guards, not a substitute for API authorization.
+
+### Implementation targets
+
+Admin: `Pages/TenantManager.jsx`, `Pages/TenantDetailLayout.jsx`, `Pages/TenantOverview.jsx`, the new
+global and detail Billing pages, `src/main.jsx`, `src/components/AdminLayout.jsx`,
+`src/features/admin/tenantDirectory/*`, `src/features/admin/tenantRevenue/*`, route policy/label
+tests, and affected integration tests. API: the tenant list transport/use case and focused tests.
+Docs: this entry, the tenant-console reference, and route permission matrix. No tenant migration,
+schema, API grant, or app-version change is in scope.
+
+### Implementation and test links
+
+- Admin directory and cache: [TenantManager](../../apps/dgfy-admin/Pages/TenantManager.jsx),
+  [directory context](../../apps/dgfy-admin/src/features/admin/tenantDirectory/TenantDirectoryContext.jsx),
+  [directory state](../../apps/dgfy-admin/src/features/admin/tenantDirectory/tenantDirectory.js),
+  and [toolbar](../../apps/dgfy-admin/src/features/admin/tenantDirectory/TenantDirectoryToolbar.jsx).
+- Billing and routing: [global Billing page](../../apps/dgfy-admin/Pages/TenantBilling.jsx),
+  [tenant Billing page](../../apps/dgfy-admin/Pages/TenantBillingDetail.jsx),
+  [read-only archived view](../../apps/dgfy-admin/src/features/admin/tenantRevenue/TenantRevenueReadOnlyPanel.jsx),
+  [route policy](../../apps/dgfy-admin/src/features/admin/adminRoutePolicy.js), and
+  [API list handler](../../apps/dgfy-api/src/modules/tenants/controllers/adminTenantHandlers.js)
+  with [list use case](../../apps/dgfy-api/src/modules/tenants/usecases/listTenantsUseCase.js).
+- Admin tests: [directory journey](../../apps/dgfy-admin/src/pages/__tests__/TenantManager.directory.integration.test.jsx),
+  [Billing journey](../../apps/dgfy-admin/src/pages/__tests__/TenantBilling.integration.test.jsx),
+  [route policy](../../apps/dgfy-admin/src/features/admin/adminRoutePolicy.test.js), and
+  [directory state](../../apps/dgfy-admin/src/features/admin/tenantDirectory/__tests__/tenantDirectory.test.js).
+- API tests: [list use case](../../apps/dgfy-api/tests/listTenants.usecase.test.js) and
+  [transport handler](../../apps/dgfy-api/tests/adminTenantHandlers.transport.test.js).
+- Child implementation PR: [#2783](https://github.com/Sieitzz/dgfy-platform/pull/2783).
+
+### Acceptance and validation evidence
+
+- [x] API lightweight transport skips all tenant capability connector calls, preserves safe list
+  shape/redaction, and leaves existing enriched behavior as the default; controller parses the
+  opt-in query correctly.
+- [x] Admin directory starts with one lightweight list request and no finance requests; the global
+  Billing route loads finance only when entered; master preselection begins with tenant-scoped
+  requests; delegates cannot mount Billing pages or trigger finance reads.
+- [x] Active detail Billing is locked to the route tenant; archived detail renders scoped read-only
+  records with no mutation actions.
+- [x] Directory filters stay collapsed by default; 10/20/50 page sizes, sorting, stable ties,
+  capability enrichment/loading/error states, archived behavior, URL/back/forward, card keyboard
+  navigation, and page → detail → back cache reuse are covered.
+- [x] Focused API/Admin tests, Admin build, changed API `node --check`, architecture, route-policy,
+  docs, compliance, app-version, and whitespace checks pass.
+- [x] Desktop and mobile rendered local journeys pass with request counts/timing recorded as
+  synthetic or local evidence; no deployed DEV or p95 claim is made before an authorized deployment
+  and Verifier observation.
+
+### Risks and decisions
+
+- Client-side paging remains appropriate for the current 67-row reference sample, but is not a
+  server-side search/pagination contract. The default list avoids per-active-tenant database reads;
+  requesting a capability facet still fetches enriched values and can remain costly.
+- In-memory list reuse may be stale after changes made by another admin. Manual Refresh, logout,
+  session-expiry, and successful tenant-mutation invalidation provide the refresh paths; finance
+  responses are not retained in the directory context or persistent browser storage.
+- Archived detail read-only presentation is not an API-level write prohibition. Existing
+  status-specific backend behavior and the separately tracked archived-state API question remain
+  unchanged.
+- The live issue and explicit operator direction choose one child PR into the registered epic
+  branch. The issue REST parent field was absent, while the open #2696 issue has the exact registered
+  branch marker and #2776's live body directs the epic route; implementation follows that explicit
+  route evidence.
+
+### Evidence
+
+The local request-time compliance preflight passed against disposable MySQL/Redis/API fixtures:
+`no_breach`, reason `ALLOWED`, at `2026-10-25T08:26:04.800Z`, reference
+`PREFLIGHT-LOCAL-1792916646344-2026-10-25-ADMIN-TENANT-DIRECTORY-BILLING-PHASE-547`; the
+declaration check passed for all three sensitive source files. The full Admin Vitest suite passed
+30 files/229 tests, including the updated archived Billing
+presentation assertion. Focused API Jest suites passed 2 suites/21 tests, and both changed API
+source files passed `node --check`. The Admin production build, architecture guardrails and
+controller-boundary checks, strict docs/ADR lint, compliance declaration check, app-version check,
+Admin lint (zero errors; one existing unused-helper warning in `src/main.jsx`), and `git diff
+--check` passed. The full API Jest suite was also attempted but its database-backed suites could not
+connect to local MySQL; the focused changed-surface suites passed independently.
+
+The local Chromium journey used 67 synthetic rows: one initial light-list request (`19,586`
+uncompressed JSON bytes, `include_capabilities=false`), zero finance reads on the directory, no
+repeat list request after returning from Billing, and six tenant-detail finance reads all scoped to
+the selected fixture ID. Global Billing produced ten fixture reads in Vite development because
+React StrictMode replays its five read effects. The route-fixture fulfill handler took 1.55 ms for
+the initial list, which is harness timing rather than API latency. Desktop and 390 px mobile views
+had no page errors or horizontal overflow; screenshots are retained in the ignored local
+`apps/dgfy-admin/.tmp/qa-2776/` directory. No DEV/PROD performance or p95 claim is made. No merge,
+deployment, production data access, or financial mutation occurred in this Worker session.
+
+### Completion date
+
+2026-10-25 — PR #2783 merged into the registered epic branch at
+`6f3dcd31d5143b9e54b06ac07cce68bec1897548`; scoped implementation validation passed.
+
+### Post-merge verification
+
+- [ ] `deployment` — after the child PR integrates into the epic, the authorized deployment role
+  verifies the tested epic SHA in DEV and records the workflow and running Admin build identity;
+  owner: deployment role.
+- [ ] `verification` — verify master and delegate route access, one scoped active Billing view, and
+  archived read-only presentation against the deployed epic candidate; owner: Verifier; blocks
+  tenant-console aggregate acceptance.
+- [ ] `performance` — capture default list request count, response bytes, and timing in the deployed
+  DEV environment and compare with the pre-change healthy baseline when available; owner: Verifier
+  with API owner; no local synthetic result substitutes for this evidence.
+- [ ] `operational` — retain #1923 STAGING persistence/publication checks, #2633/#2639 deployed
+  capability evidence, and PROD capability-read recovery as outstanding release verification;
+  owner: existing issue owners.
+
+### Next phase number
+
+Phase 562. Phase 561 depends on the Wave 2–4 routes integrated on the epic branch; Phase 546 on
+`origin/develop` is unrelated and creates no additional dependency.
+
+## Phase 562 - Reduce always-loaded agent instructions and guard Claude Code budget (#2854)
+
+### Initiative and release
+
+Agent instruction loading / issue #2854, Phase 1 and Phase 3. Phase 2 is deferred.
+
+### Objective and scope
+
+Remove eager role-skill imports from AGENTS.md without deleting rule content, require role-shaped
+sessions to read the relevant canonical skill before acting, and add regression checks for eager
+skill imports and Claude Code's always-loaded instruction budget. Add fixture-based tests and
+extend the pre-commit trigger to cover CLAUDE.md and .claude/rules/**/*.md. No application
+runtime, API, database, or deployment behavior changes.
+
+### Status
+
+in_progress — implementation and local validation are underway on the #2854 Worker branch.
+
+### Dependencies
+
+None. Phase 561 and the active #2696 integration phases are unrelated. Phase 562 was the next
+number on fresh origin/develop at branch creation; recheck the ledger for a concurrent number
+claim before merge, per the lifecycle rules.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[PR Conventions](../ai/PR.md), [Planner/Worker Handoff Compatibility](../ai/PLANNER_WORKER_HANDOFF_COMPATIBILITY.md),
+and live issue [#2854](https://github.com/Sieitzz/dgfy-platform/issues/2854). Classification:
+no-architecture-impact; no applicable ADR or architecture exception is needed.
+
+### Implementation targets
+
+- [AGENTS.md](../../AGENTS.md), [checker](../../scripts/check-agent-surfaces.js),
+  [fixture tests](../../scripts/check-agent-surfaces.test.js), [.husky/pre-commit](../../.husky/pre-commit),
+  and the root [package.json](../../package.json).
+
+### Acceptance and validation evidence
+
+- [x] All role entries keep their canonical paths as plain text, the imperative load instruction
+      covers slash and free-text role-shaped requests, and the standing never --squash rule is
+      present in Merge Safety.
+- [x] The checker ignores fenced and inline code, catches direct and punctuated eager skill
+      imports, follows repo-local imports through depth 5, and warns/fails at the 120,000/150,000
+      character thresholds.
+- [x] Fixture tests cover transitive imports, unresolved targets, budget thresholds, staged
+      CLAUDE.md and .claude/rules/ paths, and a pre-existing role-path regression.
+- [x] Fresh Claude Code session confirms no startup budget warning and the canonical role files
+      load when /implement, /pm, and /pr-reviewer are invoked.
+- [x] npm run test:agent-surfaces, npm run check:agent-surfaces, npm run lint:docs,
+      npm run check:compliance -- --staged, node scripts/check-app-version-bump.js, and
+      git diff --check pass; the changed-file temporary-marker scan is clear.
+
+### Evidence (Worker run, 2026-10-27)
+
+- npm run test:agent-surfaces passed 13/13 fixture tests.
+- npm run check:agent-surfaces passed and measured 32,730 characters across
+  .claude/rules/bash-path-resolution.md (1,530), AGENTS.md (30,927), and CLAUDE.md (273).
+- Claude Code 2.1.294 opened in a fresh interactive session with no instruction-size warning.
+  /memory listed CLAUDE.md, imported AGENTS.md, the project bash-path rule, and user-global rules.
+  /implement, /pm, and /pr-reviewer each read their repository canonical SKILL.md; no issue, PR,
+  or code mutation was performed in that check.
+- npm run lint:docs passed (37 governed docs and 106 ADRs); node scripts/check-app-version-bump.js
+  passed. npm install reported dependencies up to date and package-lock.json stayed unchanged.
+- wc -c measured CLAUDE.md at 277 bytes, AGENTS.md at 31,143 bytes, and the project Claude rule at
+  1,538 bytes (32,958 bytes total). rg found no eager .agents/skills imports in the always-loaded
+  files. git diff --check passed.
+- The changed-file marker scan found only the existing AGENTS.md instruction that documents the
+  scan; no actionable debug or work-in-progress marker was present. Staged compliance checks passed
+  in both commits: no compliance-sensitive changes were detected and the API-contract rules passed.
+
+### Risks and decisions
+
+Phase 2 content trimming is out of scope; no instruction text was removed. User-global Claude
+rules are outside this checker, so the ≤60,000-character target leaves room for them. The checker
+counts JavaScript string length of UTF-8-decoded repository files. Role-specific checkpoints remain
+in canonical skills and authoritative references; AGENTS.md now requires those skills to be read
+before any slash or free-text role-shaped work. The Risk 1 audit also found a stale rc/* base-branch
+note in the Reviewer skill; docs/ai/PR.md and the release policy govern the current prefixes, and
+the broader open rule-surface audit #330 is the existing follow-up owner. That skill remains outside
+this PR's scope.
+
+### Completion date
+
+Not complete. Record only after this PR is merged and its scoped validation is complete.
+
+### Post-merge verification
+
+- [x] operational — Worker verified startup, /memory, and role loading in a fresh local session;
+  owner: Worker; blocks nothing after PR creation. No deployment or provider verification applies.
+
+### Next phase number
+
+Phase 563. No explicit dependency.
+
+## Phase 563 - Fully clear Storefront discovery searches (#2833 follow-up)
+
+### Initiative and release
+
+Storefront external discovery defaults, issue #2833 follow-up. Planner handoff:
+[`plan-2833.md`](../../.tmp/plan-2833.md). Ordinary Worker PR targeting `develop`.
+
+### Objective and scope
+
+Make every discovery cancellation control restore the default native-only dataset and clear stale
+search, category, filter, sort, pagination, selection, highlight, and cluster state. Preserve the
+current location and map camera as results discovery returns to the hero map. Keep the original
+partner eligibility and Proventous work from Phase 559 unchanged. No API, schema, migration,
+dependency, shared-package, or provider-eligibility changes are in scope.
+
+### Status
+
+`in_progress` — implementation and local validation are complete on
+`fix/2833-clear-discovery-search`; review and merge remain outstanding. No merge or deployment has
+occurred.
+
+### Dependencies
+
+None. Phase 559's merged eligibility contract is the existing behavior this follow-up preserves;
+its outstanding deployed verification is not a technical dependency.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0010](../architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md),
+[ADR 0071](../architecture/adr/0071-independently-deployable-frontend-apps.md),
+[External Discovery Redirect Foundation](EXTERNAL_DISCOVERY_REDIRECT_FOUNDATION.md),
+[Testing Guide](../testing/README.md), [Web Performance QA](../../.agents/skills/web-performance-qa/SKILL.md),
+and live issue [#2833](https://github.com/Sieitzz/dgfy-platform/issues/2833). Classification:
+`within-existing-boundary`; no ADR change or architecture exception is introduced.
+
+### Implementation targets
+
+Storefront discovery hooks and state, `StoresMap` camera lifecycle props, discovery search/category
+stages and results renderer; focused integration and map lifecycle tests; the external-discovery
+feature contract and this ledger entry. No backend/Admin or public API changes.
+
+### Acceptance and validation evidence
+
+- [x] Search X, active category chip, already-active dropdown category, **All**, and **Reset filters**
+  clear all query/filter/sort/page/selection/cluster state and issue one unsearched request with
+  `pin_scope=tenant_primary`.
+- [x] Text-only editing leaves the active category selected; X remains available for any active
+  filter. Pressed category chips and Beauty/Salon aliases expose the correct visible and accessible
+  state. Selecting another category still works and records its existing analytics event.
+- [x] Location coordinates survive category search and cancellation. Camera center, zoom, bearing,
+  and pitch survive the results-to-hero transition and data refresh; initial load, later search,
+  Near Me, and user map interaction keep their intended viewport behavior.
+- [x] Abort/sequence protection prevents stale responses from replacing the reset result; cancellation
+  returns map/cards/clusters to native-only content under the existing Phase 559 eligibility rules.
+- [x] Focused Storefront tests, `npm run build:store`, changed-file ESLint, architecture/docs/compliance,
+  version policy, whitespace checks, and local desktop/mobile rendered QA pass. No deployed
+  verification is claimed by this Worker phase.
+
+Validation evidence (2026-10-27): six focused Storefront suites passed (90 tests); the production
+Storefront build passed; changed-file ESLint exited 0 with 0 errors (existing warnings remain);
+architecture boundaries, governed-doc/ADR lint, compliance, and the correctly scoped develop-branch
+version check passed. Local Playwright rendered checks at desktop 1440×1000 and mobile 390×844 used
+synthetic discovery responses and a blank local map style; both cancellation flows returned an
+unsearched `tenant_primary` request and native-only content, with no browser console errors. Map
+camera/location retention and delayed-response/debounce behavior are covered by focused integration
+and lifecycle tests. Synthetic screenshots were kept under `/tmp`, outside the repository.
+
+### Risks and decisions
+
+The results and hero maps are separate mounts, so camera persistence uses a discovery-scoped ref and
+optional `StoresMap` props rather than global map state. Existing request abort and sequence guards
+must remain authoritative when cancellation races a pending response. The initial plan proposed
+Phase 560, but the live ledger had already claimed Phases 560–562; Phase 563 is the next available
+number. Worker board policy owns the `In progress` and `For Review` transitions even though the plan
+artifact requested no board changes.
+
+### Completion date
+
+Not complete. Record after the scoped PR is merged and implementation validation passes.
+
+### Post-merge verification
+
+- [ ] **deployment** — verify the merged Storefront SHA is deployed through the authorized release
+  process; owner: DGFY release operator; blocks deployed verification of #2833.
+- [ ] **operational** — verify each cancellation path, native-only content, and location/camera
+  retention on the deployed Storefront; owner: issue #2833 verifier; blocks closing #2833.
+
+### Next phase number
+
+Phase 564. No explicit dependency.
+
+---
+
+**Dated note, 2026-10-27 (develop sync) — local OPIS/POS BIR phases collided with landed develop phases:**
+
+The fetched develop branch reserves Phases 555–562 for its landed work. Per the continuous phase-numbering rules, those develop entries keep their numbers; this branch’s unmerged local BIR entries move from Phases 555–560 to Phases 563–568. This is a documentation renumber only; implementation files, tests, migrations, and evidence remain unchanged.
+
+| Phase | Owner | Disposition |
+|---:|---|---|
+| 555–560 | OPIS/POS BIR local implementation | moved to **563–568**; implementation and evidence preserved |
+| 555–562 | develop landed work | unchanged — reserved on develop |
+
+---
+
+---
+
+**Dated note, 2026-10-27 (subsequent develop sync) — Phase 563 was reserved on develop:**
+
+The fetched `develop` ledger now contains Phase 563 for the #2833 Storefront discovery follow-up. The `develop` reservation remains Phase 563; the six unmerged OPIS/POS BIR phases move from 563–568 to 564–569. Their internal phase references move with them. No implementation files, tests, migrations, or evidence are changed by this ledger resolution.
+
+## Phase 564 - OPIS & POS BIR implementation — Step 01 baseline and source completeness
+
+### Initiative and release
+
+OPIS & POS BIR implementation plan dated 2026-10-26. Working revision:
+`d56cee18700989e75fac3ba8c1fce334c6224145` on `codex/updates-pos`.
+
+### Objective and scope
+
+Execute Step 01 of the approved BIR implementation plan: verify the complete source
+baseline, app build surfaces, critical frontend/backend tests, migration status, and local
+runtime health before fiscal behavior changes. This phase does not certify BIR compliance,
+invent tax rules, or alter production financial records.
+
+### Status
+
+`in_progress` — source completeness, runtime launch, focused backend baseline, source
+re-audit, local Redis/connection-budget profile, and authenticated local compliance
+preflight are verified. External release evidence is not claimed by this local-only
+phase.
+
+### Dependencies
+
+The current working tree contains pre-existing user changes and Phase 554 remains in progress.
+The baseline evidence was collected without resetting or overwriting those changes. Final
+integrated BIR validation must use an isolated, traceable revision after the current work is
+dispositioned.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0007](../architecture/adr/0007-dual-mode-pos-compliance-program.md),
+[ADR 0014](../architecture/adr/0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md),
+[ADR 0042](../architecture/adr/0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md),
+[ADR 0045](../architecture/adr/0045-shared-pos-receipt-renderer.md), and
+[ADR 0087](../architecture/adr/0087-dedicated-back-office-fourth-frontend-app-opis.md).
+Classification: within-existing-boundary for baseline verification; later fiscal model or
+policy changes may require cross-boundary review under ADR 0039.
+
+### Implementation targets
+
+Step 01 changed only the existing POS controller facade and its route-test mock to restore the
+already-declared handler/export contract; no fiscal logic or migration changed. Evidence:
+[posController.js](../../apps/dgfy-api/src/controllers/posController.js),
+[posVoid.route.transport.test.js](../../apps/dgfy-api/tests/posVoid.route.transport.test.js),
+[BIR Step 01 baseline](../compliance/evidence/bir-step-01-baseline-2026-10-26.md).
+
+### Acceptance and validation evidence
+
+- [x] Complete API, migration-runner, POS, OPIS, receipt, shared-core, and shared-constants
+  source units are present in the working checkout.
+- [x] Architecture and documentation/ADR gates pass.
+- [x] POS, OPIS, Storefront, and IMS builds pass.
+- [x] POS and OPIS unit suites pass.
+- [x] Backend BIR/compliance/fiscal/offline-focused suites pass (29 suites / 234 tests).
+- [x] Local migrations report fully up; MySQL and all local app/API/device health endpoints
+  respond successfully.
+- [x] Compliance impact declaration is reconciled by the authenticated local preflight
+  for the pre-existing sensitive working-tree changes; no Docker or staging environment
+  is required for this local-only evidence.
+- [x] POS void transport suite is unblocked and passes after the controller-facade/test-mock
+  compatibility repair.
+- [x] Missing original BIR source-audit input is independently re-audited in the current
+  checkout; the replacement does not claim to reproduce the unavailable A01–A15 file.
+- [x] Redis and connection-budget environment findings are dispositioned for the local test
+  profile: Redis connected and `10 x 4 + 20 = 60 <= 151`.
+
+### Completion date
+
+Local baseline closure completed on 2026-10-27. External release evidence and formal
+review remain outside this local-only change.
+
+### Post-merge verification
+
+- [ ] Re-run the complete G0 evidence set against the exact release revision before any fiscal
+  release decision.
+- [ ] Confirm deployed API, POS, OPIS, printer package, and schema versions match the evidence
+  manifest.
+
+### Next phase number
+
+Phase 565. Step 02 — reviewed fiscal document specification.
+
+## Phase 565 - OPIS & POS BIR implementation — Step 02 fiscal specification draft
+
+### Initiative and release
+
+OPIS & POS BIR implementation plan dated 2026-10-26. Drafting follows Phase 564's passing
+code/test baseline; fiscal release evidence remains held.
+
+### Objective and scope
+
+Prepare a non-authoritative Fiscal Document Specification v1 that captures existing repository
+contracts and exposes every unresolved tax, numbering, printing, discount, adjustment, X/Z,
+eJournal/eSales, hardware, and offline decision for qualified review. Do not implement or infer
+statutory behavior from the draft.
+
+### Status
+
+`in_progress` — draft created; G1 remains pending product and tax/accounting review.
+This is an external approval gate, not a local POS/API/OPIS implementation blocker.
+
+### Dependencies
+
+Phase 564's local code/test baseline, source re-audit, and compliance declaration
+reconciliation are complete. Final fiscal code decisions depend on the approved
+specification and its examples; that reviewer work is outside the local-only change.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0007](../architecture/adr/0007-dual-mode-pos-compliance-program.md),
+[ADR 0014](../architecture/adr/0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md),
+[ADR 0033](../architecture/adr/0033-commercial-promo-and-statutory-pos-discount-boundaries.md),
+[ADR 0042](../architecture/adr/0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md),
+[ADR 0045](../architecture/adr/0045-shared-pos-receipt-renderer.md), and
+[Fiscal Document Specification v1](../compliance/FISCAL_DOCUMENT_SPEC_V1.md).
+Classification: cross-layer fiscal/compliance contract; any change to binding ADR clauses
+requires the ADR 0039 path and tech-lead approval.
+
+### Implementation targets
+
+[FISCAL_DOCUMENT_SPEC_V1.md](../compliance/FISCAL_DOCUMENT_SPEC_V1.md). No source, model, or
+migration behavior is changed by this phase.
+
+### Acceptance and validation evidence
+
+- [x] Existing server-owned fiscal/document contracts are recorded without changing them.
+- [x] All unresolved legal/product decisions are explicit and assigned to a reviewer.
+- [ ] Tax/accounting reviewer approves the fiscal document specification and examples.
+- [ ] Product owner approves supported hardware, offline, numbering, and release identity.
+- [ ] G1 is recorded as PASS with the final version and evidence manifest.
+
+### Completion date
+
+Not complete. Record after reviewer decisions and G1 validation.
+
+### Post-merge verification
+
+- [ ] Confirm the implemented release uses the approved specification version.
+- [ ] Confirm the evidence bundle contains the reviewer-approved examples and no fabricated
+  identifiers or unsupported statutory categories.
+
+### Next phase number
+
+Phase 566. Step 03 — fail-safe fiscal and business setup.
+
+## Phase 566 - OPIS & POS BIR implementation — Step 03 fiscal renderer fail-safe slice
+
+### Initiative and release
+
+OPIS & POS BIR implementation plan dated 2026-10-26. This phase begins the approved
+Step 03 work with local POS/OPIS validation; Docker and deployed-environment checks
+are not prerequisites for this local-only implementation.
+
+### Objective and scope
+
+Prevent POS receipt preview and iMin physical printing from silently treating a blank
+or arbitrary taxpayer setting as VAT. This is a renderer/printer safety slice only; it
+does not choose the final statutory enum, tax policy, fiscal identifiers, or migration
+strategy.
+
+### Status
+
+`in_progress` — the shared receipt surfaces now fail closed and the remaining
+server/client work is implemented by Phases 567–569. Tax/accounting approval and
+later release/regulatory evidence remain external review work, not local blockers.
+
+### Dependencies
+
+Phase 565 remains in progress. The renderer accepts existing repository spellings for
+backward-compatible reads (`VAT`, `VAT_REGISTERED`, `vat_registered`, and recognized
+non-VAT equivalents), but unknown values resolve to no classification. The
+authenticated local compliance preflight is reconciled against the worktree API;
+no Docker or staging environment is required for this local scope.
+
+### Implementation targets
+
+- `packages/pos-receipt/src/index.js` — shared taxpayer-type resolver and fail-closed
+  HTML/thermal rendering.
+- `packages/web-core/src/features/pos/components/ReceiptPrintView.jsx` — retained
+  legacy renderer guard for parity.
+- `packages/web-core/src/features/pos/utils/iminHardwareBridge.js` — physical print
+  text guard and no-command issuance result for incomplete fiscal setup.
+- `packages/web-core/src/features/pos/__tests__/receiptContractConformance.contract.test.js`
+  — explicit VAT/non-VAT fixtures and unknown-type regression coverage.
+- [Fiscal renderer impact declaration](../compliance/impact-declarations/2026-10-26-fiscal-renderer-taxpayer-fail-safe.md).
+
+### Acceptance and validation evidence
+
+- [x] Blank or unknown taxpayer type no longer defaults to VAT in the shared HTML
+  renderer.
+- [x] Blank or unknown taxpayer type no longer defaults to VAT in iMin text output.
+- [x] iMin fiscal print command is blocked with `FISCAL_SETUP_INCOMPLETE` when setup
+  is incomplete.
+- [x] Explicit VAT and non-VAT legacy values render the corresponding label.
+- [x] Focused receipt contract validation passed: 2 files / 25 tests.
+- [x] POS/OPIS settings expose explicit taxpayer choices and a fiscal setup
+  readiness status without silently rewriting stored legacy values.
+- [x] POS/OPIS client save validation blocks newly submitted unknown nonblank taxpayer
+  values; server-side validation is covered by Phases 568–569.
+- [x] Server-enforced taxpayer validation is implemented and covered by the local
+  API/migration/preflight evidence; statutory approval remains external.
+- [x] Server-side fiscal issuance boundary enforcement; implemented and covered by
+  Phase 568 API and POS checkout contracts.
+- [x] Existing-setting migration/readiness review without silent tenant rewriting;
+  completed by the Phase 568 idempotent local migration run.
+- [ ] Tax/accounting and product approval of the fiscal specification and examples
+  remain external review work.
+- [ ] G2 evidence and later release acceptance remain outside this local-only change.
+
+### Completion date
+
+Local implementation and validation are complete across Phases 566–569 on
+2026-10-27. Formal approval and later release evidence are intentionally not
+claimed here.
+
+### Post-merge verification
+
+- [x] Verify locally that a fiscal preview and iMin print are blocked for
+  blank/unknown taxpayer type.
+- [x] Verify locally that explicit VAT and non-VAT settings render only their
+  approved internal labels and identifier vocabulary.
+- [x] Reconcile the impact declaration with the authenticated local preflight;
+  later promotion evidence is outside this local-only scope.
+
+### Next phase number
+
+Phase 567. Complete Step 03 business setup validation and issuance-boundary work.
+
+## Phase 567 - OPIS & POS BIR implementation — POS/OPIS fiscal setup readiness slice
+
+### Initiative and release
+
+OPIS & POS BIR implementation plan dated 2026-10-26. This phase continues Step 03
+within the POS/OPIS-facing settings boundary only.
+
+### Objective and scope
+
+Make taxpayer classification explicit in the existing POS Setup / Business & Receipts
+settings surface consumed by both standalone POS and OPIS. Preserve legacy stored
+aliases for read compatibility, identify unknown values for review, and block POS/OPIS
+client saves that submit an unrecognized nonblank classification. No API, database,
+Storefront, or IMS source is changed by this slice.
+
+### Status
+
+`in_progress` — the POS/OPIS presentation and client guard are implemented, and
+the server validation, migration review, and fiscal issuance enforcement are
+closed by Phases 568–569. Later release/regulatory evidence remains deferred.
+
+### Dependencies
+
+Phase 566's shared renderer resolver is the read/validation vocabulary. The final
+stored enum remains subject to the approved Fiscal Document Specification and
+tax/accounting review. Existing unrelated dirty API/Storefront changes are outside
+this phase and were not modified.
+
+### Implementation targets
+
+- `packages/web-core/src/features/pos/settings/PosBusinessReceiptsSection.jsx` —
+  explicit VAT/non-VAT selector and Fiscal Setup Readiness status.
+- `packages/web-core/src/features/pos/settings/PosSettingsWorkspace.jsx` —
+  POS/OPIS client-side save guard for unknown nonblank taxpayer values.
+- `packages/web-core/src/features/pos/__tests__/PosSettingsWorkspace.behavior.test.jsx`
+  — configured, needs-review, selection, and save-blocking coverage.
+
+### Acceptance and validation evidence
+
+- [x] Recognized legacy `VAT` values display as the canonical VAT option without
+  changing the stored value until the user selects and saves a new option.
+- [x] Unknown stored values display `Needs review` and remain unchanged until the
+  user chooses an explicit option.
+- [x] POS/OPIS client save blocks unknown nonblank taxpayer values with an actionable
+  message.
+- [x] Targeted settings tests passed: 3 taxpayer/readiness tests; the full settings
+  behavior file passed 46/46 when run with the receipt suite.
+- [x] Server/API save validation and read-only projection enforcement; completed in
+  Phase 568 without changing persisted raw values.
+- [x] Existing-setting migration/readiness assignment without silent rewriting;
+  completed by the Phase 568 idempotent local migration run.
+- [ ] G2 fiscal issuance and later release acceptance remain outside this
+  local-only change; they are not a staging blocker.
+
+### Completion date
+
+Local implementation and validation are complete on 2026-10-27. Formal approval
+and later release evidence are intentionally not claimed here.
+
+### Post-merge verification
+
+- [x] Verify POS and OPIS both show the same readiness state for a legacy alias and
+  an unknown value in the local reload matrix.
+- [x] Verify local readiness/selection behavior persists through reload in both
+  surfaces.
+- [x] Verify locally that a fiscal receipt cannot issue until the server-side
+  taxpayer setup contract is present.
+
+### Next phase number
+
+Phase 568. Server-side fiscal setup validation and migration review after approval.
+
+## Phase 568 - OPIS & POS BIR implementation — server fiscal setup enforcement
+
+### Initiative and release
+
+OPIS & POS BIR implementation plan dated 2026-10-26. This phase is the approved
+API and migration-runner continuation of Step 03 after the POS/OPIS presentation
+and client guard work in Phase 567.
+
+### Objective and scope
+
+Make taxpayer classification a server-owned fiscal setup prerequisite while
+preserving existing recognized aliases. Reject unknown nonblank values on both
+settings write paths, expose canonical/readiness projections without rewriting
+the raw setting, block new fiscal issuance when setup is incomplete, and seed the
+tenant-scoped EAV setting idempotently across landlord and active tenant schemas.
+Non-fiscal checkout and historical idempotent replay remain unchanged.
+
+### Status
+
+`in_progress` — the scoped API, shared resolver, compliance policy, issuance
+guard, migration, local database execution, and authenticated local preflight are
+complete. Tax/accounting approval and later deployed/regulatory evidence remain
+outside this local-only change and are not local implementation blockers.
+
+### Dependencies
+
+Phase 566's fail-closed renderer and Phase 567's POS/OPIS readiness UI provide the
+shared vocabulary and presentation. The Fiscal Document Specification remains a
+draft and does not authorize new statutory tax semantics. Existing unrelated
+Storefront/IMS changes in the worktree remain outside this phase.
+
+### Implementation targets
+
+- `packages/shared-constants/src/posTaxpayerType.js` — canonical values, legacy
+  aliases, resolver, and readiness contract shared by API and receipt rendering.
+- `apps/dgfy-api/src/validators/settingsValidator.js` and settings use cases —
+  bulk/single write validation plus raw-preserving read projections.
+- `apps/dgfy-api/src/modules/compliance/policy/policyPacks.js` and
+  `compliancePolicyEngine.js` — taxpayer-type activation requirement and unknown
+  value handling.
+- `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js` — final fiscal issuance
+  guard after the server-owned receipt contract resolves.
+- `apps/dgfy-migration-runner/migrations/20261026000002-add-pos-taxpayer-type-setting.cjs`
+  — idempotent landlord/active-tenant seed with data-preserving rollback.
+- `docs/compliance/impact-declarations/2026-10-26-pos-fiscal-setup-server-enforcement.md`.
+
+### Acceptance and validation evidence
+
+- [x] Bulk and single settings writes reject unknown nonblank taxpayer values;
+  recognized legacy aliases and blank/not-configured values are handled explicitly.
+- [x] Settings reads expose canonical taxpayer resolution and fiscal setup
+  readiness without changing the persisted raw value.
+- [x] Compliance activation readiness marks blank/unknown taxpayer values as an
+  incomplete fiscal setting.
+- [x] New fiscal issuance fails with `FISCAL_SETUP_INCOMPLETE` when taxpayer
+  classification is unavailable; non-fiscal checkout is not changed.
+- [x] Migration harness proves landlord/active-tenant seeding, idempotency,
+  existing-value preservation, and data-preserving rollback.
+- [x] API BIR-focused suite passed locally: 6 suites / 104 tests.
+- [x] POS production build passed; OPIS production build passed; shared POS
+  settings/receipt tests passed: 2 files / 65 tests.
+- [x] Local non-production migration run completed against `sku_inventory_manager`;
+  the landlord schema and all 17 active tenant schemas contain the setting, and a
+  second run reported no pending migrations.
+- [x] Authenticated local compliance preflight passed for the two BIR declarations
+  with HTTP 200, `no_breach`, `can_proceed=true`, and `ALLOWED`; references are
+  recorded in the declaration front matter.
+- [ ] Tax/accounting and product approval of the fiscal specification and examples
+  remain external review work, not a local implementation blocker.
+- [ ] Deployed G2 fiscal issuance and non-fiscal regression evidence is deferred
+  outside this local-only change and is not a staging requirement for this work.
+
+### Completion date
+
+Local implementation and validation completed on 2026-10-27. The phase remains
+`in_progress` until this working-tree change follows the repository's normal
+commit/merge process; no PR or deployment is created by this local validation.
+
+### Post-merge verification
+
+- [x] Verify the migration adds `pos_taxpayer_type` to landlord and active tenant
+  schemas while preserving any existing alias or selected value; local verification
+  covered the landlord schema plus all 17 active tenant schemas.
+- [x] Verify POS and OPIS show the same readiness state for blank, legacy alias,
+  and unknown values after a local API reload.
+- [x] Verify a fiscal invoice cannot issue until the server-side taxpayer setup
+  requirement is configured, while non-fiscal checkout still succeeds locally.
+- [x] Reconcile the impact declaration with the authenticated local preflight;
+  any deployed promotion gate remains outside this local-only scope.
+
+### Next phase number
+
+Phase 569. Local POS fiscal setup preflight. Deployed G2 acceptance remains a later
+release gate after the local preflight is complete.
+
+## Phase 569 - OPIS & POS BIR implementation — local POS fiscal setup preflight
+
+### Initiative and release
+
+OPIS & POS BIR implementation plan dated 2026-10-26. This phase is intentionally
+local-only and does not depend on a develop, staging, or production environment.
+
+### Objective and scope
+
+Prove the Phase 568 taxpayer-type and fiscal-issuance safeguards against the local
+POS/API/migration stack before any external release activity. Validate the local
+POS operator experience, API behavior, migration state, and non-fiscal continuity
+with disposable local data. Do not call this phase deployed G2 certification.
+
+### Status
+
+`in_progress` — local stack, the full authenticated POS Settings regression
+(13/13), the disposable database fiscal-block/non-fiscal-success scenarios, and
+the fresh POS/OPIS three-state readiness matrix are green. OPIS local navigation
+and the device-bridge/iMin contract checks are green, and the POS admin
+readiness browser path now reaches the blank-state readiness panel after the
+branch-directory dismissal fix. No native iMin wrapper is available in
+Chromium for physical receipt evidence.
+
+### Local preflight execution record — 2026-10-26
+
+- The branch-scoped local smoke command now derives the catalog `location_id`
+  from the configured location, active shift, or first active tenant location;
+  the previous unscoped catalog request was the source of the
+  `POS_LOCATION_ACCESS_DENIED` smoke failure.
+- The focused API contract run passed 4 suites and 86 tests, including a
+  controlled fiscal-checkout guard asserting `FISCAL_SETUP_INCOMPLETE`, rollback,
+  and no transaction, inventory, or fiscal-event writes. Existing non-fiscal
+  checkout coverage continues to assert explicit `non_fiscal` persistence and
+  expected stock mutations.
+- The earlier authenticated local smoke run passed 10/10 checks. Its POS
+  Settings subset passed 2/2 authenticated browser checks; OPIS login/register
+  smoke passed 2/2;
+  targeted OPIS stability/settings tests passed 18/18; the OPIS production build
+  completed successfully.
+- The live Masu Cafe fiscal probe returned HTTP 403
+  `NON_COMPLIANT_FISCAL_DOCUMENT_BLOCKED` before the taxpayer-type guard because
+  the tenant is currently `non_compliant_active`. It did not create a financial
+  or stock mutation, but it is not evidence of the later
+  `FISCAL_SETUP_INCOMPLETE` branch.
+- Authenticated settings readback currently matches POS and the shared API
+  projection: raw taxpayer type is blank, resolved type is null, and readiness
+  is `not_configured` with `POS_TAXPAYER_TYPE_NOT_CONFIGURED`. Legacy-alias and
+  unknown persisted states were not written to the local tenant during this
+  run.
+- The new disposable MySQL integration gate passed 3/3 tests in
+  `apps/dgfy-api/tests/posTaxpayerTypeLocalPreflight.db.integration.test.js`.
+  Against a uniquely named migrated test database, a blank-taxpayer fiscal
+  requests with blank and unknown taxpayer values returned
+  `FISCAL_SETUP_INCOMPLETE` with unchanged transaction,
+  transaction-line, fiscal-event, item-stock, location-stock, and stock-movement
+  state; a non-fiscal checkout then succeeded with an explicit
+  `non_fiscal_slip`; and the real settings use case projected blank,
+  `VAT_REGISTERED`, and `legacy_unknown` as `not_configured`, `configured`, and
+  `needs_review`. The database was dropped during cleanup. The redacted evidence
+  manifest is [pos-taxpayer-type-local-preflight-2026-10-26.json](../compliance/evidence/pos-taxpayer-type-local-preflight-2026-10-26.json).
+- OPIS was exercised on the local 5176 surface by selecting Masu Cafe Indian
+  Foodszt from `/dgfy/companies`, then opening the dashboard and
+  `/settings/profile`. The settings check recorded no page errors or HTTP 5xx
+  responses. Reusing the POS browser state also produced one HTTP 400 on
+  `/api/v1/auth/refresh-token`, so this is not a clean cross-surface
+  authentication certification.
+- The local device bridge health endpoint returned HTTP 200 on port 5101.
+  The iMin native-driver, printer-availability, hardware-registry, receipt,
+  and Web POS ready-signal checks passed 31/31. Chromium does not expose a
+  native `window.iMinBridge`; native iMin evidence is explicitly deferred
+  because no iMin device or wrapper is available in the local environment.
+- A Windows driver test page was submitted to the installed Brother DCP-T720DW
+  printer through its WSD/IPP transport; the driver reported one page printed
+  and the queue cleared. This proves Windows printer transport only. The POS
+  device bridge still detected zero USB ESC/POS printers, and its test-print
+  command returned `TEST_PRINT_FAILED: No USB ESC/POS printers were detected`.
+  The wireless browser-print path remains the applicable local printer path;
+  USB ESC/POS bridge evidence is deferred because no compatible device is
+  available. Operator confirmation of paper output is pending.
+- The first fresh authenticated POS settings attempt reproduced a real
+  branch-directory race: an explicit directory dismissal was followed by a
+  late hydration reopen that intercepted Settings/POS Setup navigation.
+  `TerminalPage` now remembers an explicit directory dismissal for the current
+  session, resets it on an intentional directory open or session end, and the
+  branch-directory helper has a regression contract for the suppression rule.
+  Selecting `View Branch` remains intentionally read-only and was not used as a
+  workaround.
+- After that fix, a fresh local admin path completed authentication and tenant
+  selection, kept the branch directory closed after the hydration wait, handled
+  the admin-only `Skip for Admin` shift gate, opened Settings → POS Setup →
+  Business & Receipts, and read fiscal readiness as `not_configured`. The final
+  authenticated Settings regression file passed 13/13. No page errors or HTTP
+  5xx responses were recorded after sign-in; the initial unauthenticated shell
+  may issue a 401 while it restores the local session.
+- A fresh local browser matrix reloaded POS on port 5174 and OPIS on port 5176
+  for blank, `VAT_REGISTERED`, and `legacy_unknown` values. POS and OPIS both
+  projected `not_configured`, `configured`, and `needs_review` respectively;
+  POS kept the branch selector closed after hydration for all three states, and
+  neither surface recorded authenticated runtime errors. The original blank
+  tenant setting was restored after the matrix.
+- The authenticated Settings regression setup now waits for delayed startup
+  branch hydration before clicking Settings. This removes a harness race where
+  stored-auth tests could click behind a still-opening branch dialog; it does
+  not weaken the product dialog or permission behavior.
+
+### Worktree-local revalidation — 2026-10-27
+
+- The worktree API on `127.0.0.1:5002` passed the authenticated POS smoke path:
+  health, DGFY login, company selection, tenant session, locations, current
+  shift, user/settings, catalog, and device status all returned HTTP 200.
+- The worktree POS on `127.0.0.1:5180` passed the three-state browser matrix:
+  blank → `not_configured`, `VAT_REGISTERED` → `configured`, and
+  `legacy_unknown` → `needs_review`. The branch dialog remained closed after
+  hydration and the runtime capture recorded no page errors, console errors,
+  failed requests, or HTTP 5xx responses.
+- The worktree OPIS on `127.0.0.1:5181` passed the same three-state matrix;
+  each settings projection returned HTTP 200 with the expected readiness state,
+  and the runtime capture recorded no errors or HTTP 5xx responses.
+- Both browser runs restored the local tenant's original blank taxpayer setting.
+  These worktree ports supersede the earlier shared-XAMPP-port observations;
+  no staging or deployed environment was used.
+
+### Dependencies
+
+Phase 568 local implementation and migration validation. No branch promotion,
+remote deployment, external tenant, or tax/accounting sign-off is required for
+this local preflight.
+
+### Acceptance and validation evidence
+
+- [x] Local POS, API, device bridge, Storefront, SKUpervisor, and MySQL services
+  start and respond on their configured local ports.
+- [x] Local migration runner applies the taxpayer-type setting idempotently across
+  the landlord and active tenant schemas; a second run reports no pending work.
+- [x] Authenticated local POS Settings regression suite passed 13/13 after the
+  branch-directory dismissal fix, including responsive navigation, keyboard
+  focus, branch editing, uploads, pagination, and the all-settings smoke path.
+- [x] Local POS login, smoke, security-header, input-safety, and long-input tests
+  passed: 6 tests.
+- [x] With a disposable local tenant, prove blank and unknown taxpayer setup blocks
+  fiscal issuance with `FISCAL_SETUP_INCOMPLETE` and causes no financial or stock
+  mutation.
+- [x] With the same controlled local setup, prove non-fiscal checkout still
+  succeeds and remains explicitly non-fiscal.
+- [x] At the local API settings boundary, prove blank, recognized legacy-alias,
+  and unknown taxpayer values produce deterministic readiness projections.
+- [x] Reload POS and OPIS after blank, recognized legacy-alias, and unknown values
+  and capture matching readiness states.
+- [x] Validate the local receipt-renderer/browser-print contract and the installed
+  Windows wireless printer transport. Physical paper confirmation remains
+  operator evidence, not a local code blocker.
+
+### Explicitly deferred hardware evidence
+
+- Native iMin wrapper and physical iMin receipt evidence are deferred until an
+  iMin device/wrapper is available. This is an environment limitation, not a
+  failed POS/OPIS implementation test.
+- Direct USB ESC/POS device-bridge evidence is deferred because the available
+  local printer uses WSD/IPP wireless transport. The existing POS browser-print
+  fallback is the applicable local path for this printer.
+
+### Completion date
+
+Local engineering scope complete on 2026-10-27. The phase remains `in_progress`
+until the working-tree change follows the repository's normal commit/merge
+process; no staging or production validation is required for this local phase.
+
+### Post-merge verification
+
+- [x] Preserve the local evidence manifest with the exact local commit, migration
+  result, test commands, redacted tenant identifier, and before/after mutation
+  checks.
+- [ ] Keep later release/regulatory fiscal acceptance separate; local completion
+  must not be used as deployed or formal BIR certification.
+
+### Next phase number
+
+Phase 570. Later release/regulatory acceptance is deferred outside
+this local-only change and is not a staging blocker.
+
+## Phase 570 - Per-app staging-refresh artifacts and tooling-only repairs (#2936)
+
+### Initiative and release
+
+Release-candidate lifecycle repair for candidate `2026-10-27-01`.
+
+### Objective and scope
+
+Allow v4 staging refresh history to truthfully record a one-sided API or Migration Runner artifact
+when content-equivalence selects only one image. Allow a staging repair with no deployable app
+inputs to declare an empty `apps_touched` list only with a non-empty reason. Preserve paired backend
+dispatch, staging-repair backend pairing, production `release_revision.apps` pairing, and append-only
+refresh 5 history. This is tooling and documentation only; no app inputs or candidate manifest are
+changed.
+
+### Status
+
+`in_progress` — implementation and focused/governed-document validation are underway; merge and
+live refresh-5 verification remain outstanding.
+
+### Dependencies
+
+Issue #2936, ADR 0081 Decision 8, the v4 candidate validator, and candidate `2026-10-27-01`.
+No earlier phase dependency blocks this repair.
+
+### Acceptance and validation evidence
+
+- [x] v4 refresh accepts an API-only or Migration-Runner-only `apps_touched` and matching artifact,
+      with per-app source lineage advancing only for the selected app.
+- [x] A staging repair accepts `apps_touched: []` only with a non-empty reason; initial revisions
+      and repairs without a reason continue to reject empty selections.
+- [x] A one-sided production `release_revision.apps` backend map remains rejected, and paired
+      backend dispatch behavior is unchanged.
+- [x] Refresh 5 history remains unchanged and records only `dgfy-api` truthfully.
+- [x] ADR 0081, release policy, promoter runbook, release note, and this phase record agree on the
+      scoped behavior and safety boundaries.
+- [x] Focused candidate-validator tests (57/57), `npm run check:adr` (106 ADRs),
+      `npm run lint:docs` (37 governed docs),
+      `npm run check:compliance`, and `git diff --check` pass.
+
+### Links
+
+- Issue: #2936; planner handoff `/private/tmp/claude-501/-Users-pat-orca-workspaces-dgfy-platform-fix-staging-2026-10-27-01-1/04fa57e3-e397-4214-8620-9e72139934af/scratchpad/builder-handoff-2936.md`.
+- PR: #2937, staging repair branch `fix/staging/2026-10-27-01-1`.
+- ADR: 0081 Decision 8 and the 2026-10-29 amendment; ADR 0039 default-tier amendment path.
+- Policy: `docs/ops/RELEASE_CANDIDATE_POLICY.md` 2026-10-29 amendment.
+- Implementation: `scripts/check-promotion-candidate.js` and
+  `scripts/check-promotion-candidate.test.js`.
+- Procedure and release note: `.agents/skills/promoter/references/promotion-runbook.md` and
+  `docs/releases/notes/2026-10-27-01.md`.
+
+### Completion date
+
+Not complete. Set only after the scoped implementation is merged and validation passes.
+
+### Post-merge verification
+
+- [ ] operational — run and record the refresh-5 content-equivalence deploy against the live
+      out-of-repo manifest: rebuild `dgfy-api`, skip content-equivalent `dgfy-migration-runner`,
+      and verify the refreshed SHA-bound observation and qualification; owner: promoter; blocks
+      release qualification. Preserve the existing refresh-5 history entry as `dgfy-api` only.
+
+### Next phase number
+
+Phase 571. No explicit dependency.

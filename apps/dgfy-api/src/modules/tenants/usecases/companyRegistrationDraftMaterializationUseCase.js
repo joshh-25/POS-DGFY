@@ -381,7 +381,7 @@ export const buildMaterializeCompanyRegistrationDraftUseCase = ({
         .filter((upload) => upload.category === 'menu_upload')
         .map((upload) => upload.id);
 
-    const tenantSequelize = await tenantConnector.getConnection(plainTenant);
+    const tenantSequelize = await tenantConnector.getConnection(plainTenant, 'usecase.company-registration-draft');
     const tenantModels = getTenantModels(tenantSequelize);
     const tenantContext = {
         ...tenantModels,

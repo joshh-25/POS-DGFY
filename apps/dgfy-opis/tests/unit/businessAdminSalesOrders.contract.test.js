@@ -30,7 +30,7 @@ describe('Business Admin Sales & Orders consolidation contract', () => {
         expect(businessAdminPage).toContain('transaction_id=${encodeURIComponent(id)}');
         expect(businessAdminPage).toContain('Select a transaction to open the original POS receipt popup.');
         expect(businessAdminPage).toContain('onOrderSelect={onOrderSelect}');
-        expect(businessAdminPage).toContain('businessAdminApi.orderDetail(requestedOrderId)');
+        expect(businessAdminPage).toContain('businessAdminApi.orderDetail(requestedOrderId, controller ? { signal: controller.signal } : {})');
         expect(businessAdminPage).toContain('onClose={handleOrderDetailClose}');
         expect(businessAdminPage).toContain('BusinessAdminReceiptModal');
     });

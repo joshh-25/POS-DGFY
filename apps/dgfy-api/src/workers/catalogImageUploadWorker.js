@@ -33,7 +33,7 @@ const unlinkQuietly = async (filePath) => {
 const buildTenantContext = async (tenantId) => {
     const tenant = await findTenantById(tenantId);
     if (!tenant) return null;
-    const sequelize = await tenantConnector.getConnection(tenant);
+    const sequelize = await tenantConnector.getConnection(tenant, 'worker.catalog-image-upload');
     return {
         sequelize,
         tenantId: tenant.id,
