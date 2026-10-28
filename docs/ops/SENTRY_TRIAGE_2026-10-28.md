@@ -15,14 +15,14 @@ so any conclusion below that depends on event detail is marked unconfirmed.
 | Issue | Env | Count | Bucket | Action |
 |---|---|---|---|---|
 | DGFY-POS-1Q (`replaceAll` in the maplibre worker) | PROD | 1 (7d), handled:no | genuine defect | filed #2919 |
-| DGFY-BACKEND-Y (ConnectionManager closed, `GET /api/v1/pos/catalog`) | PROD | 2 (7d), handled:yes | genuine defect, below the handled:yes floor | filed #2920 (operator-approved exception, see below); its original idle-cleanup lead is refuted by the log excerpt, re-scope pending |
+| DGFY-BACKEND-Y (ConnectionManager closed, `GET /api/v1/pos/catalog`) | PROD | 2 (7d), handled:yes | genuine defect, below the handled:yes floor | filed #2920 (operator-approved exception, see below); its original idle-cleanup lead is refuted by the log excerpt; re-scoped in place to the LRU eviction thrash |
 | DGFY-POS-1D (AxiosError 500, regressed) | PROD | 1 (7d), 2 (90d) | likely the same incident as BACKEND-Y (unconfirmed: no event-level request-id match) | folded into #2920 |
 | DGFY-POS-1P (COUNTER-01 in use by another cashier) | PROD | 1 (7d), handled:yes | known, open owners #1073 / #1074 | commented, not filed |
 | DGFY-POS-10 (COUNTER-02 in use, regressed) | STAGING | 1 (7d), 4 (90d) | same as POS-1P | commented, not filed |
 
 **Filed this run:** #2919, #2920 (cap: 3; 2 used)
 **Resolved in Sentry:** none
-**Commented, not filed (existing owners):** #1074, #1073
+**Commented, not filed (existing owners):** #1074, #1073, and #2560 (eviction-thrash evidence, no code requested)
 
 ### DGFY-POS-1Q: worker realm gets no ES-compat shims (#2919)
 
@@ -77,7 +77,9 @@ Only aggregates are recorded here.
 What this changes:
 
 - #2920's title and suspected-cause section describe the refuted idle-cleanup lead. The `cleanupIdleConnections`
-  re-check is still correct hygiene but would not have prevented this event. Re-scope is pending Pat's decision.
+  re-check is still correct hygiene but would not have prevented this event. Pat chose to re-scope #2920 in
+  place: it now covers the eviction thrash, and its first step is attributing which callers drive the churn
+  before any fix. The evidence was also commented on #2560, with the reopen decision left to Pat.
 - Two statements in the first version of this section were wrong and are withdrawn: that LRU eviction was
   "implausible with this few tenants", and that #2623 being live meant this was "not an #2560 trigger". #2623
   (`a9b8f2b04`) is an ancestor of PROD `ef85ba0f6`, and this excerpt has the shape of the reopen trigger Pat set
@@ -122,8 +124,8 @@ Issue-level status only; none of this was event-verified.
 
 ## Open, not addressed this run
 
-- #2920 needs a re-scope decision (LRU eviction thrash vs. the original idle-cleanup guard, and whether this
-  reopens #2560). No implementation has started.
+- #2920's attribution step (which callers drive the 20-slot cache thrash) is the open item, and whether this
+  reopens #2560 is Pat's call. No implementation has started.
 - No Sentry issue was resolved, and no noise-policy threshold was changed.
 
 **Re-verification query for next run:** `issue:DGFY-BACKEND-Y environment:PROD` and
