@@ -65,11 +65,13 @@ function assertDigest(value, label) {
 
 // #1610 / #1542 (ADR 0081 Decision 8 amendments): each staging or release repair declares which
 // apps it actually rebuilt/relabeled. dgfy-api and dgfy-migration-runner are always rebuilt as one
-// paired unit (a single build_api flag covers both -- see deploy.yml's/deploy-main.yml's pairing
-// comment), so a repair that touches either always lists both. This is what
+// paired unit for staging_repair and release-repair entries (a single build_api flag covers both --
+// see deploy.yml's/deploy-main.yml's pairing comment), so a repair that touches either lists both.
+// staging_refresh entries opt out: their content-equivalence plan resolves backend images per app,
+// so #2936 allows the artifact record to reflect a one-sided rebuild. This is what
 // resolveCandidateSourceShaByApp below walks to answer "which SHA is THIS app's candidate source
 // identity" per app, instead of assuming every app advanced to the same current_staging_sha.
-function assertAppsTouched(value, position, { allowEmpty = false } = {}) {
+function assertAppsTouched(value, position, { allowEmpty = false, requirePairedBackend = true } = {}) {
   assert(Array.isArray(value) && (allowEmpty || value.length > 0), `Repair revision ${position} must declare a non-empty apps_touched array`, 'MISSING_APPS_TOUCHED');
   const seen = new Set();
   for (const app of value) {
@@ -84,11 +86,13 @@ function assertAppsTouched(value, position, { allowEmpty = false } = {}) {
   // return different SHAs for dgfy-api vs dgfy-migration-runner while PROD actually stamps both
   // with the same API-group SHA -- incorrect provenance, or an avoidable parity failure. Reject it
   // outright rather than silently accepting a manifest that can't be honestly resolved per-app.
-  assert(
-    seen.has('dgfy-api') === seen.has('dgfy-migration-runner'),
-    `Repair revision ${position}'s apps_touched must list dgfy-api and dgfy-migration-runner together or not at all (they are always rebuilt as one paired unit) -- got: ${value.join(', ')}`,
-    'ONE_SIDED_API_MIGRATION_PAIR'
-  );
+  if (requirePairedBackend) {
+    assert(
+      seen.has('dgfy-api') === seen.has('dgfy-migration-runner'),
+      `Repair revision ${position}'s apps_touched must list dgfy-api and dgfy-migration-runner together or not at all (they are always rebuilt as one paired unit) -- got: ${value.join(', ')}`,
+      'ONE_SIDED_API_MIGRATION_PAIR'
+    );
+  }
 }
 
 function assertReleaseBranch(branch, candidateId, revision) {
@@ -489,7 +493,9 @@ function validatePromotionCandidateV4(manifest) {
     assertRepairSeqBranch(revision.branch, manifest.candidate_id, repairSeq);
     assert(Number.isInteger(revision.pr) && revision.pr > 0, `Staging repair ${repairSeq} must identify its PR`, 'MISSING_REPAIR_PR');
     assert(Number.isInteger(revision.issue) && revision.issue > 0, `Staging repair ${repairSeq} must identify its issue`, 'MISSING_REPAIR_ISSUE');
-    assertAppsTouched(revision.apps_touched, `staging repair ${repairSeq}`);
+    assertAppsTouched(revision.apps_touched, `staging repair ${repairSeq}`, {
+      allowEmpty: typeof revision.reason === 'string' && revision.reason.trim().length > 0,
+    });
   }
   const uniqueTimelineShas = new Set([manifest.revisions[0].sha]);
   for (const { entry } of allOps) {
@@ -512,7 +518,7 @@ function validatePromotionCandidateV4(manifest) {
     assert(entry.branch === `to-staging/${manifest.candidate_id}-refresh-${seq}`, `Refresh ${seq} must use to-staging/${manifest.candidate_id}-refresh-${seq}`, 'INVALID_REFRESH_BRANCH');
     assert(Number.isInteger(entry.pr) && entry.pr > 0, `Refresh ${seq} must identify its PR`, 'MISSING_REFRESH_PR');
     assert(typeof entry.reason === 'string' && entry.reason.trim(), `Refresh ${seq} reason must be non-empty`, 'MISSING_REFRESH_REASON');
-    assertAppsTouched(entry.apps_touched, `staging refresh ${seq}`, { allowEmpty: true });
+    assertAppsTouched(entry.apps_touched, `staging refresh ${seq}`, { allowEmpty: true, requirePairedBackend: false });
     for (const app of entry.apps_touched) refreshApps.add(app);
     assert(Array.isArray(entry.artifacts), `Refresh ${seq} artifacts must be an array`, 'INVALID_REFRESH_ARTIFACTS');
     const artifactApps = new Set();
