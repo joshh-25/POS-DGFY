@@ -34258,7 +34258,7 @@ No earlier phase dependency blocks this repair.
 ### Links
 
 - Issue: #2936; planner handoff `/private/tmp/claude-501/-Users-pat-orca-workspaces-dgfy-platform-fix-staging-2026-10-27-01-1/04fa57e3-e397-4214-8620-9e72139934af/scratchpad/builder-handoff-2936.md`.
-- PR: (this PR), staging repair branch `fix/staging/2026-10-27-01-1`.
+- PR: #2937, staging repair branch `fix/staging/2026-10-27-01-1`.
 - ADR: 0081 Decision 8 and the 2026-10-29 amendment; ADR 0039 default-tier amendment path.
 - Policy: `docs/ops/RELEASE_CANDIDATE_POLICY.md` 2026-10-29 amendment.
 - Implementation: `scripts/check-promotion-candidate.js` and

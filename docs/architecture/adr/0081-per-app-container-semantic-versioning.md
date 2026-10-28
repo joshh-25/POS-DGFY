@@ -1030,4 +1030,4 @@ only. Decision 7's `[binding]` immutable-tag rule, Decision 6's floor rules, and
 map pairing are unchanged. Full detail: #2936, `scripts/check-promotion-candidate.js`,
 `scripts/check-promotion-candidate.test.js`, and `docs/ops/RELEASE_CANDIDATE_POLICY.md`.
 
-PR: (this PR). Closes #2936.
+PR: #2937. Closes #2936.

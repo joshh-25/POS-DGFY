@@ -2198,4 +2198,4 @@ refresh record to claim an app it did not rebuild.
 7's `[binding]` immutable-tag rule and production release-map pairing remain unchanged. See #2936,
 the promoter runbook, validator tests, and Phase 570 in the implementation ledger.
 
-PR: (this PR). Closes #2936.
+PR: #2937. Closes #2936.
