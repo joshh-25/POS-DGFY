@@ -2100,6 +2100,10 @@ export default function TerminalOperationsWorkspace({
   const isVoucherManagementView = effectiveViewMode === 'settings_vouchers';
   const isPricelistManagementView = effectiveViewMode === 'settings_pricelists';
   const isAffiliateManagementView = effectiveViewMode === 'settings_affiliates';
+  const requiresAuthenticatedSettings = isSettingsView
+    || isVoucherManagementView
+    || isPricelistManagementView
+    || isAffiliateManagementView;
   const isFullBleedCatalogView = effectiveViewMode === 'items'
     || isAffiliateManagementView
     || isVoucherManagementView
@@ -2180,6 +2184,20 @@ export default function TerminalOperationsWorkspace({
       onNavigateToOrders: handleNavigateToOrders,
       workspacePaneRef
     };
+
+    if (requiresAuthenticatedSettings && !terminalUser?.user_id && !terminalUser?.id) {
+      return (
+        <div
+          data-testid="pos-settings-auth-required"
+          role="status"
+          aria-live="polite"
+          className="rounded-xl border border-blue-200 bg-blue-50 p-6 text-sm text-blue-900"
+        >
+          <p className="font-extrabold">Sign in to continue</p>
+          <p className="mt-1">POS settings will load after your account is authenticated.</p>
+        </div>
+      );
+    }
 
     switch (effectiveViewMode) {
     case 'incoming_queue':
@@ -2630,6 +2648,7 @@ export default function TerminalOperationsWorkspace({
     terminalUser,
     todayDashboard,
     effectiveViewMode,
+    requiresAuthenticatedSettings,
     workspacePaneRef,
     viewMode
   ]);

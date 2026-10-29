@@ -195,6 +195,17 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsWorkspaceContent).toContain("case 'settings_affiliates':");
   });
 
+  it('does not mount protected settings before the POS account is authenticated', () => {
+    const authGuardIndex = terminalOperationsWorkspaceContent.indexOf('data-testid="pos-settings-auth-required"');
+    const settingsMountIndex = terminalOperationsWorkspaceContent.indexOf('<SettingsWorkspace');
+
+    expect(terminalOperationsWorkspaceContent).toContain('const requiresAuthenticatedSettings = isSettingsView');
+    expect(terminalOperationsWorkspaceContent).toContain('Sign in to continue');
+    expect(terminalOperationsWorkspaceContent).toContain('POS settings will load after your account is authenticated.');
+    expect(authGuardIndex).toBeGreaterThan(-1);
+    expect(settingsMountIndex).toBeGreaterThan(authGuardIndex);
+  });
+
   // #732: Vouchers/Pricelists promoted out of the Settings tab strip to their own top-level nav
   // modes, mirroring settings_affiliates's own earlier promotion exactly.
   it('promotes Vouchers and Pricelists to top-level nav modes, out of the Settings tab strip', () => {
