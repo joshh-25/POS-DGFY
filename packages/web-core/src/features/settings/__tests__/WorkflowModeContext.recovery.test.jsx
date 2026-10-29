@@ -306,6 +306,48 @@ describe('WorkflowModeProvider last-known-good fallback and recovery (issue #282
       expect(settingsServiceMock.getAllSettings).toHaveBeenLastCalledWith({ force: true });
     });
 
+    it('re-fetches immediately when browser session recovery publishes a new session', async () => {
+      settingsServiceMock.getAllSettings
+        .mockRejectedValueOnce(new Error('settings unavailable'))
+        .mockResolvedValueOnce(FNB_SETTINGS);
+      renderProvider();
+      await waitFor(() => expect(text('error')).toBe('settings unavailable'));
+      expect(text('mode')).toBe('food_manufacturing');
+
+      act(() => {
+        window.dispatchEvent(new Event('auth:session-updated'));
+      });
+
+      await waitFor(() => expect(text('mode')).toBe('fnb'));
+      expect(text('workflow-source')).toBe('server');
+      expect(text('resolved')).toBe('true');
+      expect(text('error')).toBe('none');
+      expect(settingsServiceMock.getAllSettings).toHaveBeenCalledTimes(2);
+      expect(settingsServiceMock.getAllSettings).toHaveBeenLastCalledWith({ force: true });
+    });
+
+    it('loads settings after tenant session activation without a page refresh', async () => {
+      browserSessionMock.getAccessToken.mockReturnValue('');
+      browserSessionMock.refreshBrowserSession.mockResolvedValue('');
+      settingsServiceMock.getAllSettings.mockResolvedValue(FNB_SETTINGS);
+      renderProvider();
+
+      await waitFor(() => expect(text('resolved')).toBe('true'));
+      expect(text('workflow-source')).toBe('unresolved');
+      expect(settingsServiceMock.getAllSettings).not.toHaveBeenCalled();
+
+      browserSessionMock.getAccessToken.mockReturnValue('tenant-session-token');
+      act(() => {
+        window.dispatchEvent(new Event('auth:session-updated'));
+      });
+
+      await waitFor(() => expect(text('mode')).toBe('fnb'));
+      expect(text('workflow-source')).toBe('server');
+      expect(text('resolved')).toBe('true');
+      expect(settingsServiceMock.getAllSettings).toHaveBeenCalledTimes(1);
+      expect(settingsServiceMock.getAllSettings).toHaveBeenCalledWith({ force: true });
+    });
+
     it('does not start a second refresh while one is already in flight', async () => {
       let resolveRecovery;
       settingsServiceMock.getAllSettings

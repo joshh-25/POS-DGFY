@@ -261,7 +261,15 @@ export function WorkflowModeProvider({ children }) {
 
   useEffect(() => {
     const handleAuthLogin = () => {
+      if (recoveryNeededRef.current && inFlightRefreshesRef.current > 0) return;
       refreshWorkflowMode({ force: true });
+    };
+    // The API interceptor may recover a 401 by refreshing the browser session without emitting
+    // the login event. Re-run the failed settings bootstrap as soon as the new session is
+    // published so POS checkout is not left blocked until a manual page refresh or backoff retry.
+    const handleAuthSessionUpdated = () => {
+      if (!recoveryNeededRef.current || inFlightRefreshesRef.current > 0) return;
+      refreshWorkflowMode({ force: true, background: true });
     };
     // Issue #2824: connectivity returned. Re-fetch settings only -- this must never touch the
     // offline queue or replay (ADR 0014: no reconnect event may submit queued records).
@@ -301,12 +309,14 @@ export function WorkflowModeProvider({ children }) {
     };
 
     window.addEventListener('auth:login', handleAuthLogin);
+    window.addEventListener('auth:session-updated', handleAuthSessionUpdated);
     window.addEventListener('auth:logout', handleAuthLogout);
     window.addEventListener('online', handleOnline);
     window.addEventListener(WORKFLOW_MODE_CHANGED_EVENT, handleModeChanged);
 
     return () => {
       window.removeEventListener('auth:login', handleAuthLogin);
+      window.removeEventListener('auth:session-updated', handleAuthSessionUpdated);
       window.removeEventListener('auth:logout', handleAuthLogout);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener(WORKFLOW_MODE_CHANGED_EVENT, handleModeChanged);

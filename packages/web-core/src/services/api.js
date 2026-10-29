@@ -7,6 +7,7 @@ import {
   getBrowserSessionSnapshot,
   ensureCsrfToken,
   refreshBrowserSession,
+  waitForBrowserSessionReady,
   setBrowserSession,
   clearBrowserSession
 } from './browserSession.js';
@@ -327,6 +328,21 @@ const shouldPreflightBrowserSession = (config = {}) => (
   !isPublicOrAuthRequest(config.url)
 );
 
+const shouldWaitForPosTenantSession = (config = {}) => {
+  if (config.skipAuthRefresh || config.skipTenantAuthHeaders || !IS_POS_SURFACE) return false;
+  const path = resolveRequestPath(config.url);
+  if (isPublicOrAuthRequest(path) || path.includes('/auth/')) return false;
+  return (
+    path === '/settings'
+    || path.startsWith('/settings/')
+    || path === '/tenant-locations'
+    || path.startsWith('/tenant-locations/')
+    || path.startsWith('/pos/')
+    || path.startsWith('/onboarding/')
+    || path.startsWith('/mobile-pos/')
+  );
+};
+
 const isAdminRequest = (url = '') => {
   const path = resolveRequestPath(url);
   return path.startsWith('/admin/') || path.startsWith('/dgfy/admin/');
@@ -469,6 +485,19 @@ api.interceptors.request.use(
     const explicitCompanyToken = getRequestHeader(config.headers, 'x-company-token');
     let token = explicitToken || getAccessToken();
     let companyToken = explicitCompanyToken || getCompanyToken();
+
+    if (shouldWaitForPosTenantSession(config) && !token && !canRefreshBrowserSession()) {
+      const sessionReady = await waitForBrowserSessionReady();
+      if (!sessionReady) {
+        const sessionPendingError = new Error('POS tenant session is not ready.');
+        sessionPendingError.code = 'POS_TENANT_SESSION_PENDING';
+        sessionPendingError.config = config;
+        sessionPendingError.skipGlobalErrorToast = true;
+        throw sessionPendingError;
+      }
+      token = getAccessToken();
+      companyToken = getCompanyToken();
+    }
 
     if (
       (!token && shouldPreflightBrowserSession(config)) ||

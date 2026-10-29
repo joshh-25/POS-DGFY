@@ -1,4 +1,4 @@
-import { getAccessToken, getCompanyToken } from '@/services/browserSession.js';
+import { getAccessToken, getCompanyToken, waitForBrowserSessionReady } from '@/services/browserSession.js';
 import { computeUnreachableBackoffMs, isBackendUnreachable } from '@/services/backendReachability.js';
 import { resolveApiBaseUrl } from '@/src/utils/runtimeConfig.js';
 
@@ -8,6 +8,7 @@ const RECONNECT_DELAY_MIN_MS = 1000;
 const RECONNECT_DELAY_MAX_MS = 15000;
 const UNREACHABLE_RECONNECT_DELAY_MAX_MS = 60000;
 const RECONNECT_DELAY_JITTER = 0.2;
+const IS_POS_SURFACE = String(import.meta.env.VITE_APP_SURFACE || '').trim().toLowerCase() === 'pos';
 
 export const notifyPosCatalogUpdated = () => {
     if (typeof window === 'undefined') return;
@@ -120,6 +121,13 @@ export const subscribeToRemotePosCatalogUpdates = ({
 
     const connect = async () => {
         if (stopped) return;
+        if (IS_POS_SURFACE) {
+            const sessionReady = await waitForBrowserSessionReady();
+            if (!sessionReady || !getAccessToken()) {
+                if (!stopped) scheduleReconnect({ code: 'POS_TENANT_SESSION_PENDING' });
+                return;
+            }
+        }
         const requestController = new AbortController();
         controller = requestController;
         let reconnectError = null;

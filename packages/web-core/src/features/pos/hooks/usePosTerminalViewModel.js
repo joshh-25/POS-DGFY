@@ -1032,7 +1032,15 @@ export function usePosTerminalViewModel({
     ]);
 
     const loadReceiptSettings = useCallback(async () => {
-        if (sessionLocked) {
+        // Receipt settings are tenant-scoped. The checkout hook can mount while the POS
+        // shell is still waiting for the tenant session and workflow settings; do not issue
+        // an unauthenticated /settings request during that window.
+        if (
+            sessionLocked
+            || (!terminalUser?.user_id && !terminalUser?.id)
+            || workflowLoading
+            || workflowUnresolved
+        ) {
             setReceiptSettings({});
             setDiscountProfiles([]);
             setCommercialPromoConfig([]);
@@ -1068,7 +1076,7 @@ export function usePosTerminalViewModel({
             setDiscountProfiles([]);
             setCommercialPromoConfig([]);
         }
-    }, [saveCatalogSnapshot, sessionLocked]);
+    }, [saveCatalogSnapshot, sessionLocked, terminalUser?.id, terminalUser?.user_id, workflowLoading, workflowUnresolved]);
 
     useEffect(() => {
         if (sessionLocked) return;

@@ -13,6 +13,7 @@ const POS_COMPANY_SWITCH_HANDOFF_STORAGE_KEY = 'pos_company_switch_handoff_v1';
 const POS_COMPANY_SWITCH_HANDOFF_MAX_AGE_MS = 60_000;
 const POS_DGFY_TENANT_HANDOFF_STORAGE_KEY = 'pos_dgfy_tenant_handoff_v1';
 const POS_DGFY_TENANT_HANDOFF_MAX_AGE_MS = 60_000;
+const POS_TENANT_SESSION_WAIT_MS = 15_000;
 
 let accessToken = '';
 let companyToken = '';
@@ -259,6 +260,40 @@ export const canRefreshBrowserSession = () => (
   || standalonePosSessionActivated
   || hasFreshPosCompanySwitchHandoff()
 );
+
+// POS tenant-scoped requests may be mounted before DGFY finishes issuing the
+// tenant session. Wait for the in-memory session event instead of sending an
+// unauthenticated request that can only return 401.
+export const waitForBrowserSessionReady = ({ timeoutMs = POS_TENANT_SESSION_WAIT_MS } = {}) => {
+  const isReady = () => Boolean(accessToken) || canRefreshBrowserSession();
+  if (isReady()) return Promise.resolve(true);
+  if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') {
+    return Promise.resolve(false);
+  }
+
+  const normalizedTimeoutMs = Number.isFinite(Number(timeoutMs))
+    ? Math.max(0, Number(timeoutMs))
+    : POS_TENANT_SESSION_WAIT_MS;
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let timeoutId = null;
+    let handleSessionUpdated = null;
+    const finish = (ready) => {
+      if (settled) return;
+      settled = true;
+      if (timeoutId !== null) clearTimeout(timeoutId);
+      window.removeEventListener('auth:session-updated', handleSessionUpdated);
+      resolve(ready);
+    };
+    handleSessionUpdated = () => {
+      if (isReady()) finish(true);
+    };
+
+    window.addEventListener('auth:session-updated', handleSessionUpdated);
+    timeoutId = setTimeout(() => finish(isReady()), normalizedTimeoutMs);
+  });
+};
 
 export const getAuthHeaders = ({ includeCsrf = false } = {}) => {
   const headers = {};
