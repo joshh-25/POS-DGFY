@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { afterEach, describe, expect, it, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest';
 import { parsePosCatalogEvent, subscribeToRemotePosCatalogUpdates } from '../posCatalogRefresh.js';
 
 describe('parsePosCatalogEvent', () => {
@@ -77,5 +77,50 @@ describe('remote POS catalog stream recovery', () => {
 
         unsubscribe();
         expect(fetchMock.mock.calls[2][1].signal.aborted).toBe(true);
+    });
+});
+
+describe('remote POS catalog stream session ordering', () => {
+    beforeEach(() => {
+        vi.resetModules();
+        vi.stubEnv('VITE_APP_SURFACE', 'pos');
+        window.sessionStorage.clear();
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        vi.unstubAllEnvs();
+    });
+
+    it('does not open the catalog stream before the tenant session is active', async () => {
+        const reader = {
+            read: vi.fn().mockResolvedValue({ done: true, value: undefined })
+        };
+        const fetchMock = vi.fn().mockResolvedValue({
+            ok: true,
+            body: { getReader: () => reader }
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const { subscribeToRemotePosCatalogUpdates: subscribe } = await import('../posCatalogRefresh.js');
+        const session = await import('@/services/browserSession.js');
+        session.beginPosTenantSessionActivation();
+        const unsubscribe = subscribe();
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(fetchMock).not.toHaveBeenCalled();
+
+        session.setBrowserSession({
+            token: 'catalog-access-token',
+            companyToken: 'catalog-company-token'
+        });
+
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+        expect(fetchMock.mock.calls[0][1].headers).toMatchObject({
+            Authorization: 'Bearer catalog-access-token',
+            'x-company-token': 'catalog-company-token'
+        });
+
+        unsubscribe();
     });
 });

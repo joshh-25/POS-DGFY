@@ -1,5 +1,10 @@
 import api from './api.js';
-import { getAccessToken, setBrowserSession } from './browserSession.js';
+import {
+  beginPosTenantSessionActivation,
+  clearPosTenantSessionActivation,
+  getAccessToken,
+  setBrowserSession
+} from './browserSession.js';
 import { clearClientSession } from './sessionCleanup.js';
 import { ANALYTICS_EVENTS, trackFunnelEvent } from '../observability/analyticsEvents.js';
 
@@ -618,36 +623,48 @@ export const startDgfyTenantSession = async ({
   accessScope = ''
 } = {}, token = getStoredDgfyToken(), { activate = true } = {}) => {
   const normalizedAccessScope = String(accessScope || '').trim().toLowerCase();
-  const response = await api.post('/dgfy/auth/tenant-session', {
-    tenant_id: tenantId,
-    company_token: companyToken,
-    ...(normalizedAccessScope ? { access_scope: normalizedAccessScope } : {})
-  }, dgfyRequestConfig(token));
-  const data = response.data.data;
-  const tenantToken = String(data?.token || '').trim();
-  const resolvedCompanyToken = String(data?.company?.token || companyToken || '').trim();
-  if (!tenantToken || !resolvedCompanyToken) {
-    throw new Error('The selected company did not return a valid POS session. Sign in again.');
-  }
-  const normalizedSession = {
-    ...data,
-    company: {
-      ...(data?.company || {}),
-      token: resolvedCompanyToken
+  beginPosTenantSessionActivation();
+  try {
+    const response = await api.post('/dgfy/auth/tenant-session', {
+      tenant_id: tenantId,
+      company_token: companyToken,
+      ...(normalizedAccessScope ? { access_scope: normalizedAccessScope } : {})
+    }, dgfyRequestConfig(token));
+    const data = response.data.data;
+    const tenantToken = String(data?.token || '').trim();
+    const resolvedCompanyToken = String(data?.company?.token || companyToken || '').trim();
+    if (!tenantToken || !resolvedCompanyToken) {
+      throw new Error('The selected company did not return a valid POS session. Sign in again.');
     }
-  };
-  return activate ? activateDgfyTenantSession(normalizedSession) : normalizedSession;
+    const normalizedSession = {
+      ...data,
+      company: {
+        ...(data?.company || {}),
+        token: resolvedCompanyToken
+      }
+    };
+    return activate ? activateDgfyTenantSession(normalizedSession) : normalizedSession;
+  } catch (error) {
+    clearPosTenantSessionActivation();
+    throw error;
+  }
 };
 
 export const startDgfyPosSession = async ({
   tenantId,
   terminalId
 } = {}, token = getStoredDgfyToken(), { activate = true } = {}) => {
-  const response = await api.post(`/dgfy/account/companies/${encodeURIComponent(String(tenantId || ''))}/pos-session`, {
-    terminal_id: terminalId
-  }, dgfyRequestConfig(token));
-  const data = response.data.data;
-  return activate ? activateDgfyTenantSession(data) : data;
+  beginPosTenantSessionActivation();
+  try {
+    const response = await api.post(`/dgfy/account/companies/${encodeURIComponent(String(tenantId || ''))}/pos-session`, {
+      terminal_id: terminalId
+    }, dgfyRequestConfig(token));
+    const data = response.data.data;
+    return activate ? activateDgfyTenantSession(data) : data;
+  } catch (error) {
+    clearPosTenantSessionActivation();
+    throw error;
+  }
 };
 
 export const dgfyAuthHeader = () => {

@@ -63,6 +63,38 @@ describe('standalone POS API session bootstrap', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('waits for tenant-session activation before sending protected POS settings requests', async () => {
+    const { default: api } = await import('../api.js');
+    const session = await import('../browserSession.js');
+    const requestOrder = [];
+    let requestHeaders;
+
+    window.addEventListener('auth:session-updated', () => {
+      requestOrder.push('tenant-session-ready');
+    }, { once: true });
+    apiMock.onGet('/settings').reply((config) => {
+      requestOrder.push('settings');
+      requestHeaders = { ...config.headers };
+      return [200, { data: {} }];
+    });
+
+    session.beginPosTenantSessionActivation();
+    const pendingRequest = api.get('/settings');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(requestOrder).toEqual([]);
+
+    session.setBrowserSession({
+      token: 'tenant-session-access-token',
+      companyToken: 'tenant-session-company-token'
+    });
+
+    await expect(pendingRequest).resolves.toMatchObject({ status: 200 });
+    expect(requestOrder).toEqual(['tenant-session-ready', 'settings']);
+    expect(requestHeaders.Authorization).toBe('Bearer tenant-session-access-token');
+    expect(requestHeaders['x-company-token']).toBe('tenant-session-company-token');
+  });
+
   it('refreshes an established POS session on the first 401 and retries once with the new token', async () => {
     const { default: api } = await import('../api.js');
     const session = await import('../browserSession.js');

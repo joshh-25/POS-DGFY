@@ -20,6 +20,7 @@ let companyToken = '';
 let refreshInFlight = null;
 let csrfBootstrapInFlight = null;
 let standalonePosSessionActivated = false;
+let posTenantSessionActivationPending = false;
 let sessionGeneration = 0;
 
 const readPosSessionStorage = () => {
@@ -114,6 +115,7 @@ const bootstrapStandalonePosSession = () => {
   accessToken = '';
   companyToken = '';
   standalonePosSessionActivated = persisted.active === true;
+  posTenantSessionActivationPending = false;
 };
 
 bootstrapStandalonePosSession();
@@ -179,6 +181,7 @@ export const setBrowserSession = ({ token, companyToken: nextCompanyToken } = {}
     sessionChanged = sessionChanged || normalizedCompanyToken !== companyToken;
     companyToken = normalizedCompanyToken;
   }
+  if (accessToken && companyToken) posTenantSessionActivationPending = false;
   if (sessionChanged) sessionGeneration += 1;
   if (IS_STANDALONE_POS_SURFACE) {
     writePosSessionStorage({
@@ -198,6 +201,7 @@ export const clearBrowserSession = () => {
   accessToken = '';
   companyToken = '';
   standalonePosSessionActivated = false;
+  posTenantSessionActivationPending = false;
   if (IS_STANDALONE_POS_SURFACE && typeof window !== 'undefined') {
     window.sessionStorage.removeItem(POS_BROWSER_SESSION_STORAGE_KEY);
   }
@@ -249,6 +253,13 @@ export const consumePosDgfyTenantHandoff = () => {
 
 export const getAccessToken = () => accessToken;
 export const getCompanyToken = () => companyToken;
+export const beginPosTenantSessionActivation = () => {
+  if (IS_STANDALONE_POS_SURFACE) posTenantSessionActivationPending = true;
+};
+export const clearPosTenantSessionActivation = () => {
+  posTenantSessionActivationPending = false;
+};
+export const isPosTenantSessionActivationPending = () => posTenantSessionActivationPending;
 export const getBrowserSessionSnapshot = () => ({
   token: accessToken,
   companyToken,

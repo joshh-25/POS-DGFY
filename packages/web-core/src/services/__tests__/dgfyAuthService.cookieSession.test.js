@@ -3,12 +3,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const {
   apiGet,
   apiPost,
+  beginPosTenantSessionActivationMock,
+  clearPosTenantSessionActivationMock,
   getAccessTokenMock,
   setBrowserSessionMock,
   clearClientSessionMock
 } = vi.hoisted(() => ({
   apiGet: vi.fn(),
   apiPost: vi.fn(),
+  beginPosTenantSessionActivationMock: vi.fn(),
+  clearPosTenantSessionActivationMock: vi.fn(),
   getAccessTokenMock: vi.fn(),
   setBrowserSessionMock: vi.fn(),
   clearClientSessionMock: vi.fn()
@@ -40,6 +44,8 @@ vi.mock('../api.js', () => ({
 }));
 
 vi.mock('../browserSession.js', () => ({
+  beginPosTenantSessionActivation: beginPosTenantSessionActivationMock,
+  clearPosTenantSessionActivation: clearPosTenantSessionActivationMock,
   getAccessToken: getAccessTokenMock,
   setBrowserSession: setBrowserSessionMock
 }));
@@ -52,6 +58,8 @@ describe('dgfyAuthService cookie session rehydration', () => {
   beforeEach(async () => {
     apiGet.mockReset();
     apiPost.mockReset();
+    beginPosTenantSessionActivationMock.mockReset();
+    clearPosTenantSessionActivationMock.mockReset();
     getAccessTokenMock.mockReset();
     getAccessTokenMock.mockReturnValue('');
     setBrowserSessionMock.mockReset();
@@ -289,6 +297,7 @@ describe('dgfyAuthService cookie session rehydration', () => {
       token: 'tenant-token',
       companyToken: 'token-cookie-company'
     });
+    expect(beginPosTenantSessionActivationMock).toHaveBeenCalledTimes(1);
     expect(dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({
       type: 'auth:login'
     }));
@@ -354,6 +363,7 @@ describe('dgfyAuthService cookie session rehydration', () => {
     );
     expect(candidate.token).toBe('candidate-pos-token');
     expect(setBrowserSessionMock).not.toHaveBeenCalled();
+    expect(beginPosTenantSessionActivationMock).toHaveBeenCalledTimes(1);
   });
 
   it('sends the POS access scope when bootstrapping a terminal handoff', async () => {

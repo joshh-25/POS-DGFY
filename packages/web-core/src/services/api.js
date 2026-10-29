@@ -8,6 +8,7 @@ import {
   ensureCsrfToken,
   refreshBrowserSession,
   waitForBrowserSessionReady,
+  isPosTenantSessionActivationPending,
   setBrowserSession,
   clearBrowserSession
 } from './browserSession.js';
@@ -330,6 +331,7 @@ const shouldPreflightBrowserSession = (config = {}) => (
 
 const shouldWaitForPosTenantSession = (config = {}) => {
   if (config.skipAuthRefresh || config.skipTenantAuthHeaders || !IS_POS_SURFACE) return false;
+  if (!isPosTenantSessionActivationPending()) return false;
   const path = resolveRequestPath(config.url);
   if (isPublicOrAuthRequest(path) || path.includes('/auth/')) return false;
   return (
